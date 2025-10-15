@@ -29,7 +29,7 @@ export async function POST(req: Request) {
 
     const resend = new Resend(apiKey);
     await resend.emails.send({
-      from: "SEO Audit <onboarding@resend.dev>",
+      from: "SEO Audit <deroualle.n@gmail.com>",
       to: notifyTo.split(",").map((x) => x.trim()),
       subject: "🧲 Nouveau lead – SEO Audit App",
       html: `
