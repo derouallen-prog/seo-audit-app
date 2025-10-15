@@ -1,5 +1,4 @@
 "use client";
-import React from "react";
 import { useState } from "react";
 import { z } from "zod";
 
@@ -10,8 +9,6 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const isValidUrl = schema.safeParse(url.trim()).success;
 
   async function onAnalyze() {
     setError(null);
@@ -46,7 +43,7 @@ export default function HomePage() {
           />
           <button
             onClick={onAnalyze}
-            disabled={loading || !isValidUrl}
+            disabled={loading}
             className="rounded-lg bg-black text-white px-4 py-2 disabled:opacity-60"
           >
             {loading ? "Analyse…" : "Analyser"}
@@ -88,9 +85,9 @@ export default function HomePage() {
             <h4 className="font-medium mb-2">Recevoir un audit complet</h4>
             <form
               className="grid gap-2"
-              onSubmit={async (e: React.FormEvent<HTMLFormElement>) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
-                const fd = new FormData(e.currentTarget);
+                const fd = new FormData(e.currentTarget as HTMLFormElement);
                 const res = await fetch("/api/lead", {
                   method: "POST",
                   headers: { "content-type": "application/json" },
@@ -104,7 +101,7 @@ export default function HomePage() {
                 });
                 if (res.ok) {
                   alert("Merci ! Nous revenons vers vous rapidement.");
-                  e.currentTarget.reset();
+                  (e.currentTarget as HTMLFormElement).reset();
                 } else {
                   const j = await res.json().catch(() => ({}));
                   alert(j?.error || "Erreur, merci de réessayer.");

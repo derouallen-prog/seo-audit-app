@@ -2,9 +2,7 @@
 import React from "react";
 import { useState } from "react";
 import { z } from "zod";
-
 const schema = z.string().url();
-
 export default function HomePage() {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
