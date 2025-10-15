@@ -7,3 +7,4 @@ App Next.js (App Router, TypeScript, Tailwind) pour analyser un site via URL, af
 npm install
 npm run dev
 ```
+# seo-audit-app
