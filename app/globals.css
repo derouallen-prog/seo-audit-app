@@ -2,6 +2,43 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: light dark; }
+/* Tout ce qui contient @apply doit vivre dans @layer base */
+@layer base {
+  :root {
+    /* Thème clair */
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    --primary: 222 84% 56%;
+    --primary-foreground: 0 0% 100%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --border: 214 32% 91%;
+  }
 
-body { @apply bg-white text-gray-900 antialiased dark:bg-zinc-950 dark:text-zinc-100; }
+  .dark {
+    /* Thème sombre */
+    --background: 222 47% 5%;
+    --foreground: 213 31% 91%;
+    --primary: 213 94% 68%;
+    --primary-foreground: 222 47% 5%;
+    --muted: 223 47% 11%;
+    --muted-foreground: 215 20% 65%;
+    --border: 223 47% 16%;
+  }
+
+  html, body { height: 100% }
+
+  /* ⛔️ Au lieu de @apply border-border (que Tailwind n’a pas encore),
+     on applique directement la couleur via la variable CSS */
+  *, ::before, ::after { border-color: hsl(var(--border)); }
+
+  /* idem pour bg/text : on met les valeurs CSS directes */
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  :root { color-scheme: light dark; }
+}

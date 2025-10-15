@@ -7,6 +7,7 @@ export async function POST(req: Request) {
   try {
     const { email, company, url, note, website } = await req.json();
 
+    // Honeypot
     if (website && String(website).trim().length > 0) {
       return NextResponse.json({ ok: true });
     }
@@ -21,6 +22,7 @@ export async function POST(req: Request) {
       );
     }
 
+    // En dev sans clé, on simule
     if (!apiKey) {
       console.warn("RESEND_API_KEY manquant : simulation en local");
       console.log(`[SIMULATION EMAIL] → ${notifyTo} | lead: ${email}`);
@@ -28,8 +30,9 @@ export async function POST(req: Request) {
     }
 
     const resend = new Resend(apiKey);
+
     await resend.emails.send({
-      from: "SEO Audit <deroualle.n@gmail.com>",
+      from: "SEO Audit <onboarding@resend.dev>",
       to: notifyTo.split(",").map((x) => x.trim()),
       subject: "🧲 Nouveau lead – SEO Audit App",
       html: `

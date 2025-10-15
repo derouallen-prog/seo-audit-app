@@ -1,30 +1,29 @@
 import "./globals.css";
-import type { ReactNode } from "react";
+import type { Metadata } from "next";
+import { GeistSans } from "geist/font/sans";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "SEO Audit App",
-  description: "Analyse SEO rapide + recommandations"
+  description: "Quick SEO insights",
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="fr">
-      <body className="min-h-screen">
-        <header className="border-b">
-          <div className="mx-auto max-w-5xl px-4 py-4 flex items-center justify-between">
-            <h1 className="text-xl font-semibold">SEO Audit App</h1>
-            <a
-              href="mailto:hello@example.com?subject=Am%C3%A9liorer%20ma%20strat%C3%A9gie%20SEO"
-              className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-zinc-900"
-            >
-              Améliorer ma stratégie SEO
-            </a>
-          </div>
-        </header>
-        <main className="mx-auto max-w-5xl px-4 py-8">{children}</main>
-        <footer className="mx-auto max-w-5xl px-4 py-8 text-sm text-gray-500">
-          © {new Date().getFullYear()} — SEO Audit App
-        </footer>
+    <html lang="fr" suppressHydrationWarning>
+      <body className={GeistSans.className}>
+        <div className="min-h-dvh">
+          <header className="border-b">
+            <nav className="container flex h-14 items-center justify-between">
+              <span className="font-semibold">SEO Audit App</span>
+            </nav>
+          </header>
+          <main className="container py-8">{children}</main>
+          <footer className="border-t">
+            <div className="container py-6 text-sm text-muted-foreground">
+              © {new Date().getFullYear()} — SEO Audit
+            </div>
+          </footer>
+        </div>
       </body>
     </html>
   );

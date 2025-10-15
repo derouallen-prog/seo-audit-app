@@ -42,7 +42,7 @@ export default function HomePage() {
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://www.exemple.com"
-            className="w-full rounded-lg border px-3 py-2"
+            className="text-white placeholder:text-gray-400 bg-neutral-900"
           />
           <button
             onClick={onAnalyze}
@@ -123,10 +123,10 @@ export default function HomePage() {
             >
               {/* Champ caché anti-bot */}
               <input type="text" name="website" tabIndex={-1} autoComplete="off" className="hidden" />
-              <input name="email" required type="email" placeholder="Email pro" className="rounded-lg border px-3 py-2" />
-              <input name="company" required placeholder="Société" className="rounded-lg border px-3 py-2" />
-              <textarea name="note" placeholder="Besoin / contexte (optionnel)" className="rounded-lg border px-3 py-2" />
-              <button className="rounded-lg bg-black text-white px-4 py-2">Améliorer ma stratégie SEO</button>
+              <input name="email" required type="email" placeholder="Email pro" className="rounded-lg border border-gray-700 bg-neutral-900 px-3 py-2 text-white placeholder:text-gray-400" />
+              <input name="company" required placeholder="Société" className="rounded-lg border border-gray-700 bg-neutral-900 px-3 py-2 text-white placeholder:text-gray-400" />
+              <textarea name="note" placeholder="Besoin / contexte (optionnel)" className="rounded-lg border border-gray-700 bg-neutral-900 px-3 py-2 text-white placeholder:text-gray-400" />
+              <button className="rounded-lg bg-black text-white px-4 py-2 hover:bg-gray-800 transition">Améliorer ma stratégie SEO</button>
             </form>
           </div>
         </section>
