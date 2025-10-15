@@ -1,6 +1,6 @@
 "use client";
-import React from "react";
-import { useState } from "react";
+
+import React, { useState } from "react";
 import { z } from "zod";
 
 const schema = z.string().url();
@@ -89,57 +89,44 @@ export default function HomePage() {
             <form
               className="grid gap-2"
               onSubmit={async (e: React.FormEvent<HTMLFormElement>) => {
-                e.preventDefault();
-                const fd = new FormData(e.currentTarget);
-                const res = await fetch("/api/lead", {
-                  method: "POST",
-                  headers: { "content-type": "application/json" },
-                  body: JSON.stringify({
-                    email: fd.get("email"),
-                    company: fd.get("company"),
-                    url,
-                    note: fd.get("note"),
-                    website: fd.get("website"), // honeypot
-                  }),
-                });
-                if (res.ok) {
-                  alert("Merci ! Nous revenons vers vous rapidement.");
-                  e.currentTarget.reset();
-                } else {
-                  const j = await res.json().catch(() => ({}));
-                  alert(j?.error || "Erreur, merci de réessayer.");
-                }
-              }}
+  e.preventDefault();
+
+  // ✅ capture la référence AVANT l'await
+  const form = e.currentTarget;
+  const fd = new FormData(form);
+
+  try {
+    const res = await fetch("/api/lead", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        email: fd.get("email"),
+        company: fd.get("company"),
+        url,
+        note: fd.get("note"),
+        website: fd.get("website"), // honeypot
+      }),
+    });
+
+    if (res.ok) {
+      alert("Merci ! Nous revenons vers vous rapidement.");
+      form.reset(); // ✅ on utilise la ref capturée
+    } else {
+      const j = await res.json().catch(() => ({}));
+      alert(j?.error || "Erreur, merci de réessayer.");
+    }
+  } catch (err) {
+    alert("Erreur réseau, merci de réessayer.");
+  }
+}}
+
             >
               {/* Champ caché anti-bot */}
-              <input
-                type="text"
-                name="website"
-                tabIndex={-1}
-                autoComplete="off"
-                className="hidden"
-              />
-              <input
-                name="email"
-                required
-                type="email"
-                placeholder="Email pro"
-                className="rounded-lg border px-3 py-2"
-              />
-              <input
-                name="company"
-                required
-                placeholder="Société"
-                className="rounded-lg border px-3 py-2"
-              />
-              <textarea
-                name="note"
-                placeholder="Besoin / contexte (optionnel)"
-                className="rounded-lg border px-3 py-2"
-              />
-              <button className="rounded-lg bg-black text-white px-4 py-2">
-                Améliorer ma stratégie SEO
-              </button>
+              <input type="text" name="website" tabIndex={-1} autoComplete="off" className="hidden" />
+              <input name="email" required type="email" placeholder="Email pro" className="rounded-lg border px-3 py-2" />
+              <input name="company" required placeholder="Société" className="rounded-lg border px-3 py-2" />
+              <textarea name="note" placeholder="Besoin / contexte (optionnel)" className="rounded-lg border px-3 py-2" />
+              <button className="rounded-lg bg-black text-white px-4 py-2">Améliorer ma stratégie SEO</button>
             </form>
           </div>
         </section>

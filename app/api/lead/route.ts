@@ -1,54 +1,63 @@
-import { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { Resend } from "resend";
 
-export async function POST(req: NextRequest) {
+export const runtime = "nodejs";
+
+export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => ({}));
-    const email = (body?.email ?? "").toString().trim();
-    const company = (body?.company ?? "").toString().trim();
-    const url = (body?.url ?? "").toString().trim();
-    const note = (body?.note ?? "").toString().trim();
-    const website = (body?.website ?? "").toString().trim(); // honeypot
+    const { email, company, url, note, website } = await req.json();
 
-    // Honeypot simple: si rempli, on ignore
-    if (website) {
-      return Response.json({ ok: true });
+    if (website && String(website).trim().length > 0) {
+      return NextResponse.json({ ok: true });
     }
 
-    if (!email || !company) {
-      return Response.json({ error: "email & company required" }, { status: 400 });
+    const apiKey = process.env.RESEND_API_KEY;
+    const notifyTo = process.env.LEADS_NOTIFY_TO;
+
+    if (!notifyTo) {
+      return NextResponse.json(
+        { error: "LEADS_NOTIFY_TO manquant (env local/Vercel)." },
+        { status: 500 }
+      );
     }
 
-    const payload = {
-      email,
-      company,
-      url,
-      note,
-      at: new Date().toISOString(),
-      ua: req.headers.get("user-agent") || "",
-      ip: req.headers.get("x-forwarded-for") || "",
-    };
-
-    const webhook = process.env.LEAD_WEBHOOK_URL;
-
-    if (webhook) {
-      try {
-        const res = await fetch(webhook, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) {
-          console.error("Lead webhook failed:", res.status, await res.text());
-        }
-      } catch (e) {
-        console.error("Lead webhook error:", e);
-      }
-    } else {
-      console.log("LEAD", payload);
+    if (!apiKey) {
+      console.warn("RESEND_API_KEY manquant : simulation en local");
+      console.log(`[SIMULATION EMAIL] → ${notifyTo} | lead: ${email}`);
+      return NextResponse.json({ ok: true, simulated: true });
     }
 
-    return Response.json({ ok: true });
-  } catch (e: any) {
-    return Response.json({ error: e?.message || "Lead failed" }, { status: 500 });
+    const resend = new Resend(apiKey);
+    await resend.emails.send({
+      from: "SEO Audit <onboarding@resend.dev>",
+      to: notifyTo.split(",").map((x) => x.trim()),
+      subject: "🧲 Nouveau lead – SEO Audit App",
+      html: `
+        <h2>Nouveau lead</h2>
+        <ul>
+          <li><b>Email :</b> ${email}</li>
+          <li><b>Société :</b> ${company ?? "—"}</li>
+          ${url ? `<li><b>URL :</b> ${url}</li>` : ""}
+          ${note ? `<li><b>Note :</b> ${note}</li>` : ""}
+        </ul>
+      `,
+    });
+
+    if (email) {
+      await resend.emails.send({
+        from: "SEO Audit <onboarding@resend.dev>",
+        to: [email],
+        subject: "Merci ! On analyse votre demande",
+        html: `<p>Merci pour votre demande d'audit SEO. Nous revenons vers vous très vite.</p>`,
+      });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (err: any) {
+    console.error("Route /api/lead error:", err);
+    return NextResponse.json(
+      { error: err?.message ?? "Erreur serveur" },
+      { status: 500 }
+    );
   }
 }
