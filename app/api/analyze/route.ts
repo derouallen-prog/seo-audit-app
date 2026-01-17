@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { analyzeUrl } from "../../../lib/analyzers";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
   const url = req.nextUrl.searchParams.get("url");

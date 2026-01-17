@@ -6,7 +6,13 @@ export async function analyzeUrl(rawUrl: string): Promise<Analysis> {
   const start = Date.now();
   const target = new URL(rawUrl).toString();
 
-  const res = await fetch(target, { redirect: "follow" });
+  const res = await fetch(target, {
+    redirect: "follow",
+    headers: {
+      // Some sites block requests without a UA; send a simple one
+      "user-agent": "SEO-Audit-App/0.1 (+https://example.com)"
+    }
+  });
   const end = Date.now();
   const responseTimeMs = end - start;
 
@@ -14,7 +20,8 @@ export async function analyzeUrl(rawUrl: string): Promise<Analysis> {
   const statusText = res.statusText || "";
 
   const html = await res.text();
-  const htmlSize = Buffer.from(html, "utf8").byteLength;
+  // Use TextEncoder for edge compatibility (no Buffer dependency)
+  const htmlSize = new TextEncoder().encode(html).length;
 
   const basic = extractBasic(html, target);
 
