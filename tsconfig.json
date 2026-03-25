@@ -12,6 +12,11 @@
     "noUncheckedIndexedAccess": true,
     "noEmit": true,
     "esModuleInterop": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["*"],
+      "@/lib/*": ["lib/*"]
+    },
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
     "jsx": "preserve",

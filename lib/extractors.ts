@@ -11,6 +11,13 @@ export function extractBasic(html: string, baseUrl: string) {
   const h1Count = $("h1").length;
   const jsonLdDetected = $('script[type="application/ld+json"]').length > 0;
 
+  // Heading structure
+  const headings = {
+    h2: $("h2").length,
+    h3: $("h3").length,
+    h4: $("h4").length,
+  };
+
   let internalLinks = 0;
   let externalLinks = 0;
   $("a[href]").each((_, el) => {
@@ -32,5 +39,31 @@ export function extractBasic(html: string, baseUrl: string) {
   // sitemap via <link rel="sitemap">
   const sitemapHref = $('link[rel="sitemap"]').attr("href") || null;
 
-  return { title, description, canonical, robotsMeta, h1Count, jsonLdDetected, internalLinks, externalLinks, imagesMissingAlt, sitemapHref };
+  // OpenGraph
+  const openGraph = {
+    title: $('meta[property="og:title"]').attr("content") || null,
+    description: $('meta[property="og:description"]').attr("content") || null,
+    image: $('meta[property="og:image"]').attr("content") || null,
+    type: $('meta[property="og:type"]').attr("content") || null,
+    url: $('meta[property="og:url"]').attr("content") || null,
+  };
+
+  // Twitter Card
+  const twitterCard = {
+    card: $('meta[name="twitter:card"]').attr("content") || null,
+    title: $('meta[name="twitter:title"]').attr("content") || null,
+    description: $('meta[name="twitter:description"]').attr("content") || null,
+    image: $('meta[name="twitter:image"]').attr("content") || null,
+  };
+
+  return {
+    title, description, canonical, robotsMeta,
+    h1Count, headings,
+    jsonLdDetected,
+    internalLinks, externalLinks,
+    imagesMissingAlt,
+    sitemapHref,
+    openGraph,
+    twitterCard,
+  };
 }

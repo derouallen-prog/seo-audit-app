@@ -1,6 +1,5 @@
 import "./globals.css";
 import type { Metadata } from "next";
-import { GeistSans } from "geist/font/sans";
 
 export const metadata: Metadata = {
   title: "SEO Audit App",
@@ -10,7 +9,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="fr" suppressHydrationWarning>
-      <body className={GeistSans.className}>
+      <body>
         <div className="min-h-dvh">
           <header className="border-b">
             <nav className="container flex h-14 items-center justify-between">
