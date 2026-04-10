@@ -46,7 +46,7 @@ export type SemrushBacklinksResult = {
 function parseSemrushCsv(raw: string): Record<string, string>[] {
   const lines = raw.trim().split(/\r?\n/).filter(Boolean);
   if (lines.length < 2) return [];
-  const headers = lines[0].split(";");
+  const headers = lines[0]!.split(";");
   return lines.slice(1).map(line => {
     const values = line.split(";");
     const row: Record<string, string> = {};

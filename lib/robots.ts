@@ -46,6 +46,7 @@ export async function analyzeRobotsTxt(origin: string): Promise<RobotsTxtResult>
     for (const line of lines) {
       if (line.startsWith("#") || !line) continue;
       const [key, ...rest] = line.split(":");
+      if (!key) continue;
       const value = rest.join(":").trim();
 
       if (key.toLowerCase() === "user-agent") {

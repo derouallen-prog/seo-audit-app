@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { z } from "zod";
 import type { Analysis } from "@/lib/types";
+import TagsGenerator from "@/app/components/TagsGenerator";
 
 const schema = z.string().url();
 
@@ -346,6 +347,13 @@ export default function HomePage() {
               )}
             </section>
           )}
+
+          {/* Optimisation Title & Meta */}
+          <TagsGenerator
+            url={normalized}
+            currentTitle={data.title ?? undefined}
+            currentMeta={data.description ?? undefined}
+          />
 
           {/* Recommandations + Lead */}
           <section className="grid gap-6 md:grid-cols-2">
