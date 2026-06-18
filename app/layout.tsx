@@ -1,5 +1,6 @@
 import "./globals.css";
 import type { Metadata } from "next";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "SEO Audit App",
@@ -13,7 +14,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <div className="min-h-dvh">
           <header className="border-b">
             <nav className="container flex h-14 items-center justify-between">
-              <span className="font-semibold">SEO Audit App</span>
+              <Link href="/" className="font-semibold">SEO Audit App</Link>
+              <Link href="/assistant" className="text-sm text-gray-400 hover:text-white transition">Assistant SEO</Link>
             </nav>
           </header>
           <main className="container py-8">{children}</main>
