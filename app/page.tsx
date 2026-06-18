@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { z } from "zod";
 import type { Analysis } from "@/lib/types";
 import TagsGenerator from "@/app/components/TagsGenerator";
+import KeywordsResearch from "@/app/components/KeywordsResearch";
 
 const schema = z.string().url();
 
@@ -25,6 +26,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<Analysis | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedKeyword, setSelectedKeyword] = useState<string | undefined>(undefined);
 
   const normalized = ensureProtocol(url.trim());
   const isValidUrl = schema.safeParse(normalized).success;
@@ -259,7 +261,7 @@ export default function HomePage() {
                       <th className="pb-2 pr-4 font-medium">Mot-clé</th>
                       <th className="pb-2 pr-4 font-medium text-right">Pos.</th>
                       <th className="pb-2 pr-4 font-medium text-right">Volume</th>
-                      <th className="pb-2 pr-4 font-medium text-right">Diff.</th>
+                      <th className="pb-2 pr-4 font-medium">URL</th>
                       <th className="pb-2 font-medium text-right">Trafic %</th>
                     </tr>
                   </thead>
@@ -269,11 +271,7 @@ export default function HomePage() {
                         <td className="py-1.5 pr-4">{kw.keyword}</td>
                         <td className="py-1.5 pr-4 text-right font-medium">{kw.position}</td>
                         <td className="py-1.5 pr-4 text-right">{kw.searchVolume.toLocaleString("fr-FR")}</td>
-                        <td className="py-1.5 pr-4 text-right">
-                          <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${kw.difficulty >= 70 ? "bg-red-100 text-red-800" : kw.difficulty >= 40 ? "bg-yellow-100 text-yellow-800" : "bg-green-100 text-green-800"}`}>
-                            {kw.difficulty}
-                          </span>
-                        </td>
+                        <td className="py-1.5 pr-4 break-all text-xs text-gray-400">{kw.url || "—"}</td>
                         <td className="py-1.5 text-right">{kw.traffic.toFixed(2)}%</td>
                       </tr>
                     ))}
@@ -348,11 +346,18 @@ export default function HomePage() {
             </section>
           )}
 
+          {/* Recherche de mots-clés */}
+          <KeywordsResearch
+            url={normalized}
+            onSelectKeyword={setSelectedKeyword}
+          />
+
           {/* Optimisation Title & Meta */}
           <TagsGenerator
             url={normalized}
             currentTitle={data.title ?? undefined}
             currentMeta={data.description ?? undefined}
+            initialKeyword={selectedKeyword}
           />
 
           {/* Recommandations + Lead */}

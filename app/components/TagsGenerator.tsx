@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface TagsResult {
   title_axe_a: string;
@@ -21,6 +21,7 @@ interface Props {
   currentTitle?: string;
   currentMeta?: string;
   pageContent?: string;
+  initialKeyword?: string;
 }
 
 function CharBadge({ count, min, max }: { count: number; min: number; max: number }) {
@@ -49,9 +50,13 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-export default function TagsGenerator({ url, currentTitle, currentMeta, pageContent }: Props) {
-  const [keyword, setKeyword] = useState("");
+export default function TagsGenerator({ url, currentTitle, currentMeta, pageContent, initialKeyword }: Props) {
+  const [keyword, setKeyword] = useState(initialKeyword || "");
   const [pageType, setPageType] = useState("");
+
+  useEffect(() => {
+    if (initialKeyword) setKeyword(initialKeyword);
+  }, [initialKeyword]);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<TagsResult | null>(null);
   const [error, setError] = useState<string | null>(null);

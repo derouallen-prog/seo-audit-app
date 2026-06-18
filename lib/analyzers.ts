@@ -4,7 +4,7 @@ import { makeRecommendations } from "./reco";
 import { getGscPageMetrics } from "./gsc";
 import { runPageSpeed } from "./pagespeed";
 import { analyzeRobotsTxt, analyzeSitemap } from "./robots";
-import { getSemrushUrlKeywords, getSemrushDomainTopPages, getSemrushBacklinks } from "./semrush";
+import { getSemrushDomainKeywords, getSemrushDomainTopPages, getSemrushBacklinks } from "./semrush";
 
 export async function analyzeUrl(rawUrl: string): Promise<Analysis> {
   const start = Date.now();
@@ -76,7 +76,7 @@ export async function analyzeUrl(rawUrl: string): Promise<Analysis> {
   // Étape 1 : robots.txt + PageSpeed + GSC + Semrush en parallèle (PSI est le plus lent ~15s)
   const psPromise = psKey ? runPageSpeed(target, psKey) : Promise.resolve(null);
   const gscPromise = gscProperty ? getGscPageMetrics(gscProperty, target, 28) : Promise.resolve(null);
-  const semrushPromise = semrushKey ? getSemrushUrlKeywords(target, semrushKey) : Promise.resolve(null);
+  const semrushPromise = semrushKey ? getSemrushDomainKeywords(domain, semrushKey) : Promise.resolve(null);
   const topPagesPromise = semrushKey ? getSemrushDomainTopPages(domain, semrushKey) : Promise.resolve(null);
   const backlinksPromise = semrushKey ? getSemrushBacklinks(domain, semrushKey) : Promise.resolve(null);
   const robotsPromise = analyzeRobotsTxt(origin);

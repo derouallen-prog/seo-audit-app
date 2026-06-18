@@ -78,16 +78,16 @@ async function semrushFetch(params: URLSearchParams, api = "main"): Promise<stri
   }
 }
 
-export async function getSemrushUrlKeywords(
-  url: string,
+export async function getSemrushDomainKeywords(
+  domain: string,
   apiKey: string,
   database = "fr",
   limit = 20
 ): Promise<SemrushResult | null> {
   const text = await semrushFetch(new URLSearchParams({
-    type: "url_organic",
+    type: "domain_organic",
     key: apiKey,
-    url,
+    domain,
     database,
     display_limit: String(limit),
     display_sort: "tr_desc",
@@ -105,7 +105,7 @@ export async function getSemrushUrlKeywords(
       cpc: parseFloat(r["CPC"] ?? r["Cp"] ?? "0"),
       difficulty: parseInt(r["Keyword Difficulty"] ?? r["Kd"] ?? "0", 10),
       traffic: parseFloat(r["Traffic (%)"] ?? r["Tr"] ?? "0"),
-      url: r["URL"] ?? r["Ur"] ?? url,
+      url: r["Url"] ?? r["URL"] ?? r["Ur"] ?? "",
     }))
     .filter(k => k.keyword && k.position > 0);
 
