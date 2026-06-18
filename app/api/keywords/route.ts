@@ -78,6 +78,40 @@ async function fetchDomainKeywords(domain: string, limit = 100): Promise<Keyword
   }
 }
 
+interface SerpResult {
+  title: string;
+  link: string;
+  snippet: string;
+}
+
+async function fetchSerpResults(keyword: string, num = 5): Promise<SerpResult[]> {
+  const apiKey = process.env.SERPAPI_API_KEY;
+  if (!apiKey) return [];
+  const params = new URLSearchParams({
+    engine: "google",
+    q: keyword,
+    google_domain: "google.fr",
+    gl: "fr",
+    hl: "fr",
+    num: String(num),
+    api_key: apiKey,
+  });
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 15000);
+    const res = await fetch(`https://serpapi.com/search?${params}`, { signal: ctrl.signal });
+    clearTimeout(t);
+    if (!res.ok) return [];
+    const json = await res.json() as { organic_results?: { title?: string; link?: string; snippet?: string }[] };
+    return (json.organic_results || [])
+      .slice(0, num)
+      .map(r => ({ title: r.title || "", link: r.link || "", snippet: r.snippet || "" }))
+      .filter(r => r.title && r.link);
+  } catch {
+    return [];
+  }
+}
+
 async function fetchPageContent(url: string): Promise<string> {
   try {
     const ctrl = new AbortController();
@@ -150,17 +184,41 @@ export async function POST(req: NextRequest) {
 
     const pageContent = await fetchPageContent(url);
 
+    // Top 5 candidats par volume — on va vérifier ce qui ranke réellement pour ceux-ci
+    const serpCandidates = [...merged]
+      .sort((a, b) => b.searchVolume - a.searchVolume)
+      .slice(0, 5);
+
+    const serpResultsArrays = await Promise.all(
+      serpCandidates.map(c => fetchSerpResults(c.keyword, 5))
+    );
+
+    const serpContext = serpCandidates
+      .map((c, i) => {
+        const results = serpResultsArrays[i] || [];
+        if (results.length === 0) return null;
+        const lines = results
+          .map((r, j) => `   ${j + 1}. ${r.title} (${r.link})\n      "${r.snippet}"`)
+          .join("\n");
+        return `Pour "${c.keyword}" (Vol: ${c.searchVolume}), top résultats Google actuels :\n${lines}`;
+      })
+      .filter(Boolean)
+      .join("\n\n");
+
     const kwList = merged
       .map((k, i) => `${i + 1}. "${k.keyword}" | Vol: ${k.searchVolume} | KD: ${k.kd} | Intent: ${k.intent}`)
       .join("\n");
 
     const systemPrompt = `Tu es un expert SEO senior. Tu analyses une liste de mots-clés Semrush et tu assignes le mot-clé principal et des mots-clés secondaires pertinents pour une page web donnée.
 
+Tu disposes aussi des résultats Google réels (top 5) pour les mots-clés à plus fort volume : utilise-les pour comprendre l'intention de recherche dominante et l'angle de contenu qui fonctionne actuellement, et pour vérifier qu'un mot-clé candidat correspond bien à ce que Google valorise (et pas seulement à son volume Semrush).
+
 Critères de sélection (par ordre de priorité) :
 1. Pertinence sémantique avec le contenu réel de la page
-2. Alignement avec les personas et le secteur d'activité
-3. Cohérence avec le positionnement et les arguments différenciants
-4. Volume de recherche et difficulté (préférer KD < 60 sauf si très pertinent)
+2. Cohérence avec l'intention de recherche observée dans les résultats Google réels fournis
+3. Alignement avec les personas et le secteur d'activité
+4. Cohérence avec le positionnement et les arguments différenciants
+5. Volume de recherche et difficulté (préférer KD < 60 sauf si très pertinent)
 
 Réponds UNIQUEMENT en JSON valide, sans texte autour :
 {
@@ -186,7 +244,7 @@ Profil client :
 
 Mots-clés disponibles (${merged.length}) :
 ${kwList}
-
+${serpContext ? `\nRésultats Google réels pour les mots-clés à plus fort volume :\n${serpContext}\n` : ""}
 Assigne le mot-clé principal et 3 à 5 mots-clés secondaires les plus pertinents pour cette page.`;
 
     const response = await client.messages.create({
