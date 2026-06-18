@@ -120,7 +120,7 @@ export default function KeywordsResearch({ url, onSelectKeyword }: Props) {
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label className="text-xs text-gray-400 block mb-1">Secteur d'activité *</label>
+              <label className="text-xs text-gray-400 block mb-1">Secteur d&apos;activité *</label>
               <input
                 value={secteur}
                 onChange={e => setSecteur(e.target.value)}
@@ -169,7 +169,7 @@ export default function KeywordsResearch({ url, onSelectKeyword }: Props) {
       {/* Step 2 — Concurrents */}
       {step === 2 && (
         <div className="space-y-4">
-          <p className="text-xs text-gray-400">Entrez jusqu'à 4 domaines concurrents (sans https://). Vous pouvez laisser des champs vides.</p>
+          <p className="text-xs text-gray-400">Entrez jusqu&apos;à 4 domaines concurrents (sans https://). Vous pouvez laisser des champs vides.</p>
           <div className="grid gap-3 sm:grid-cols-2">
             {competitors.map((c, i) => (
               <div key={i}>

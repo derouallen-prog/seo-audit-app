@@ -112,7 +112,7 @@ export default function TagsGenerator({ url, currentTitle, currentMeta, pageCont
             <option value="">Détection automatique</option>
             <option value="produit">Page produit</option>
             <option value="blog_guide">Article / Guide</option>
-            <option value="cas_usage">Cas d'usage</option>
+            <option value="cas_usage">Cas d&apos;usage</option>
             <option value="evenement">Événement</option>
             <option value="contact_conversion">Contact / Conversion</option>
             <option value="legal">Page légale</option>
