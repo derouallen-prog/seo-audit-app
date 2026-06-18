@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { getSeoNewsDigest, formatDigestForPrompt } from "@/lib/seoNews";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = "claude-sonnet-4-6";
@@ -126,10 +127,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Messages manquants" }, { status: 400 });
     }
 
+    const newsDigest = await getSeoNewsDigest();
+    const newsBlock = formatDigestForPrompt(newsDigest);
+    const systemWithNews = newsBlock
+      ? `${SYSTEM_PROMPT}\n\n${newsBlock}\n\nUtilise ces actualités quand elles sont pertinentes pour la question posée, en citant la source.`
+      : SYSTEM_PROMPT;
+
     const response = await client.messages.create({
       model: MODEL,
       max_tokens: 1500,
-      system: SYSTEM_PROMPT,
+      system: systemWithNews,
       tools,
       messages,
     });

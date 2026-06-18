@@ -2,5 +2,11 @@
   "version": 2,
   "framework": "nextjs",
   "buildCommand": "npm run build",
-  "outputDirectory": ".next"
+  "outputDirectory": ".next",
+  "crons": [
+    {
+      "path": "/api/cron/seo-news",
+      "schedule": "0 6 * * *"
+    }
+  ]
 }
