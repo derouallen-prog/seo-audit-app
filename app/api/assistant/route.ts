@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getSeoNewsDigest, formatDigestForPrompt } from "@/lib/seoNews";
+import { getValidAccessToken, listGscSites, getGscTopQueries, getGscSiteMetrics } from "@/lib/gscOAuth";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = "claude-sonnet-4-6";
@@ -75,6 +76,8 @@ Tu réponds en français, de façon claire et actionnable. Tu peux discuter de s
 
 Quand l'utilisateur demande explicitement de rédiger un article ou une fiche produit, utilise l'outil correspondant plutôt que de l'écrire toi-même dans ta réponse. Si des informations essentielles manquent (sujet, produit, mot-clé principal), demande-les avant d'appeler l'outil.
 
+Si l'utilisateur a connecté sa Google Search Console et demande des données réelles sur un domaine (mots-clés positionnés, requêtes longue traîne, performances de recherche, clics, impressions, position), utilise immédiatement l'outil get_search_console_data avec le domaine mentionné, sans poser de questions de clarification au préalable — l'outil te dira lui-même si le domaine n'est pas accessible. N'utilise PAS cet outil si l'utilisateur n'a pas mentionné de domaine précis ou ne demande pas de données chiffrées issues de la Search Console.
+
 ## Format de réponse
 
 Structure tes réponses avec des titres markdown (## pour les sections principales, ### pour les sous-sections) afin qu'elles soient bien hiérarchisées une fois affichées. Reste concis dans chaque section : privilégie des listes à puces courtes et actionnables plutôt que des paragraphes denses. Termine par une question ou une proposition d'action concrète quand cela invite à poursuivre l'échange.`;
@@ -107,6 +110,18 @@ const tools: Anthropic.Tool[] = [
         ton: { type: "string", description: "Ton souhaité (premium, accessible, technique...)" },
       },
       required: ["nom_produit"],
+    },
+  },
+  {
+    name: "get_search_console_data",
+    description: "Récupère les vraies données Google Search Console (top requêtes, clics, impressions, position moyenne) pour un domaine auquel l'utilisateur connecté a accès.",
+    input_schema: {
+      type: "object",
+      properties: {
+        domaine: { type: "string", description: "Nom de domaine demandé, ex: laplantation.com" },
+        jours: { type: "number", description: "Période en jours à analyser (par défaut 28)" },
+      },
+      required: ["domaine"],
     },
   },
 ];
@@ -159,6 +174,63 @@ ${p.ton ? `Ton : ${p.ton}` : "Ton premium et engageant."}`,
   return (response.content[0] as { text: string }).text;
 }
 
+interface GscDataParams {
+  domaine: string;
+  jours?: number;
+}
+
+function normalizeDomain(input: string): string {
+  return input
+    .trim()
+    .replace(/^sc-domain:/, "")
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/\/$/, "")
+    .toLowerCase();
+}
+
+async function getSearchConsoleDataForChat(sessionId: string | undefined, p: GscDataParams): Promise<string> {
+  if (!sessionId) {
+    return "Aucune Search Console connectée. Invite l'utilisateur à cliquer sur \"Connecter Google Search Console\" sur la page d'accueil avant de pouvoir consulter ses données.";
+  }
+
+  const accessToken = await getValidAccessToken(sessionId);
+  if (!accessToken) {
+    return "Aucune Search Console connectée ou la connexion a expiré. Invite l'utilisateur à cliquer sur \"Connecter Google Search Console\" sur la page d'accueil.";
+  }
+
+  let sites;
+  try {
+    sites = await listGscSites(accessToken);
+  } catch {
+    return "Erreur lors de la récupération des propriétés Search Console de l'utilisateur.";
+  }
+
+  const target = normalizeDomain(p.domaine);
+  const match = sites.find(s => normalizeDomain(s.siteUrl) === target || normalizeDomain(s.siteUrl).includes(target));
+
+  if (!match) {
+    const available = sites.map(s => s.siteUrl).join(", ") || "aucune";
+    return `Le domaine "${p.domaine}" n'est pas accessible avec le compte Google connecté. Propriétés disponibles : ${available}. Informe l'utilisateur de cette liste et demande-lui de préciser s'il voulait l'une d'entre elles.`;
+  }
+
+  try {
+    const [metrics, topQueries] = await Promise.all([
+      getGscSiteMetrics(accessToken, match.siteUrl, p.jours ?? 28),
+      getGscTopQueries(accessToken, match.siteUrl, p.jours ?? 28, 50),
+    ]);
+    return JSON.stringify({
+      domaine: match.siteUrl,
+      periode_jours: p.jours ?? 28,
+      metriques_globales: metrics,
+      requetes: topQueries,
+    });
+  } catch (e) {
+    console.error("[assistant gsc] error:", e);
+    return "Erreur lors de la récupération des données Search Console pour ce domaine.";
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { messages } = await req.json() as {
@@ -186,20 +258,45 @@ export async function POST(req: NextRequest) {
     const toolUse = response.content.find(b => b.type === "tool_use");
 
     if (toolUse && toolUse.type === "tool_use") {
-      let generated: string;
-      let label: string;
       if (toolUse.name === "generate_article") {
-        generated = await generateArticleContent(toolUse.input as ArticleParams);
-        label = "Voici l'article généré :";
-      } else if (toolUse.name === "generate_product_sheet") {
-        generated = await generateProductSheetContent(toolUse.input as ProductSheetParams);
-        label = "Voici la fiche produit générée :";
-      } else {
-        generated = "";
-        label = "";
+        const generated = await generateArticleContent(toolUse.input as ArticleParams);
+        return NextResponse.json({ reply: `Voici l'article généré :\n\n${generated}` });
       }
-      const reply = `${label}\n\n${generated}`;
-      return NextResponse.json({ reply });
+
+      if (toolUse.name === "generate_product_sheet") {
+        const generated = await generateProductSheetContent(toolUse.input as ProductSheetParams);
+        return NextResponse.json({ reply: `Voici la fiche produit générée :\n\n${generated}` });
+      }
+
+      if (toolUse.name === "get_search_console_data") {
+        const sessionId = req.cookies.get("gsc_session")?.value;
+        const toolResultContent = await getSearchConsoleDataForChat(sessionId, toolUse.input as GscDataParams);
+
+        const followUp = await client.messages.create({
+          model: MODEL,
+          max_tokens: 2500,
+          system: systemWithNews,
+          tools,
+          messages: [
+            ...messages,
+            { role: "assistant", content: response.content },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: toolUse.id,
+                  content: toolResultContent,
+                },
+              ],
+            },
+          ],
+        });
+
+        const followUpText = followUp.content.find(b => b.type === "text");
+        const reply = followUpText && followUpText.type === "text" ? followUpText.text : "Désolé, je n'ai pas pu analyser ces données.";
+        return NextResponse.json({ reply });
+      }
     }
 
     const textBlock = response.content.find(b => b.type === "text");
