@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { Analysis } from "@/lib/types";
 import TagsGenerator from "@/app/components/TagsGenerator";
 import KeywordsResearch from "@/app/components/KeywordsResearch";
+import GscConnect from "@/app/components/GscConnect";
 
 const schema = z.string().url();
 
@@ -84,6 +85,8 @@ export default function HomePage() {
         </div>
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
       </section>
+
+      <GscConnect />
 
       {data && (
         <div className="space-y-6">
