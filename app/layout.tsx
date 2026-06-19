@@ -11,16 +11,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="fr" suppressHydrationWarning>
       <body>
-        <div className="min-h-dvh">
-          <header className="border-b">
+        <div className="min-h-dvh bg-white text-black">
+          <header className="border-b border-gray-200">
             <nav className="container flex h-14 items-center justify-between">
-              <Link href="/" className="font-semibold">SEO Audit App</Link>
-              <Link href="/assistant" className="text-sm text-gray-400 hover:text-white transition">Assistant SEO</Link>
+              <Link href="/" className="font-bold text-black text-lg">SEO Audit App</Link>
+              <Link href="/assistant" className="text-sm font-medium text-brand hover:text-brand-dark transition">Assistant SEO</Link>
             </nav>
           </header>
           <main className="container py-8">{children}</main>
-          <footer className="border-t">
-            <div className="container py-6 text-sm text-muted-foreground">
+          <footer className="border-t border-gray-200">
+            <div className="container py-6 text-sm text-gray-500">
               © {new Date().getFullYear()} — SEO Audit
             </div>
           </footer>

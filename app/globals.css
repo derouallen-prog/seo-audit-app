@@ -5,25 +5,14 @@
 /* Tout ce qui contient @apply doit vivre dans @layer base */
 @layer base {
   :root {
-    /* Thème clair */
+    /* Thème clair (palette unique de l'app) */
     --background: 0 0% 100%;
-    --foreground: 222 47% 11%;
-    --primary: 222 84% 56%;
+    --foreground: 0 0% 7%;
+    --primary: 256 96% 60%;
     --primary-foreground: 0 0% 100%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
-    --border: 214 32% 91%;
-  }
-
-  .dark {
-    /* Thème sombre */
-    --background: 222 47% 5%;
-    --foreground: 213 31% 91%;
-    --primary: 213 94% 68%;
-    --primary-foreground: 222 47% 5%;
-    --muted: 223 47% 11%;
-    --muted-foreground: 215 20% 65%;
-    --border: 223 47% 16%;
+    --muted: 240 20% 97%;
+    --muted-foreground: 220 9% 46%;
+    --border: 220 13% 91%;
   }
 
   html, body { height: 100% }

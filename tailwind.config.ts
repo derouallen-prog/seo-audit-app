@@ -22,6 +22,11 @@ const config: Config = {
           DEFAULT: "hsl(var(--muted))",
           foreground: "hsl(var(--muted-foreground))",
         },
+        brand: {
+          DEFAULT: "#5D34FF",
+          light: "#7B52C7",
+          dark: "#4A29CC",
+        },
       },
       borderRadius: {
         xl: "0.75rem",
