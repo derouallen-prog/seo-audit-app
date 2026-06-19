@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getSeoNewsDigest, formatDigestForPrompt } from "@/lib/seoNews";
-import { getValidAccessToken, listGscSites, getGscTopQueries, getGscSiteMetrics } from "@/lib/gscOAuth";
+import { getValidAccessToken, listGscSites, getGscQueriesWithPages, getGscSiteMetrics } from "@/lib/gscOAuth";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = "claude-sonnet-4-6";
@@ -78,6 +78,10 @@ Tu réponds en français, de façon claire et actionnable. Tu peux discuter de s
 Quand l'utilisateur demande explicitement l'une de ces trois actions, utilise l'outil correspondant plutôt que de l'écrire toi-même dans ta réponse. Si des informations essentielles manquent (sujet, produit, mot-clé principal), demande-les avant d'appeler l'outil.
 
 Si l'utilisateur a connecté sa Google Search Console et demande des données réelles sur un domaine (mots-clés positionnés, requêtes longue traîne, performances de recherche, clics, impressions, position), utilise immédiatement l'outil get_search_console_data avec le domaine mentionné, sans poser de questions de clarification au préalable — l'outil te dira lui-même si le domaine n'est pas accessible. N'utilise PAS cet outil si l'utilisateur n'a pas mentionné de domaine précis ou ne demande pas de données chiffrées issues de la Search Console.
+
+Le domaine mentionné par l'utilisateur n'est pas toujours écrit comme une URL propre : il peut s'agir d'un nom de marque ou de société parlé naturellement (ex: "studio seja" pour "studio-seja.com" ou "studioseja.fr"). Transmets le terme tel que l'utilisateur l'a formulé à l'outil get_search_console_data — il fait lui-même le rapprochement avec les propriétés connectées, espaces et tirets inclus. Si l'outil te signale une ambiguïté entre plusieurs domaines possibles, ne devine pas : présente les options à l'utilisateur et demande-lui de confirmer lequel il vise avant de continuer.
+
+Quand tu t'appuies sur des données Search Console pour recommander une action de contenu, croise systématiquement le mot-clé/la requête avec la page qui génère déjà ses impressions et clics (fournie par l'outil). Si une page existe déjà et capte du trafic sur ce thème, ne recommande JAMAIS de créer un nouvel article dessus — cela créerait une cannibalisation et une incohérence éditoriale qui nuit à ta crédibilité. Dans ce cas, recommande plutôt : renforcer/optimiser la page existante (title, structure, profondeur de contenu), construire un cluster sémantique autour d'elle (articles satellites complémentaires qui maillent vers cette page sans dupliquer son sujet), ou un autre levier (netlinking, structured data, EEAT). Ne recommande la création d'un article totalement nouveau que si aucune page existante ne couvre déjà le sujet.
 
 ## Format de réponse
 
@@ -291,6 +295,11 @@ function normalizeDomain(input: string): string {
     .toLowerCase();
 }
 
+// Compare en ignorant espaces/tirets/points pour matcher "studio seja" <-> "studio-seja.com"
+function fuzzyKey(input: string): string {
+  return normalizeDomain(input).replace(/[^a-z0-9]/g, "");
+}
+
 async function getSearchConsoleDataForChat(sessionId: string | undefined, p: GscDataParams): Promise<string> {
   if (!sessionId) {
     return "Aucune Search Console connectée. Invite l'utilisateur à cliquer sur \"Connecter Google Search Console\" sur la page d'accueil avant de pouvoir consulter ses données.";
@@ -309,7 +318,21 @@ async function getSearchConsoleDataForChat(sessionId: string | undefined, p: Gsc
   }
 
   const target = normalizeDomain(p.domaine);
-  const match = sites.find(s => normalizeDomain(s.siteUrl) === target || normalizeDomain(s.siteUrl).includes(target));
+  let match = sites.find(s => normalizeDomain(s.siteUrl) === target || normalizeDomain(s.siteUrl).includes(target));
+
+  if (!match) {
+    const targetFuzzy = fuzzyKey(p.domaine);
+    const fuzzyCandidates = sites.filter(s => {
+      const k = fuzzyKey(s.siteUrl);
+      return k === targetFuzzy || k.includes(targetFuzzy) || targetFuzzy.includes(k);
+    });
+    if (fuzzyCandidates.length === 1) {
+      match = fuzzyCandidates[0];
+    } else if (fuzzyCandidates.length > 1) {
+      const options = fuzzyCandidates.map(s => s.siteUrl).join(", ");
+      return `Plusieurs propriétés Search Console correspondent possiblement à "${p.domaine}" : ${options}. Demande à l'utilisateur de confirmer laquelle il vise avant de continuer, ne devine pas.`;
+    }
+  }
 
   if (!match) {
     const available = sites.map(s => s.siteUrl).join(", ") || "aucune";
@@ -317,15 +340,16 @@ async function getSearchConsoleDataForChat(sessionId: string | undefined, p: Gsc
   }
 
   try {
-    const [metrics, topQueries] = await Promise.all([
+    const [metrics, queriesWithPages] = await Promise.all([
       getGscSiteMetrics(accessToken, match.siteUrl, p.jours ?? 28),
-      getGscTopQueries(accessToken, match.siteUrl, p.jours ?? 28, 50),
+      getGscQueriesWithPages(accessToken, match.siteUrl, p.jours ?? 28, 50),
     ]);
     return JSON.stringify({
       domaine: match.siteUrl,
       periode_jours: p.jours ?? 28,
       metriques_globales: metrics,
-      requetes: topQueries,
+      requetes_et_pages_associees: queriesWithPages,
+      note: "Chaque requête est associée à la page qui génère ses impressions/clics. Avant de recommander un nouveau contenu sur un thème, vérifie si une page existe déjà pour la requête correspondante.",
     });
   } catch (e) {
     console.error("[assistant gsc] error:", e);

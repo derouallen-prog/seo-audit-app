@@ -184,3 +184,41 @@ export async function getGscTopQueries(accessToken: string, siteUrl: string, day
     position: r.position ?? 0,
   }));
 }
+
+export interface GscQueryPageRow {
+  query: string;
+  page: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+}
+
+export async function getGscQueriesWithPages(accessToken: string, siteUrl: string, days = 28, limit = 50): Promise<GscQueryPageRow[]> {
+  const oauth2Client = new google.auth.OAuth2();
+  oauth2Client.setCredentials({ access_token: accessToken });
+  const searchconsole = google.searchconsole({ version: "v1", auth: oauth2Client });
+
+  const end = new Date();
+  const start = new Date();
+  start.setDate(end.getDate() - days);
+
+  const res = await searchconsole.searchanalytics.query({
+    siteUrl,
+    requestBody: {
+      startDate: start.toISOString().slice(0, 10),
+      endDate: end.toISOString().slice(0, 10),
+      dimensions: ["query", "page"],
+      rowLimit: limit,
+    },
+  });
+
+  return (res.data.rows || []).map(r => ({
+    query: r.keys?.[0] || "",
+    page: r.keys?.[1] || "",
+    clicks: r.clicks ?? 0,
+    impressions: r.impressions ?? 0,
+    ctr: r.ctr ?? 0,
+    position: r.position ?? 0,
+  }));
+}
