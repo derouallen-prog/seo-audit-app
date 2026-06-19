@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getSeoNewsDigest, formatDigestForPrompt } from "@/lib/seoNews";
 import { getValidAccessToken, listGscSites, getGscQueriesWithPages, getGscSiteMetrics } from "@/lib/gscOAuth";
+import { createDraftProduct } from "@/lib/woocommerce";
+import { marked } from "marked";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = "claude-sonnet-4-6";
@@ -77,6 +79,8 @@ Tu réponds en français, de façon claire et actionnable. Tu peux discuter de s
 
 Quand l'utilisateur demande explicitement l'une de ces trois actions, utilise l'outil correspondant plutôt que de l'écrire toi-même dans ta réponse. Si des informations essentielles manquent (sujet, produit, mot-clé principal), demande-les avant d'appeler l'outil.
 
+Tu peux aussi publier une fiche produit déjà générée en brouillon sur WooCommerce (laplantation.com), via l'outil publish_product_to_woocommerce — mais UNIQUEMENT quand l'utilisateur le demande explicitement (ex: "publie cette fiche sur WooCommerce", "crée ce produit"). N'appelle JAMAIS cet outil automatiquement juste après avoir généré une fiche produit, même si l'utilisateur semble satisfait du résultat — la publication, même en brouillon, est une action sur un site réel et doit toujours être une décision explicite de l'utilisateur. Reprends le contenu déjà généré dans la conversation plutôt que de le réécrire.
+
 Si l'utilisateur a connecté sa Google Search Console et demande des données réelles sur un domaine (mots-clés positionnés, requêtes longue traîne, performances de recherche, clics, impressions, position), utilise immédiatement l'outil get_search_console_data avec le domaine mentionné, sans poser de questions de clarification au préalable — l'outil te dira lui-même si le domaine n'est pas accessible. N'utilise PAS cet outil si l'utilisateur n'a pas mentionné de domaine précis ou ne demande pas de données chiffrées issues de la Search Console.
 
 Le domaine mentionné par l'utilisateur n'est pas toujours écrit comme une URL propre : il peut s'agir d'un nom de marque ou de société parlé naturellement (ex: "studio seja" pour "studio-seja.com" ou "studioseja.fr"). Transmets le terme tel que l'utilisateur l'a formulé à l'outil get_search_console_data — il fait lui-même le rapprochement avec les propriétés connectées, espaces et tirets inclus. Si l'outil te signale une ambiguïté entre plusieurs domaines possibles, ne devine pas : présente les options à l'utilisateur et demande-lui de confirmer lequel il vise avant de continuer.
@@ -142,6 +146,21 @@ const tools: Anthropic.Tool[] = [
         jours: { type: "number", description: "Période en jours à analyser (par défaut 28)" },
       },
       required: ["domaine"],
+    },
+  },
+  {
+    name: "publish_product_to_woocommerce",
+    description: "Crée une fiche produit en BROUILLON sur WooCommerce (laplantation.com). N'utilise cet outil QUE si l'utilisateur demande explicitement de publier/créer le produit sur WooCommerce — jamais automatiquement juste après une génération de fiche produit. Reprends le contenu déjà généré dans la conversation (title SEO, meta description, description complète) plutôt que de le réécrire.",
+    input_schema: {
+      type: "object",
+      properties: {
+        nom_produit: { type: "string", description: "Nom du produit" },
+        title_seo: { type: "string", description: "Balise title SEO déjà générée" },
+        meta_description: { type: "string", description: "Meta description déjà générée" },
+        description_complete: { type: "string", description: "Description complète du produit en markdown (pitch + description longue + points clés)" },
+        prix: { type: "string", description: "Prix régulier, si connu" },
+      },
+      required: ["nom_produit", "description_complete"],
     },
   },
 ];
@@ -280,6 +299,32 @@ Nombre d'articles satellites souhaité : ${p.nombre_articles ?? 5}`,
   return (response.content[0] as { text: string }).text;
 }
 
+interface PublishProductParams {
+  nom_produit: string;
+  title_seo?: string;
+  meta_description?: string;
+  description_complete: string;
+  prix?: string;
+}
+
+async function publishProductToWoo(p: PublishProductParams): Promise<string> {
+  try {
+    const descriptionHtml = await marked.parse(p.description_complete);
+    const result = await createDraftProduct({
+      name: p.nom_produit,
+      descriptionHtml,
+      metaTitle: p.title_seo,
+      metaDescription: p.meta_description,
+      regularPrice: p.prix,
+    });
+    return `✅ Brouillon créé sur WooCommerce : **${p.nom_produit}**\n\n[Voir/éditer dans WordPress](${result.editUrl})\n\nLe produit est en statut brouillon — relis-le et publie-le toi-même quand tu es prêt.`;
+  } catch (e) {
+    console.error("[assistant woocommerce] error:", e);
+    const msg = e instanceof Error ? e.message : "erreur inconnue";
+    return `❌ Erreur lors de la création du brouillon WooCommerce : ${msg}`;
+  }
+}
+
 interface GscDataParams {
   domaine: string;
   jours?: number;
@@ -397,6 +442,11 @@ export async function POST(req: NextRequest) {
       if (toolUse.name === "generate_content_plan") {
         const generated = await generateContentPlanContent(toolUse.input as ContentPlanParams);
         return NextResponse.json({ reply: `Voici le plan de contenu généré :\n\n${generated}` });
+      }
+
+      if (toolUse.name === "publish_product_to_woocommerce") {
+        const reply = await publishProductToWoo(toolUse.input as PublishProductParams);
+        return NextResponse.json({ reply });
       }
 
       if (toolUse.name === "get_search_console_data") {
