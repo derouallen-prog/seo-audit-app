@@ -70,11 +70,12 @@ Principes méthodologiques à respecter dans toutes tes recommandations et tous 
 - Hiérarchise toujours tes recommandations entre quick wins (impact rapide, effort faible) et actions structurantes (impact fort, effort élevé/long terme)
 - Quand c'est pertinent, donne un ordre de priorité explicite plutôt qu'une liste plate
 
-Tu réponds en français, de façon claire et actionnable. Tu peux discuter de stratégie SEO, répondre à des questions techniques, donner des recommandations, et exécuter deux actions concrètes quand on te le demande :
-- générer un article de blog optimisé SEO
+Tu réponds en français, de façon claire et actionnable. Tu peux discuter de stratégie SEO, répondre à des questions techniques, donner des recommandations, et exécuter trois actions concrètes quand on te le demande :
+- générer un article de blog optimisé SEO et GEO
 - générer une fiche produit e-commerce optimisée SEO
+- générer un plan de contenu structuré (page pilier + articles satellites)
 
-Quand l'utilisateur demande explicitement de rédiger un article ou une fiche produit, utilise l'outil correspondant plutôt que de l'écrire toi-même dans ta réponse. Si des informations essentielles manquent (sujet, produit, mot-clé principal), demande-les avant d'appeler l'outil.
+Quand l'utilisateur demande explicitement l'une de ces trois actions, utilise l'outil correspondant plutôt que de l'écrire toi-même dans ta réponse. Si des informations essentielles manquent (sujet, produit, mot-clé principal), demande-les avant d'appeler l'outil.
 
 Si l'utilisateur a connecté sa Google Search Console et demande des données réelles sur un domaine (mots-clés positionnés, requêtes longue traîne, performances de recherche, clics, impressions, position), utilise immédiatement l'outil get_search_console_data avec le domaine mentionné, sans poser de questions de clarification au préalable — l'outil te dira lui-même si le domaine n'est pas accessible. N'utilise PAS cet outil si l'utilisateur n'a pas mentionné de domaine précis ou ne demande pas de données chiffrées issues de la Search Console.
 
@@ -85,14 +86,15 @@ Structure tes réponses avec des titres markdown (## pour les sections principal
 const tools: Anthropic.Tool[] = [
   {
     name: "generate_article",
-    description: "Génère un article de blog complet optimisé SEO (titre, meta description, structure Hn, corps de texte).",
+    description: "Génère un article de blog complet optimisé SEO et GEO (titre, meta description, sommaire, structure Hn, FAQ, TL;DR, maillage interne suggéré).",
     input_schema: {
       type: "object",
       properties: {
         sujet: { type: "string", description: "Sujet ou titre de l'article" },
         mot_cle_principal: { type: "string", description: "Mot-clé principal à cibler" },
+        mots_cles_longue_traine: { type: "string", description: "Requêtes longue traîne identifiées à reprendre dans la FAQ, si disponibles" },
         plan: { type: "string", description: "Plan de contenu fourni par l'utilisateur (titres H2/H3), si disponible" },
-        ton: { type: "string", description: "Ton souhaité (expert, accessible, commercial...)" },
+        public_cible: { type: "string", description: "Audience cible et son niveau d'expertise" },
         longueur_mots: { type: "number", description: "Longueur cible approximative en nombre de mots" },
       },
       required: ["sujet"],
@@ -100,16 +102,30 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: "generate_product_sheet",
-    description: "Génère une fiche produit e-commerce optimisée SEO (title tag, meta description, pitch court, description longue, points clés).",
+    description: "Génère une fiche produit e-commerce optimisée SEO (600-900 mots, title tag, meta description, description complète).",
     input_schema: {
       type: "object",
       properties: {
         nom_produit: { type: "string", description: "Nom du produit" },
+        thematique: { type: "string", description: "Thématique/secteur du produit (pour calibrer l'expertise mobilisée)" },
         caracteristiques: { type: "string", description: "Caractéristiques techniques, avantages, matériaux..." },
         mot_cle_principal: { type: "string", description: "Mot-clé principal à cibler" },
-        ton: { type: "string", description: "Ton souhaité (premium, accessible, technique...)" },
       },
       required: ["nom_produit"],
+    },
+  },
+  {
+    name: "generate_content_plan",
+    description: "Génère un plan de contenu structuré (page pilier + articles satellites maillés) autour d'un sujet ou mot-clé principal.",
+    input_schema: {
+      type: "object",
+      properties: {
+        sujet: { type: "string", description: "Sujet, secteur ou mot-clé principal autour duquel construire le plan" },
+        objectif: { type: "string", description: "Objectif business (notoriété, conversion, autorité thématique...)" },
+        mots_cles_disponibles: { type: "string", description: "Mots-clés déjà identifiés à exploiter, si disponibles" },
+        nombre_articles: { type: "number", description: "Nombre d'articles satellites souhaités, par défaut 5" },
+      },
+      required: ["sujet"],
     },
   },
   {
@@ -129,30 +145,93 @@ const tools: Anthropic.Tool[] = [
 interface ArticleParams {
   sujet: string;
   mot_cle_principal?: string;
+  mots_cles_longue_traine?: string;
   plan?: string;
-  ton?: string;
+  public_cible?: string;
   longueur_mots?: number;
 }
 
 interface ProductSheetParams {
   nom_produit: string;
+  thematique?: string;
   caracteristiques?: string;
   mot_cle_principal?: string;
-  ton?: string;
 }
+
+interface ContentPlanParams {
+  sujet: string;
+  objectif?: string;
+  mots_cles_disponibles?: string;
+  nombre_articles?: number;
+}
+
+const ARTICLE_SYSTEM_PROMPT = `Tu es un expert en rédaction web SEO. Tu rédiges des contenus qui répondent aux exigences de Google en termes de qualité et de pertinence, tout en étant optimisés pour apparaître dans les réponses générées par les moteurs IA (Google AI Overviews, ChatGPT, Perplexity — approche GEO).
+Tu es capable de rédiger sur tous les sujets en posant les bonnes questions. Tu adaptes la taille du contenu en fonction de la spécificité du sujet.
+
+1. INSTRUCTIONS DE STRUCTURE ET DE RÉDACTION
+
+a) Structure générale
+- Intègre le mot-clé principal dans le titre (H1) et construis le contenu autour de ce mot-clé pour assurer une couverture sémantique optimale.
+- Structure l'article de façon logique avec des sous-titres H2, H3, voire H4 si nécessaire.
+- Intègre un sommaire cliquable en début d'article pour permettre aux lecteurs d'accéder directement à la section qui les intéresse.
+- Formule les sous-titres H2/H3 sous forme de questions quand c'est naturel et pertinent (ex : "Comment fonctionne X ?" plutôt que "Fonctionnement de X") — cela favorise l'extraction par les moteurs IA.
+- Suggère à la fin 3 à 5 liens internes potentiels à intégrer dans l'article (ancre suggérée + type de contenu cible), pour renforcer le maillage interne du site.
+
+b) Introduction — format "réponse directe + accroche"
+- Rédige une introduction qui combine deux objectifs : répondre directement et clairement au sujet dès les 2 premières phrases (pour être extrait par les AI Overviews), puis captiver le lecteur et lui donner envie de lire la suite.
+- Intègre le mot-clé principal dans les 25 premiers mots.
+
+c) Corps de l'article
+- Le contenu doit être aligné avec les principes E-E-A-T de Google (Expérience, Expertise, Autorité, Confiance) : fournis des exemples concrets, cite tes sources, intègre des données chiffrées datées (année en cours de préférence), des retours d'expérience, et des citations d'experts.
+- Rédige des phrases dans un style déclaratif, avec un vocabulaire adapté au niveau du lecteur cible, en privilégiant des phrases courtes et concises.
+- Intègre les mots-clés prioritaires dès le début des phrases et utilise des variantes sémantiques pour enrichir le contenu.
+- Utilise des verbes d'action et des formulations dynamiques.
+- Mets en gras les termes importants pour faciliter la lecture et le repérage des informations clés.
+- Privilégie la rédaction en phrases et paragraphes. Utilise les listes à puces uniquement pour énumérer des éléments distincts quand c'est pertinent.
+- Intègre des citations qui illustrent les propos du texte.
+- Ajoute un tableau comparatif ou un tableau de synthèse chaque fois que cela apporte de la clarté (comparaison de solutions, récapitulatif de données, etc.) — ce format est très bien extrait par les moteurs IA.
+- Inclus une indication de date de mise à jour en début ou fin d'article (ex : "Mis à jour en [mois] [année]") pour signaler la fraîcheur du contenu.
+
+d) Section FAQ optimisée pour un affichage IA — si pertinente selon le sujet
+- Une FAQ en fin d'article qui fournit des réponses structurées et rapides, facilement citables par les LLMs.
+- Les questions doivent reprendre les requêtes longue traîne fournies, si disponibles.
+
+2. LIVRABLES FINAUX
+- Balise title : intègre le mot-clé principal idéalement en début, 50 à 60 caractères maximum, incitative au clic, claire et descriptive, sans formulation trompeuse.
+- Meta description : intègre le mot-clé principal, donne envie de cliquer, entre 120 et 140 caractères, utilise un verbe d'action.
+- Suggestions de maillage interne : 3 à 5 liens internes (ancre + type de contenu cible).
+- TL;DR : synthèse des points clés en 5 à 7 bullet points maximum.
+
+3. CONSIGNE DE LIVRAISON
+La rédaction ne doit jamais être écourtée. Réponds uniquement avec l'article complet au format markdown, structuré selon les instructions ci-dessus.`;
+
+const PRODUCT_SHEET_SYSTEM_PROMPT = `Agis comme un expert en création de contenu sur la thématique fournie, spécialisé en rédaction de fiche produit optimisée pour le SEO.
+
+Tu sais t'adapter aux évolutions du marché et aux attentes des consommateurs sur le contenu recherché.
+
+Adopte un style rédactionnel avec un vocabulaire clair et simple, favorise l'utilisation de phrases. Réponds bien aux intentions de recherche.
+
+Le contenu doit être aligné avec les principes EEAT de Google (expérience, expertise, autorité, confiance) : fournis des exemples concrets lorsque c'est pertinent, cite les sources des informations présentées, fournis des données chiffrées et tout autre élément pertinent qui permettrait de compléter les informations du texte (citation, retour d'expérience, etc.).
+
+- Les phrases doivent être dans un style déclaratif, avec un vocabulaire simple et compréhensible pour l'audience, en phrases courtes et concises. Privilégie les phrases aux bullet points.
+- Intègre les mots-clés prioritaires dès le début des phrases et utilise des variantes sémantiques pour enrichir le contenu.
+- Développe bien chaque partie de la structure : la fiche doit être comprise entre 600 et 900 mots.
+
+Réponds uniquement au format markdown avec ces sections dans l'ordre : "# Title SEO (≤60 car.)", "**Meta description (120-140 car.):**", puis la fiche produit complète (600-900 mots) structurée avec des sous-titres pertinents.`;
 
 async function generateArticleContent(p: ArticleParams): Promise<string> {
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 4000,
-    system: `Tu es un rédacteur SEO senior. Tu écris des articles de blog complets, structurés et optimisés pour le référencement naturel, en français. Pars toujours du mot-clé principal pour construire le plan. Ton informationnel et utile, jamais promotionnel ou littéraire. Privilégie les listes à puces à la prose longue quand c'est pertinent. N'utilise pas de tirets cadratins (—), préfère les tirets courts (-) ou des puces. Réponds uniquement avec l'article au format markdown : commence par "# Title SEO" puis "**Meta description:** ..." puis le corps de l'article avec une hiérarchie ## / ###.`,
+    max_tokens: 6000,
+    system: ARTICLE_SYSTEM_PROMPT,
     messages: [{
       role: "user",
       content: `Rédige un article complet sur : ${p.sujet}
 ${p.mot_cle_principal ? `Mot-clé principal à cibler : ${p.mot_cle_principal}` : ""}
+${p.mots_cles_longue_traine ? `Requêtes longue traîne à reprendre dans la FAQ : ${p.mots_cles_longue_traine}` : ""}
 ${p.plan ? `Plan à suivre :\n${p.plan}` : "Construis un plan pertinent toi-même."}
-${p.ton ? `Ton : ${p.ton}` : "Ton expert mais accessible."}
-${p.longueur_mots ? `Longueur cible : environ ${p.longueur_mots} mots.` : "Longueur cible : environ 1200-1500 mots."}`,
+${p.public_cible ? `Public cible : ${p.public_cible}` : "Public cible : généraliste mais averti."}
+${p.longueur_mots ? `Longueur cible : environ ${p.longueur_mots} mots.` : "Longueur cible : adapte-toi à la spécificité du sujet."}`,
     }],
   });
   return (response.content[0] as { text: string }).text;
@@ -161,14 +240,37 @@ ${p.longueur_mots ? `Longueur cible : environ ${p.longueur_mots} mots.` : "Longu
 async function generateProductSheetContent(p: ProductSheetParams): Promise<string> {
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 2000,
-    system: `Tu es un rédacteur e-commerce SEO senior. Tu écris des fiches produits optimisées pour le référencement et la conversion, en français. Pars toujours du mot-clé principal. Ton informationnel et utile, jamais purement littéraire. N'utilise pas de tirets cadratins (—), préfère les tirets courts (-) ou des puces. Réponds uniquement au format markdown avec ces sections dans l'ordre : "# Title SEO (≤60 car.)", "**Meta description (120-160 car.):**", "## Pitch court", "## Description longue", "## Points clés" (liste à puces).`,
+    max_tokens: 3000,
+    system: PRODUCT_SHEET_SYSTEM_PROMPT,
     messages: [{
       role: "user",
       content: `Rédige une fiche produit pour : ${p.nom_produit}
+${p.thematique ? `Thématique : ${p.thematique}` : ""}
 ${p.caracteristiques ? `Caractéristiques / avantages : ${p.caracteristiques}` : ""}
-${p.mot_cle_principal ? `Mot-clé principal à cibler : ${p.mot_cle_principal}` : ""}
-${p.ton ? `Ton : ${p.ton}` : "Ton premium et engageant."}`,
+${p.mot_cle_principal ? `Mot-clé principal à cibler : ${p.mot_cle_principal}` : ""}`,
+    }],
+  });
+  return (response.content[0] as { text: string }).text;
+}
+
+async function generateContentPlanContent(p: ContentPlanParams): Promise<string> {
+  const response = await client.messages.create({
+    model: MODEL,
+    max_tokens: 3000,
+    system: `Tu es un stratège SEO senior spécialisé en architecture de contenu. Tu construis des plans de contenu structurés en clusters thématiques (page pilier + articles satellites maillés entre eux), en partant toujours d'un mot-clé ou sujet principal clairement défini avant toute autre analyse.
+
+Pour chaque plan, fournis :
+1. La page pilier : titre, mot-clé principal visé, intention de recherche, angle éditorial.
+2. Les articles satellites (nombre demandé, 5 par défaut) : pour chacun, titre, mot-clé/longue traîne visé, intention de recherche (informationnelle, commerciale, comparative...), un plan H2 sommaire, et le lien suggéré vers la page pilier (ancre).
+3. Une note de priorisation : quels articles produire en premier selon le potentiel (volume estimé, facilité de positionnement, valeur business).
+
+Réponds en français, au format markdown, avec des listes à puces structurées. N'utilise pas de tirets cadratins (—), préfère les tirets courts (-) ou des puces.`,
+    messages: [{
+      role: "user",
+      content: `Construis un plan de contenu pour : ${p.sujet}
+${p.objectif ? `Objectif : ${p.objectif}` : ""}
+${p.mots_cles_disponibles ? `Mots-clés déjà identifiés à exploiter : ${p.mots_cles_disponibles}` : "Identifie toi-même les mots-clés et angles pertinents."}
+Nombre d'articles satellites souhaité : ${p.nombre_articles ?? 5}`,
     }],
   });
   return (response.content[0] as { text: string }).text;
@@ -266,6 +368,11 @@ export async function POST(req: NextRequest) {
       if (toolUse.name === "generate_product_sheet") {
         const generated = await generateProductSheetContent(toolUse.input as ProductSheetParams);
         return NextResponse.json({ reply: `Voici la fiche produit générée :\n\n${generated}` });
+      }
+
+      if (toolUse.name === "generate_content_plan") {
+        const generated = await generateContentPlanContent(toolUse.input as ContentPlanParams);
+        return NextResponse.json({ reply: `Voici le plan de contenu généré :\n\n${generated}` });
       }
 
       if (toolUse.name === "get_search_console_data") {

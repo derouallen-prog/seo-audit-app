@@ -52,6 +52,12 @@ const markdownComponents: Components = {
   td: ({ children }) => <td className="py-2 px-3 text-gray-800 border-b border-gray-100">{children}</td>,
 };
 
+const SUGGESTIONS = [
+  { label: "✍️ Article", prompt: "Rédige un article de blog optimisé SEO sur le sujet : " },
+  { label: "🛒 Fiche produit", prompt: "Rédige une fiche produit optimisée SEO pour : " },
+  { label: "📋 Plan de contenu", prompt: "Construis-moi un plan de contenu sur le sujet : " },
+];
+
 function TypingIndicator() {
   return (
     <div className="flex items-center gap-1.5 px-1 py-1">
@@ -138,6 +144,20 @@ export default function AssistantPage() {
         {error && <p className="text-sm text-red-600">{error}</p>}
         <div ref={bottomRef} />
       </div>
+
+      {messages.length === 1 && (
+        <div className="flex gap-2 flex-wrap mb-3">
+          {SUGGESTIONS.map((s) => (
+            <button
+              key={s.label}
+              onClick={() => setInput(s.prompt)}
+              className="text-sm rounded-full border border-gray-300 bg-white hover:bg-brand/5 hover:border-brand text-gray-700 hover:text-brand px-3 py-1.5 transition"
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="border-t border-gray-200 pt-4 flex gap-2">
         <textarea
