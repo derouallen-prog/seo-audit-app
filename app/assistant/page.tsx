@@ -12,52 +12,52 @@ interface ChatMessage {
 
 const markdownComponents: Components = {
   h1: ({ children }) => (
-    <h2 className="text-base font-semibold text-white mt-1 mb-3 pb-2 border-b border-gray-700">{children}</h2>
+    <h2 className="text-base font-bold text-black mt-1 mb-3 pb-2 border-b border-gray-200">{children}</h2>
   ),
   h2: ({ children }) => (
-    <h3 className="text-sm font-semibold text-indigo-400 mt-5 mb-2 first:mt-0">{children}</h3>
+    <h3 className="text-sm font-bold text-brand mt-5 mb-2 first:mt-0">{children}</h3>
   ),
   h3: ({ children }) => (
-    <h4 className="text-sm font-medium text-gray-200 mt-4 mb-1.5">{children}</h4>
+    <h4 className="text-sm font-semibold text-black mt-4 mb-1.5">{children}</h4>
   ),
-  p: ({ children }) => <p className="text-sm text-gray-200 leading-relaxed mb-3 last:mb-0">{children}</p>,
+  p: ({ children }) => <p className="text-sm text-gray-700 leading-relaxed mb-3 last:mb-0">{children}</p>,
   ul: ({ children }) => <ul className="space-y-1.5 mb-3 ml-1">{children}</ul>,
   ol: ({ children }) => <ol className="space-y-1.5 mb-3 ml-1 list-decimal list-inside">{children}</ol>,
   li: ({ children }) => (
-    <li className="text-sm text-gray-200 leading-relaxed flex gap-2">
-      <span className="text-indigo-400 mt-0.5 shrink-0">•</span>
+    <li className="text-sm text-gray-700 leading-relaxed flex gap-2">
+      <span className="text-brand mt-0.5 shrink-0">•</span>
       <span>{children}</span>
     </li>
   ),
-  strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
+  strong: ({ children }) => <strong className="font-semibold text-black">{children}</strong>,
   a: ({ href, children }) => (
-    <a href={href} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 underline underline-offset-2">
+    <a href={href} target="_blank" rel="noopener noreferrer" className="text-brand hover:text-brand-dark underline underline-offset-2">
       {children}
     </a>
   ),
   code: ({ children }) => (
-    <code className="bg-neutral-800 text-gray-200 rounded px-1.5 py-0.5 text-xs font-mono">{children}</code>
+    <code className="bg-gray-100 text-gray-800 rounded px-1.5 py-0.5 text-xs font-mono">{children}</code>
   ),
-  hr: () => <hr className="border-gray-700 my-4" />,
+  hr: () => <hr className="border-gray-200 my-4" />,
   blockquote: ({ children }) => (
-    <blockquote className="border-l-2 border-indigo-500 pl-3 text-sm text-gray-400 italic my-3">{children}</blockquote>
+    <blockquote className="border-l-2 border-brand pl-3 text-sm text-gray-600 italic my-3">{children}</blockquote>
   ),
   table: ({ children }) => (
-    <div className="overflow-x-auto mb-3">
+    <div className="overflow-x-auto mb-3 rounded-lg border border-gray-200">
       <table className="w-full text-sm border-collapse">{children}</table>
     </div>
   ),
-  thead: ({ children }) => <thead className="border-b border-gray-700">{children}</thead>,
-  th: ({ children }) => <th className="text-left text-gray-400 font-medium py-1.5 pr-4">{children}</th>,
-  td: ({ children }) => <td className="py-1.5 pr-4 text-gray-200 border-b border-gray-800">{children}</td>,
+  thead: ({ children }) => <thead className="bg-brand text-white">{children}</thead>,
+  th: ({ children }) => <th className="text-left font-semibold text-xs uppercase tracking-wide py-2 px-3">{children}</th>,
+  td: ({ children }) => <td className="py-2 px-3 text-gray-800 border-b border-gray-100">{children}</td>,
 };
 
 function TypingIndicator() {
   return (
     <div className="flex items-center gap-1.5 px-1 py-1">
-      <span className="w-1.5 h-1.5 rounded-full bg-gray-500 animate-bounce [animation-delay:-0.3s]" />
-      <span className="w-1.5 h-1.5 rounded-full bg-gray-500 animate-bounce [animation-delay:-0.15s]" />
-      <span className="w-1.5 h-1.5 rounded-full bg-gray-500 animate-bounce" />
+      <span className="w-1.5 h-1.5 rounded-full bg-brand animate-bounce [animation-delay:-0.3s]" />
+      <span className="w-1.5 h-1.5 rounded-full bg-brand animate-bounce [animation-delay:-0.15s]" />
+      <span className="w-1.5 h-1.5 rounded-full bg-brand animate-bounce" />
     </div>
   );
 }
@@ -108,7 +108,7 @@ export default function AssistantPage() {
   return (
     <div className="flex flex-col h-[calc(100vh-180px)] max-w-3xl mx-auto">
       <div className="mb-4">
-        <h1 className="text-lg font-semibold text-white">Assistant SEO</h1>
+        <h1 className="text-2xl font-bold text-black">Assistant SEO</h1>
         <p className="text-sm text-gray-500">Stratégie, audit, génération d&apos;articles et de fiches produits optimisées SEO.</p>
       </div>
 
@@ -116,11 +116,11 @@ export default function AssistantPage() {
         {messages.map((m, i) => (
           <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
             {m.role === "user" ? (
-              <div className="max-w-[80%] rounded-2xl rounded-br-md px-4 py-2.5 bg-indigo-600 text-white text-sm">
+              <div className="max-w-[80%] rounded-2xl rounded-br-md px-4 py-2.5 bg-[#7B52C7] text-white text-sm">
                 {m.content}
               </div>
             ) : (
-              <div className="max-w-[85%] rounded-2xl rounded-bl-md px-4 py-3 bg-neutral-900 border border-gray-800">
+              <div className="max-w-[85%] rounded-2xl rounded-bl-md px-4 py-3 bg-white border border-gray-200 shadow-sm">
                 <ReactMarkdown components={markdownComponents} remarkPlugins={[remarkGfm]}>
                   {m.content}
                 </ReactMarkdown>
@@ -130,16 +130,16 @@ export default function AssistantPage() {
         ))}
         {loading && (
           <div className="flex justify-start">
-            <div className="rounded-2xl rounded-bl-md px-4 py-3 bg-neutral-900 border border-gray-800">
+            <div className="rounded-2xl rounded-bl-md px-4 py-3 bg-white border border-gray-200 shadow-sm">
               <TypingIndicator />
             </div>
           </div>
         )}
-        {error && <p className="text-sm text-red-500">{error}</p>}
+        {error && <p className="text-sm text-red-600">{error}</p>}
         <div ref={bottomRef} />
       </div>
 
-      <div className="border-t border-gray-800 pt-4 flex gap-2">
+      <div className="border-t border-gray-200 pt-4 flex gap-2">
         <textarea
           value={input}
           onChange={e => setInput(e.target.value)}
@@ -151,12 +151,12 @@ export default function AssistantPage() {
           }}
           placeholder="Pose ta question SEO, ou demande un article / une fiche produit…"
           rows={2}
-          className="flex-1 rounded-lg border border-gray-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-gray-500 resize-none focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-black placeholder:text-gray-400 resize-none focus:outline-none focus:ring-1 focus:ring-brand focus:border-brand"
         />
         <button
           onClick={send}
           disabled={loading || !input.trim()}
-          className="rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white px-4 py-2 font-medium transition self-end"
+          className="rounded-lg bg-brand hover:bg-brand-dark disabled:opacity-50 text-white px-4 py-2 font-medium transition self-end"
         >
           Envoyer
         </button>
