@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-var-requires, no-eval */
+
 import type { ReactNode, ReactElement } from "react";
 import type { Analysis } from "./types";
 import type { Grade } from "./score";
