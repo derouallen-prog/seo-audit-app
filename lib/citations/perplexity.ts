@@ -1,5 +1,5 @@
 import type { CitationResult, PlatformConnector } from "./types";
-import { domainMatches, extractHostname } from "./types";
+import { domainMatches, extractHostname, checkMentioned } from "./types";
 
 // Uses Perplexity Sonar chat completions API — model returns citations as a flat array of URLs.
 // Docs: https://docs.perplexity.ai/reference/post_chat_completions
@@ -42,6 +42,7 @@ export class PerplexityConnector implements PlatformConnector {
 
     const data = (await res.json()) as PerplexityResponse;
     const citations: string[] = data.citations ?? [];
+    const responseText = data.choices?.[0]?.message?.content ?? "";
 
     // Find if tracked domain appears in citations and at what position
     let citedIdx = -1;
@@ -59,9 +60,11 @@ export class PerplexityConnector implements PlatformConnector {
 
     return {
       cited: citedIdx >= 0,
+      mentioned: checkMentioned(responseText, trackedDomain),
       citationPosition: citedIdx >= 0 ? citedIdx + 1 : null,
       citedUrl: citedIdx >= 0 ? (citations[citedIdx] ?? null) : null,
       competitorDomains,
+      responseText: responseText.slice(0, 1000),
       rawResponse: data as unknown as Record<string, unknown>,
     };
   }

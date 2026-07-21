@@ -1,5 +1,5 @@
 import type { CitationResult, PlatformConnector } from "./types";
-import { domainMatches, extractHostname } from "./types";
+import { domainMatches, extractHostname, checkMentioned } from "./types";
 
 // Uses Gemini with Google Search grounding.
 // The grounding metadata in the response contains the web sources Gemini cited.
@@ -52,6 +52,8 @@ export class GeminiConnector implements PlatformConnector {
 
     if (data.error) throw new Error(`Gemini error ${data.error.code}: ${data.error.message}`);
 
+    const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+
     // Extract all cited URLs from groundingChunks
     const chunks = data.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
     const urls = chunks
@@ -67,9 +69,11 @@ export class GeminiConnector implements PlatformConnector {
 
     return {
       cited: citedIdx >= 0,
+      mentioned: checkMentioned(responseText, trackedDomain),
       citationPosition: citedIdx >= 0 ? citedIdx + 1 : null,
       citedUrl: citedIdx >= 0 ? (urls[citedIdx] ?? null) : null,
       competitorDomains,
+      responseText: responseText.slice(0, 1000),
       rawResponse: data as unknown as Record<string, unknown>,
     };
   }

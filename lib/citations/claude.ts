@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { CitationResult, PlatformConnector } from "./types";
-import { domainMatches, extractHostname } from "./types";
+import { domainMatches, extractHostname, checkMentioned } from "./types";
 
 // Uses Claude with the web_search built-in tool (Anthropic beta).
 // We ask Claude a question, then inspect which URLs it searched/cited to determine
@@ -61,6 +61,13 @@ export class ClaudeConnector implements PlatformConnector {
     // Deduplicate
     const unique = [...new Set(urls)];
 
+    // Extract response text from text blocks
+    const responseText = (response.content ?? [])
+      .filter((b): b is { type: "text"; text?: string } => b.type === "text")
+      .map(b => b.text ?? "")
+      .join(" ")
+      .slice(0, 1000);
+
     const citedIdx = unique.findIndex(u => domainMatches(u, trackedDomain));
     const competitorDomains = unique
       .filter((_, i) => i !== citedIdx)
@@ -69,9 +76,11 @@ export class ClaudeConnector implements PlatformConnector {
 
     return {
       cited: citedIdx >= 0,
+      mentioned: checkMentioned(responseText, trackedDomain),
       citationPosition: citedIdx >= 0 ? citedIdx + 1 : null,
       citedUrl: citedIdx >= 0 ? (unique[citedIdx] ?? null) : null,
       competitorDomains,
+      responseText,
       rawResponse: response as unknown as Record<string, unknown>,
     };
   }

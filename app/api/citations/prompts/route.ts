@@ -41,9 +41,10 @@ export async function POST(req: NextRequest) {
     prompt_text: string;
     intent?: Intent;
     topic?: string;
+    language?: string;
   };
 
-  const { tracked_url, prompt_text, intent = "Informational", topic } = body;
+  const { tracked_url, prompt_text, intent = "Informational", topic, language = "fr" } = body;
 
   if (!tracked_url || !prompt_text) {
     return NextResponse.json({ error: "tracked_url and prompt_text are required" }, { status: 400 });
@@ -76,7 +77,7 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await sb
     .from("prompt_sets")
-    .insert({ user_id: user.id, tracked_url: normalizedUrl, prompt_text, intent, topic })
+    .insert({ user_id: user.id, tracked_url: normalizedUrl, prompt_text, intent, topic, language })
     .select()
     .single();
 

@@ -55,9 +55,11 @@ export async function runPrompt(
       console.error(`[citations] ${connector.platform} error for prompt ${promptId}:`, e);
       result = {
         cited: false,
+        mentioned: false,
         citationPosition: null,
         citedUrl: null,
         competitorDomains: [],
+        responseText: "",
         rawResponse: { error },
       };
     }
@@ -66,9 +68,11 @@ export async function runPrompt(
       prompt_id: promptId,
       platform: connector.platform,
       cited: result.cited,
+      mentioned: result.mentioned,
       citation_position: result.citationPosition,
       cited_url: result.citedUrl,
       competitor_domains: result.competitorDomains,
+      response_text: result.responseText,
       raw_response: result.rawResponse,
       source,
     });
@@ -82,7 +86,7 @@ export async function runPrompt(
       platform: connector.platform,
       cited: result.cited,
       citationPosition: result.citationPosition,
-      ...(error ? { error } : {}),
+      ...(error && { error }),
     });
 
     // Small delay between platforms to respect rate limits
