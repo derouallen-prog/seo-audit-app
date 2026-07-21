@@ -17,8 +17,16 @@ export class ClaudeConnector implements PlatformConnector {
 
     // web_search_20250305 is Anthropic's built-in web search tool (beta).
     // Claude searches the web and includes citations in its response.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const response = await (client.beta.messages as any).create({
+    type BetaResponse = {
+      content?: {
+        type?: string;
+        content?: { source?: { url?: string }; url?: string; type?: string }[];
+        citations?: { url?: string; source?: { url?: string } }[];
+      }[];
+    };
+    type BetaCreate = { create: (opts: Record<string, unknown>) => Promise<BetaResponse> };
+
+    const response = await (client.beta.messages as unknown as BetaCreate).create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 1024,
       tools: [{ type: "web_search_20250305", name: "web_search" }],
