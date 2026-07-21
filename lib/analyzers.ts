@@ -4,11 +4,20 @@ import { makeRecommendations } from "./reco";
 import { getGscPageMetrics } from "./gsc";
 import { runPageSpeed } from "./pagespeed";
 import { analyzeRobotsTxt, analyzeSitemap } from "./robots";
-import { getSemrushUrlKeywords, getSemrushDomainTopPages, getSemrushBacklinks } from "./semrush";
+import { getSemrushDomainKeywords, getSemrushDomainTopPages, getSemrushBacklinks } from "./semrush";
+import { generatePageSpeedAnalysis } from "./pagespeedAnalysis";
+import { assertSafeUrl } from "./safeUrl";
+import { getOpenPageRankForDomain } from "./openPageRank";
 
 export async function analyzeUrl(rawUrl: string): Promise<Analysis> {
   const start = Date.now();
-  const target = new URL(rawUrl).toString();
+
+  // Garde anti-SSRF : refuse toute cible non publiquement routable avant fetch.
+  const safe = await assertSafeUrl(rawUrl);
+  if (!safe.ok || !safe.url) {
+    throw new Error(`URL non autorisée : ${safe.reason ?? "cible invalide"}`);
+  }
+  const target = safe.url;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
@@ -52,6 +61,9 @@ export async function analyzeUrl(rawUrl: string): Promise<Analysis> {
     canonical: basic.canonical,
     robotsMeta: basic.robotsMeta,
     jsonLdDetected: basic.jsonLdDetected,
+    jsonLdTypes: basic.jsonLdTypes,
+    hasAboutPage: basic.hasAboutPage,
+    hasContactPage: basic.hasContactPage,
     h1Count: basic.h1Count,
     headings: basic.headings,
     internalLinks: basic.internalLinks,
@@ -73,13 +85,21 @@ export async function analyzeUrl(rawUrl: string): Promise<Analysis> {
 
   const domain = new URL(target).hostname.replace(/^www\./, "");
 
-  // Étape 1 : robots.txt + PageSpeed + GSC + Semrush en parallèle (PSI est le plus lent ~15s)
-  const psPromise = psKey ? runPageSpeed(target, psKey) : Promise.resolve(null);
+  // Étape 1 : robots.txt + PageSpeed + GSC + Semrush en parallèle (PSI ~15s, le plus lent)
+  // NB : GT Metrix est volontairement HORS de ce chemin synchrone — ses tests
+  // asynchrones (30-135s de polling) faisaient exploser le temps de réponse de
+  // l'audit (>90s, timeout serverless). L'enrichissement GT Metrix se fait via
+  // l'endpoint dédié /api/analyze/perf, appelable après l'audit rapide.
+  const psPromise = runPageSpeed(target, psKey);
   const gscPromise = gscProperty ? getGscPageMetrics(gscProperty, target, 28) : Promise.resolve(null);
-  const semrushPromise = semrushKey ? getSemrushUrlKeywords(target, semrushKey) : Promise.resolve(null);
+  const semrushPromise = semrushKey ? getSemrushDomainKeywords(domain, semrushKey) : Promise.resolve(null);
   const topPagesPromise = semrushKey ? getSemrushDomainTopPages(domain, semrushKey) : Promise.resolve(null);
   const backlinksPromise = semrushKey ? getSemrushBacklinks(domain, semrushKey) : Promise.resolve(null);
   const robotsPromise = analyzeRobotsTxt(origin);
+  const oprPromise = getOpenPageRankForDomain(domain);
+  const llmsTxtPromise = fetch(`${origin}/llms.txt`, { method: "HEAD", signal: AbortSignal.timeout(5000) })
+    .then(r => r.ok)
+    .catch(() => false);
 
   // robots.txt est rapide (~<1s), on démarre sitemap dès qu'il est prêt
   const robotsResult = await robotsPromise;
@@ -93,13 +113,15 @@ export async function analyzeUrl(rawUrl: string): Promise<Analysis> {
 
   // Étape 2 : sitemap + attente de PSI, GSC et Semrush en parallèle
   const sitemapPromise = analyzeSitemap(origin, robotsResult.sitemapUrls);
-  const [sitemapResult, psResult, gscResult, semrushResult, topPagesResult, backlinksResult] = await Promise.allSettled([
+  const [sitemapResult, psResult, gscResult, semrushResult, topPagesResult, backlinksResult, oprResult, llmsTxtResult] = await Promise.allSettled([
     sitemapPromise,
     psPromise,
     gscPromise,
     semrushPromise,
     topPagesPromise,
     backlinksPromise,
+    oprPromise,
+    llmsTxtPromise,
   ]);
 
   if (sitemapResult.status === "fulfilled") {
@@ -108,6 +130,22 @@ export async function analyzeUrl(rawUrl: string): Promise<Analysis> {
   }
   if (psResult.status === "fulfilled" && psResult.value) {
     analysis.pagespeed = psResult.value;
+    const psAnalysis = await generatePageSpeedAnalysis({
+      url: target,
+      responseTimeMs,
+      htmlSizeKb: htmlSize / 1024,
+      score: psResult.value.performanceScore,
+      ...psResult.value.metrics,
+      h1Count: basic.h1Count,
+      imagesMissingAlt: basic.imagesMissingAlt,
+      internalLinks: basic.internalLinks,
+      externalLinks: basic.externalLinks,
+      jsonLdDetected: basic.jsonLdDetected,
+      https,
+      title: basic.title,
+      description: basic.description,
+    });
+    if (psAnalysis) analysis.pagespeedAnalysis = psAnalysis;
   }
   if (gscResult.status === "fulfilled" && gscResult.value) {
     analysis.gsc = { ...gscResult.value, lastDays: 28 };
@@ -121,7 +159,18 @@ export async function analyzeUrl(rawUrl: string): Promise<Analysis> {
   if (backlinksResult.status === "fulfilled" && backlinksResult.value) {
     analysis.backlinks = backlinksResult.value;
   }
-
+  if (oprResult.status === "fulfilled" && oprResult.value) {
+    const opr = oprResult.value;
+    analysis.openPageRank = {
+      pageRankInteger: opr.pageRankInteger,
+      pageRankDecimal: opr.pageRankDecimal,
+      rank: opr.rank,
+      referringDomains: opr.referringDomains,
+    };
+  }
+  if (llmsTxtResult.status === "fulfilled") {
+    analysis.hasLlmsTxt = llmsTxtResult.value;
+  }
   analysis.recommendations = makeRecommendations(analysis);
 
   return analysis;

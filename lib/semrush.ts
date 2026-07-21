@@ -46,7 +46,7 @@ export type SemrushBacklinksResult = {
 function parseSemrushCsv(raw: string): Record<string, string>[] {
   const lines = raw.trim().split(/\r?\n/).filter(Boolean);
   if (lines.length < 2) return [];
-  const headers = lines[0].split(";");
+  const headers = lines[0]!.split(";");
   return lines.slice(1).map(line => {
     const values = line.split(";");
     const row: Record<string, string> = {};
@@ -78,16 +78,16 @@ async function semrushFetch(params: URLSearchParams, api = "main"): Promise<stri
   }
 }
 
-export async function getSemrushUrlKeywords(
-  url: string,
+export async function getSemrushDomainKeywords(
+  domain: string,
   apiKey: string,
   database = "fr",
   limit = 20
 ): Promise<SemrushResult | null> {
   const text = await semrushFetch(new URLSearchParams({
-    type: "url_organic",
+    type: "domain_organic",
     key: apiKey,
-    url,
+    domain,
     database,
     display_limit: String(limit),
     display_sort: "tr_desc",
@@ -105,7 +105,7 @@ export async function getSemrushUrlKeywords(
       cpc: parseFloat(r["CPC"] ?? r["Cp"] ?? "0"),
       difficulty: parseInt(r["Keyword Difficulty"] ?? r["Kd"] ?? "0", 10),
       traffic: parseFloat(r["Traffic (%)"] ?? r["Tr"] ?? "0"),
-      url: r["URL"] ?? r["Ur"] ?? url,
+      url: r["Url"] ?? r["URL"] ?? r["Ur"] ?? "",
     }))
     .filter(k => k.keyword && k.position > 0);
 
@@ -141,6 +141,55 @@ export async function getSemrushDomainTopPages(
     .filter(p => p.url);
 
   return { pages, database };
+}
+
+// ─── Keyword research (topic-based, not domain-based) ────────────────────────
+
+export type SemrushKeywordIdea = {
+  keyword: string;
+  searchVolume: number;
+  cpc: number;
+  difficulty: number;
+};
+
+export type SemrushKeywordIdeasResult = {
+  database: string;
+  relatedKeywords: SemrushKeywordIdea[];
+  questions: SemrushKeywordIdea[];
+};
+
+export async function getSemrushKeywordIdeas(
+  keyword: string,
+  apiKey: string,
+  database = "fr",
+  limit = 20
+): Promise<SemrushKeywordIdeasResult | null> {
+  const commonParams = { key: apiKey, phrase: keyword, database, display_limit: String(limit), export_columns: "Ph,Nq,Cp,Kd" };
+
+  const [relatedText, questionsText] = await Promise.all([
+    semrushFetch(new URLSearchParams({ type: "phrase_related", ...commonParams })),
+    semrushFetch(new URLSearchParams({ type: "phrase_questions", ...commonParams })),
+  ]);
+
+  if (!relatedText && !questionsText) return null;
+
+  function parseKwRows(text: string | null): SemrushKeywordIdea[] {
+    if (!text) return [];
+    return parseSemrushCsv(text)
+      .map(r => ({
+        keyword: r["Keyword"] ?? r["Ph"] ?? "",
+        searchVolume: parseInt(r["Search Volume"] ?? r["Nq"] ?? "0", 10),
+        cpc: parseFloat(r["CPC"] ?? r["Cp"] ?? "0"),
+        difficulty: parseInt(r["Keyword Difficulty"] ?? r["Kd"] ?? "0", 10),
+      }))
+      .filter(k => k.keyword);
+  }
+
+  return {
+    database,
+    relatedKeywords: parseKwRows(relatedText),
+    questions: parseKwRows(questionsText),
+  };
 }
 
 export async function getSemrushBacklinks(

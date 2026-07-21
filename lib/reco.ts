@@ -76,35 +76,9 @@ export function makeRecommendations(a: Analysis): string[] {
     rec.push("Exposer un sitemap XML et le référencer dans robots.txt.");
   }
 
-  // OpenGraph
-  if (!a.openGraph.title || !a.openGraph.description || !a.openGraph.image) {
-    rec.push("Compléter les balises OpenGraph (og:title, og:description, og:image) pour un meilleur partage sur les réseaux sociaux.");
-  }
-
-  // Twitter Card
-  if (!a.twitterCard.card) {
-    rec.push("Ajouter les balises Twitter Card (twitter:card, twitter:title, twitter:image) pour optimiser le partage sur X/Twitter.");
-  }
-
   // HTTPS
   if (!a.security.https) {
     rec.push("Migrer le site en HTTPS — indispensable pour la sécurité et le référencement.");
-  }
-
-  // HSTS
-  if (a.security.https && !a.security.hsts) {
-    rec.push("Activer HSTS (Strict-Transport-Security) pour forcer les connexions sécurisées.");
-  }
-
-  // Security headers
-  if (!a.security.xContentTypeOptions) {
-    rec.push("Ajouter l'en-tête X-Content-Type-Options: nosniff pour prévenir le MIME sniffing.");
-  }
-  if (!a.security.xFrameOptions) {
-    rec.push("Ajouter X-Frame-Options (DENY ou SAMEORIGIN) pour protéger contre le clickjacking.");
-  }
-  if (!a.security.csp) {
-    rec.push("Mettre en place une Content Security Policy (CSP) pour réduire les risques XSS.");
   }
 
   return rec;

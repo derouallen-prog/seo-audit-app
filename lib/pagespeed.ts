@@ -13,10 +13,15 @@ export async function runPageSpeed(url: string, apiKey?: string): Promise<PageSp
     u.searchParams.set("strategy", "mobile");
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 25000);
+    // PSI peut prendre 25-40s sur des sites lourds ; 55s laisse de la marge
+    // tout en restant sous le budget Vercel (60s max par fonction).
+    const timeout = setTimeout(() => controller.abort(), 55000);
     const res = await fetch(u.toString(), { signal: controller.signal });
     clearTimeout(timeout);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn("[pagespeed] HTTP", res.status, await res.text().catch(() => "").then(t => t.slice(0, 200)));
+      return null;
+    }
     const json: any = await res.json();
 
     const categories = json?.lighthouseResult?.categories;
@@ -39,7 +44,8 @@ export async function runPageSpeed(url: string, apiKey?: string): Promise<PageSp
       lighthouseVersion: version,
       metrics: { fcpMs, lcpMs, inpMs, cls }
     };
-  } catch {
+  } catch (e) {
+    console.warn("[pagespeed] fetch error:", e);
     return null;
   }
 }

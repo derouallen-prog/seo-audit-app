@@ -11,6 +11,36 @@ export function extractBasic(html: string, baseUrl: string) {
   const h1Count = $("h1").length;
   const jsonLdDetected = $('script[type="application/ld+json"]').length > 0;
 
+  // Extract @type values from all JSON-LD scripts
+  const jsonLdTypes: string[] = [];
+  $('script[type="application/ld+json"]').each((_, el) => {
+    try {
+      const parsed = JSON.parse($(el).html() || "");
+      const nodes = Array.isArray(parsed) ? parsed : [parsed];
+      for (const node of nodes) {
+        const t = node["@type"];
+        if (t) (Array.isArray(t) ? t : [t]).forEach((v: string) => jsonLdTypes.push(v));
+        // Also handle @graph
+        if (node["@graph"]) {
+          for (const g of node["@graph"]) {
+            const gt = g["@type"];
+            if (gt) (Array.isArray(gt) ? gt : [gt]).forEach((v: string) => jsonLdTypes.push(v));
+          }
+        }
+      }
+    } catch { /* ignore */ }
+  });
+
+  // Heuristics: About / Contact pages from link hrefs+text
+  let hasAboutPage = false;
+  let hasContactPage = false;
+  $("a[href]").each((_, el) => {
+    const href = ($(el).attr("href") || "").toLowerCase();
+    const text = ($(el).text() || "").toLowerCase();
+    if (/a-propos|about|qui-sommes|notre-equipe|qui-nous|l-equipe/.test(href + " " + text)) hasAboutPage = true;
+    if (/contact|nous-contacter|get-in-touch|joindre/.test(href + " " + text)) hasContactPage = true;
+  });
+
   // Heading structure
   const headings = {
     h2: $("h2").length,
@@ -59,11 +89,13 @@ export function extractBasic(html: string, baseUrl: string) {
   return {
     title, description, canonical, robotsMeta,
     h1Count, headings,
-    jsonLdDetected,
+    jsonLdDetected, jsonLdTypes,
     internalLinks, externalLinks,
     imagesMissingAlt,
     sitemapHref,
     openGraph,
     twitterCard,
+    hasAboutPage,
+    hasContactPage,
   };
 }

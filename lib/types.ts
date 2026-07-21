@@ -6,6 +6,9 @@ export type Analysis = {
   canonical: string | null;
   robotsMeta: string | null;
   jsonLdDetected: boolean;
+  jsonLdTypes?: string[];
+  hasAboutPage?: boolean;
+  hasContactPage?: boolean;
   h1Count: number;
   headings: {
     h2: number;
@@ -52,6 +55,13 @@ export type Analysis = {
     isIndex: boolean;
   };
   recommendations: string[];
+  hasLlmsTxt?: boolean;
+  openPageRank?: {
+    pageRankInteger: number;
+    pageRankDecimal: number;
+    rank: number | null;
+    referringDomains?: number;
+  };
   gsc?: {
     clicks: number;
     impressions: number;
@@ -68,6 +78,10 @@ export type Analysis = {
       inpMs?: number;
       cls?: number;
     };
+  };
+  pagespeedAnalysis?: {
+    summary: string;
+    recommendations: { priority: "haute" | "moyenne" | "faible"; titre: string; detail: string }[];
   };
   keywords?: {
     database: string;
