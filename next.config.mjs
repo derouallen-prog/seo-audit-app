@@ -23,7 +23,7 @@ const nextConfig = {
           "style-src 'self' 'unsafe-inline'",
           "img-src 'self' data: https:",
           "font-src 'self' data:",
-          "connect-src 'self'",
+          "connect-src 'self' https://autocomplete.clearbit.com",
           "frame-ancestors 'self'",
           "base-uri 'self'",
           "form-action 'self'",

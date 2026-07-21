@@ -160,6 +160,38 @@ export default function HomePage() {
   const [activeTab, setActiveTab] = useState<TabId>("technique");
   const resultsRef = React.useRef<HTMLDivElement>(null);
 
+  // Autosuggest domaine via Clearbit (sans clé API)
+  const [urlSuggestions, setUrlSuggestions] = useState<{ name: string; domain: string; logo: string }[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const suggestTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function onUrlChange(v: string) {
+    setUrl(v);
+    if (suggestTimer.current) clearTimeout(suggestTimer.current);
+    const q = v.trim();
+    if (q.length < 2 || /^https?:\/\//i.test(q)) {
+      setUrlSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    suggestTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`https://autocomplete.clearbit.com/v1/companies/suggest?query=${encodeURIComponent(q)}`);
+        if (res.ok) {
+          const list = (await res.json()) as { name: string; domain: string; logo: string }[];
+          setUrlSuggestions(list);
+          setShowSuggestions(list.length > 0);
+        }
+      } catch { /* réseau indisponible */ }
+    }, 300);
+  }
+
+  function selectSuggestion(domain: string) {
+    setUrl(`https://${domain}`);
+    setUrlSuggestions([]);
+    setShowSuggestions(false);
+  }
+
   // Charge un audit existant si ?auditId= est dans l'URL (lien depuis le dashboard)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -244,37 +276,69 @@ export default function HomePage() {
 
             {/* Audit bar */}
             <div className="mt-9">
-              <form
-                onSubmit={(e) => { e.preventDefault(); onAnalyze(); }}
-                className="flex w-full items-center gap-2 rounded-2xl border border-hairline bg-background p-2 shadow-sm transition-shadow focus-within:border-brand/40 focus-within:shadow-lg"
-              >
-                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-muted text-ink-soft">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10"/>
-                    <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/>
-                    <path d="M2 12h20"/>
-                  </svg>
-                </div>
-                <input
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && !loading && onAnalyze()}
-                  placeholder="https://votre-site.com"
-                  className="min-w-0 flex-1 bg-transparent px-1 text-base text-ink placeholder:text-ink-soft/60 focus:outline-none"
-                />
-                <button
-                  type="submit"
-                  disabled={loading || !isValidUrl}
-                  className="inline-flex h-11 items-center gap-2 rounded-xl bg-brand px-5 text-sm font-medium text-white shadow glow-brand transition hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed"
+              <div className="relative">
+                <form
+                  onSubmit={(e) => { e.preventDefault(); onAnalyze(); }}
+                  className="flex w-full items-center gap-2 rounded-2xl border border-hairline bg-background p-2 shadow-sm transition-shadow focus-within:border-brand/40 focus-within:shadow-lg"
                 >
-                  {loading ? "Analyse…" : "Lancer l'audit"}
-                  {!loading && (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+                  <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-muted text-ink-soft">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10"/>
+                      <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/>
+                      <path d="M2 12h20"/>
                     </svg>
-                  )}
-                </button>
-              </form>
+                  </div>
+                  <input
+                    value={url}
+                    onChange={(e) => onUrlChange(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && !loading && onAnalyze()}
+                    onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                    onFocus={() => urlSuggestions.length > 0 && setShowSuggestions(true)}
+                    placeholder="https://votre-site.com ou nom de marque…"
+                    className="min-w-0 flex-1 bg-transparent px-1 text-base text-ink placeholder:text-ink-soft/60 focus:outline-none"
+                  />
+                  <button
+                    type="submit"
+                    disabled={loading || !isValidUrl}
+                    className="inline-flex h-11 items-center gap-2 rounded-xl bg-brand px-5 text-sm font-medium text-white shadow glow-brand transition hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {loading ? "Analyse…" : "Lancer l'audit"}
+                    {!loading && (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+                      </svg>
+                    )}
+                  </button>
+                </form>
+
+                {/* Dropdown suggestions */}
+                {showSuggestions && urlSuggestions.length > 0 && (
+                  <div className="absolute z-50 left-0 right-0 top-full mt-2 rounded-2xl border border-hairline bg-white shadow-xl overflow-hidden">
+                    <p className="px-4 pt-3 pb-1 text-xs font-semibold uppercase tracking-wide text-ink-soft">Résultats</p>
+                    {urlSuggestions.map(s => (
+                      <button
+                        key={s.domain}
+                        type="button"
+                        onMouseDown={() => selectSuggestion(s.domain)}
+                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-accent/40 transition-colors text-left"
+                      >
+                        {s.logo
+                          ? <img src={s.logo} alt="" width={28} height={28} className="w-7 h-7 rounded-lg shrink-0 object-contain border border-hairline" />
+                          : <div className="w-7 h-7 rounded-lg bg-brand-soft shrink-0 flex items-center justify-center text-xs font-bold text-brand">{s.name[0]}</div>
+                        }
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-ink">{s.name}</p>
+                          <p className="text-xs text-ink-soft">{s.domain}</p>
+                        </div>
+                      </button>
+                    ))}
+                    <div className="border-t border-hairline px-4 py-2.5 flex items-center justify-between">
+                      <span className="text-xs text-ink-soft">Vous ne trouvez pas votre site ?</span>
+                      <span className="text-xs text-ink-soft">Saisissez l&apos;URL directement</span>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
 
