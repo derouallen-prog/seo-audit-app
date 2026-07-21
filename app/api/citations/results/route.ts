@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
   let pQuery = sb.from("prompt_sets").select("id, tracked_url, prompt_text, intent, topic").eq("user_id", user.id);
   if (trackedUrl) pQuery = pQuery.eq("tracked_url", trackedUrl);
   const { data: prompts } = await pQuery;
-  if (!prompts?.length) return NextResponse.json({ prompts: [], runs: [], citationShare: {} });
+  if (!prompts?.length) return NextResponse.json({ prompts: [], runs: [], citationShare: {}, topCompetitors: [], topPages: [], trend: [], meta: { days, since, totalRuns: 0 } });
 
   const promptIds = prompts.map(p => p.id);
 
