@@ -354,7 +354,7 @@ export default function CitationsPage() {
           </div>
           {loading ? (
             <p className="p-8 text-center text-sm text-ink-soft">Chargement…</p>
-          ) : !results?.topCompetitors.length ? (
+          ) : !results?.topCompetitors?.length ? (
             <p className="p-8 text-center text-sm text-ink-soft">Pas encore de données concurrentielles.</p>
           ) : (
             <div className="divide-y divide-hairline">
@@ -386,7 +386,7 @@ export default function CitationsPage() {
           </div>
           {loading ? (
             <p className="p-8 text-center text-sm text-ink-soft">Chargement…</p>
-          ) : !results?.topPages.length ? (
+          ) : !results?.topPages?.length ? (
             <p className="p-8 text-center text-sm text-ink-soft">Aucune citation enregistrée pour l&apos;instant.</p>
           ) : (
             <div className="divide-y divide-hairline">
