@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { PromptSet, Intent } from "@/lib/citations/types";
 import { INTENTS, PLATFORMS } from "@/lib/citations/types";
 
@@ -67,6 +67,71 @@ const LANGUAGE_LABELS: Record<string, string> = {
   de: "🇩🇪 Deutsch",
   it: "🇮🇹 Italiano",
 };
+
+// ── Domain autocomplete (Clearbit public API, no key required) ─────────────
+interface ClearbitSuggestion { name: string; domain: string; logo: string }
+
+function DomainAutocomplete({ value, onChange }: { value: string; onChange: (domain: string) => void }) {
+  const [query, setQuery] = useState(value);
+  const [suggestions, setSuggestions] = useState<ClearbitSuggestion[]>([]);
+  const [open, setOpen] = useState(false);
+  const [fetching, setFetching] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (timer.current) clearTimeout(timer.current);
+    const q = query.trim();
+    if (q.length < 2) { setSuggestions([]); return; }
+    timer.current = setTimeout(async () => {
+      setFetching(true);
+      try {
+        const res = await fetch(`https://autocomplete.clearbit.com/v1/companies/suggest?query=${encodeURIComponent(q)}`);
+        if (res.ok) setSuggestions((await res.json()) as ClearbitSuggestion[]);
+      } catch { /* réseau indisponible — on ignore */ }
+      finally { setFetching(false); }
+    }, 300);
+    return () => { if (timer.current) clearTimeout(timer.current); };
+  }, [query]);
+
+  function select(domain: string) {
+    setQuery(domain);
+    onChange(domain);
+    setSuggestions([]);
+    setOpen(false);
+  }
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={query}
+        onChange={e => { setQuery(e.target.value); setOpen(true); if (!e.target.value) onChange(""); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="ex: monsite.fr ou votre marque…"
+        className="w-full rounded-lg border border-hairline bg-white px-3 py-2 text-sm focus:outline-none focus:border-brand"
+      />
+      {open && (fetching || suggestions.length > 0) && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 rounded-xl border border-hairline bg-white shadow-lg overflow-hidden">
+          {fetching && <p className="px-4 py-2.5 text-xs text-ink-soft">Recherche…</p>}
+          {suggestions.map(s => (
+            <button key={s.domain} type="button" onMouseDown={() => select(s.domain)}
+              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-accent/40 transition-colors text-left">
+              {s.logo
+                ? <img src={s.logo} alt="" width={24} height={24} className="w-6 h-6 rounded shrink-0 object-contain" />
+                : <div className="w-6 h-6 rounded bg-accent shrink-0 flex items-center justify-center text-xs font-bold text-ink-soft">{s.name[0]}</div>
+              }
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-ink">{s.name}</p>
+                <p className="text-xs text-ink-soft">{s.domain}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function PlatformBadge({ platform }: { platform: string }) {
   const cfg = PLATFORM_CFG[platform] ?? { label: platform, color: "#6b7280", bg: "#f3f4f6" };
@@ -652,9 +717,10 @@ export default function CitationsPage() {
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
                 <label className="block text-xs font-medium text-ink mb-1">Domaine à tracker</label>
-                <input type="text" placeholder="ex: monsite.fr" value={form.tracked_url}
-                  onChange={e => setForm(f => ({ ...f, tracked_url: e.target.value }))}
-                  className="w-full rounded-lg border border-hairline bg-white px-3 py-2 text-sm focus:outline-none focus:border-brand" />
+                <DomainAutocomplete
+                  value={form.tracked_url}
+                  onChange={v => setForm(f => ({ ...f, tracked_url: v }))}
+                />
               </div>
               <div>
                 <label className="block text-xs font-medium text-ink mb-1">Langue des prompts</label>
@@ -708,9 +774,10 @@ export default function CitationsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-ink mb-1">Domaine à tracker</label>
-                  <input type="text" placeholder="ex: monsite.fr" value={form.tracked_url}
-                    onChange={e => setForm(f => ({ ...f, tracked_url: e.target.value }))}
-                    className="w-full rounded-lg border border-hairline bg-white px-3 py-2 text-sm focus:outline-none focus:border-brand" />
+                  <DomainAutocomplete
+                    value={form.tracked_url}
+                    onChange={v => setForm(f => ({ ...f, tracked_url: v }))}
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-ink mb-1">Langue</label>
