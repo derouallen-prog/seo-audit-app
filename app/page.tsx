@@ -217,9 +217,10 @@ export default function HomePage() {
   const normalized = ensureProtocol(url.trim());
   const isValidUrl = schema.safeParse(normalized).success;
 
-  async function onAnalyze() {
+  async function onAnalyze(overrideUrl?: string) {
+    const target = overrideUrl ? ensureProtocol(overrideUrl.trim()) : normalized;
     setError(null);
-    const parsed = schema.safeParse(normalized);
+    const parsed = schema.safeParse(target);
     if (!parsed.success) {
       setError("Merci d'entrer une URL valide (https://…).");
       return;
@@ -229,7 +230,7 @@ export default function HomePage() {
     setAuditId(null);
     setActiveTab("technique");
     try {
-      const res = await fetch(`/api/analyze?url=${encodeURIComponent(normalized)}`);
+      const res = await fetch(`/api/analyze?url=${encodeURIComponent(target)}`);
       if (!res.ok) {
         let message = `Erreur API ${res.status}`;
         try {
@@ -243,6 +244,7 @@ export default function HomePage() {
       setData(json);
       const id = res.headers.get("x-audit-id");
       if (id) setAuditId(id);
+      setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Échec de l'analyse.");
     } finally {
@@ -302,11 +304,21 @@ export default function HomePage() {
                     disabled={loading || !isValidUrl}
                     className="inline-flex h-11 items-center gap-2 rounded-xl bg-brand px-5 text-sm font-medium text-white shadow glow-brand transition hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {loading ? "Analyse…" : "Lancer l'audit"}
-                    {!loading && (
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
-                      </svg>
+                    {loading ? (
+                      <>
+                        <svg className="h-4 w-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                        </svg>
+                        Analyse en cours…
+                      </>
+                    ) : (
+                      <>
+                        Lancer l&apos;audit
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+                        </svg>
+                      </>
                     )}
                   </button>
                 </form>
@@ -342,6 +354,15 @@ export default function HomePage() {
 
               {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
 
+              {loading && (
+                <div className="mt-4 flex flex-col items-center gap-2">
+                  <div className="w-full max-w-xs overflow-hidden rounded-full bg-hairline h-1">
+                    <div className="h-full w-1/2 rounded-full bg-brand animate-pulse" style={{ animation: "pulse 1.5s ease-in-out infinite" }} />
+                  </div>
+                  <p className="text-xs text-ink-soft">Analyse en cours — environ 30 secondes…</p>
+                </div>
+              )}
+
               <div className="mt-3 flex flex-wrap items-center justify-center gap-4 text-xs text-ink-soft">
                 {["Sans inscription", "Résultats en ~30s", "Compatible Search Console"].map((t) => (
                   <span key={t} className="inline-flex items-center gap-1.5">
@@ -366,7 +387,7 @@ export default function HomePage() {
               </Link>
               <button
                 className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-ink-soft transition hover:bg-accent hover:text-ink"
-                onClick={() => { setUrl("https://www.laplantation.com"); }}
+                onClick={() => { const u = "https://www.laplantation.com"; setUrl(u); onAnalyze(u); }}
               >
                 Voir un exemple
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

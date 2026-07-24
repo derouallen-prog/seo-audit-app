@@ -57,7 +57,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   { href: "/", label: "Audit" },
                   { href: "/assistant", label: "Assistant" },
                   { href: "/citations", label: "Citations IA" },
-                  { href: "#pricing", label: "Tarifs" },
+                  { href: "/tarifs", label: "Tarifs" },
                 ].map(({ href, label }) => (
                   <Link
                     key={href}
@@ -127,7 +127,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     <ul className="mt-4 space-y-2.5">
                       {links.map((l) => (
                         <li key={l}>
-                          <a href="#" className="text-sm text-ink-soft transition-colors hover:text-brand">{l}</a>
+                          <a
+                            href={l === "Tarifs" ? "/tarifs" : "#"}
+                            className="text-sm text-ink-soft transition-colors hover:text-brand"
+                          >{l}</a>
                         </li>
                       ))}
                     </ul>
