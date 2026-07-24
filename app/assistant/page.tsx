@@ -156,12 +156,6 @@ const TOOLS: { label: string; icon: React.ReactNode; desc: string; prompt: strin
     desc: "Plan d'action prioritaire",
     prompt: "Génère un plan stratégique SEO complet et priorisé pour ce site. Couvre les axes : SEO technique, contenu, netlinking, maillage interne, SEO local et GEO. Pour chaque axe : actions concrètes, impact estimé et ordre de priorité.",
   },
-  {
-    label: "Publication WooCommerce",
-    icon: <IconGlobe />,
-    desc: "Brouillon produit WC",
-    prompt: "Crée un brouillon de produit complet et optimisé prêt à publier sur WooCommerce pour ce site. Génère le contenu, les catégories, les tags et les métadonnées SEO.",
-  },
 ];
 
 const SUGGESTIONS = [

@@ -417,7 +417,6 @@ export default function HomePage() {
       {/* ── Résultats d'audit ── */}
       {(data || loading) && (
         <div className="mx-auto max-w-6xl px-4 pb-24 sm:px-6 lg:px-8">
-          <GscConnect />
 
           {loading && !data && (
             <div className="flex flex-col items-center justify-center gap-3 py-24 text-ink-soft">
@@ -759,8 +758,28 @@ export default function HomePage() {
                         </Section>
                       );
                     })() : (
-                      <div className="rounded-xl border border-hairline bg-white p-10 text-center text-ink-soft text-sm">
-                        Données PageSpeed non disponibles pour cet audit.
+                      <div className="rounded-xl border border-hairline bg-white p-12 text-center">
+                        <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-xl bg-accent text-ink-soft">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/>
+                          </svg>
+                        </div>
+                        <p className="text-sm font-medium text-ink mb-1">Données PageSpeed non disponibles</p>
+                        <p className="text-xs text-ink-soft max-w-xs mx-auto">
+                          L&apos;analyse PageSpeed peut échouer si le site est lent à répondre ou bloque les crawlers.
+                          Relancez l&apos;audit ou consultez directement Google PageSpeed Insights.
+                        </p>
+                        <a
+                          href={`https://pagespeed.web.dev/report?url=${encodeURIComponent(url.startsWith("http") ? url : `https://${url}`)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-5 inline-flex items-center gap-1.5 rounded-lg border border-hairline px-4 py-2 text-xs font-medium text-ink hover:bg-accent transition"
+                        >
+                          Voir sur PageSpeed Insights
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+                          </svg>
+                        </a>
                       </div>
                     )}
                   </div>

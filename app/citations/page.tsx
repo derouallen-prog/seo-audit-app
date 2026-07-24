@@ -504,12 +504,26 @@ export default function CitationsPage() {
         <div className="space-y-5">
           {loading ? <p className="py-12 text-center text-sm text-ink-soft">Chargement…</p>
           : totalRuns === 0 ? (
-            <div className="rounded-2xl border border-dashed border-hairline p-16 text-center">
-              <p className="text-ink-soft text-sm mb-2">Aucun run effectué. Commencez par ajouter des prompts.</p>
-              <button onClick={() => setTab("setup")}
-                className="mt-3 inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark transition">
-                + Ajouter des prompts
-              </button>
+            <div className="rounded-2xl border border-dashed border-hairline bg-white p-12 text-center">
+              <div className="mx-auto mb-5 grid h-14 w-14 place-items-center rounded-2xl bg-brand/10 text-brand">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
+                </svg>
+              </div>
+              <h3 className="font-display text-xl text-ink mb-2">Surveillez votre visibilité IA</h3>
+              <p className="text-sm text-ink-soft max-w-md mx-auto leading-relaxed">
+                Citations IA interroge Perplexity, Claude et Gemini avec vos questions stratégiques et détecte si votre marque apparaît dans les réponses — en citation (URL) ou en mention (texte).
+              </p>
+              <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
+                <button onClick={() => setTab("setup")}
+                  className="inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-dark transition shadow glow-brand">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                  </svg>
+                  Créer mon premier prompt
+                </button>
+                <p className="text-xs text-ink-soft">Exemple : &laquo;&nbsp;Quelle solution pour le SEO e-commerce&nbsp;?&raquo;</p>
+              </div>
             </div>
           ) : (
             <>
