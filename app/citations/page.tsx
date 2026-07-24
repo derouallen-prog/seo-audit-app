@@ -37,8 +37,22 @@ interface TrendPoint {
   total: number;
 }
 
+interface RunClean {
+  id: string;
+  prompt_id: string;
+  platform: string;
+  run_at: string;
+  cited: boolean;
+  mentioned: boolean;
+  citation_position: number | null;
+  cited_url: string | null;
+  competitor_domains: string[];
+  response_text: string | null;
+}
+
 interface ResultsData {
   prompts: PromptSet[];
+  runs: RunClean[];
   runDetails: RunDetail[];
   citationShare: Record<string, PlatformShare>;
   mentionShare: Record<string, MentionShareItem>;
@@ -67,6 +81,12 @@ const LANGUAGE_LABELS: Record<string, string> = {
   de: "🇩🇪 Deutsch",
   it: "🇮🇹 Italiano",
 };
+
+function getWeekKey(isoDate: string): string {
+  const d = new Date(isoDate);
+  d.setDate(d.getDate() - d.getDay());
+  return d.toISOString().slice(0, 10);
+}
 
 // ── Domain autocomplete (Clearbit public API, no key required) ─────────────
 interface ClearbitSuggestion { name: string; domain: string; logo: string }
@@ -190,17 +210,83 @@ function SoVDonut({ value, rank, total }: { value: number; rank: number; total: 
   );
 }
 
-// ── Mini trend bars ────────────────────────────────────────────────────────
-function TrendBars({ data, field }: { data: TrendPoint[]; field: "share" | "mentionShare" }) {
+// ── Mini trend bars (KPI cards) ───────────────────────────────────────────
+function TrendBars({ data, field, selectedWeek, onBarClick }: {
+  data: TrendPoint[];
+  field: "share" | "mentionShare";
+  selectedWeek?: string | null;
+  onBarClick?: (week: string) => void;
+}) {
   if (!data.length) return <p className="text-xs text-ink-soft">Pas encore de données.</p>;
   const max = Math.max(...data.map(d => d[field]), 1);
   const color = field === "share" ? "#10b981" : "#3b82f6";
   return (
     <div className="flex items-end gap-1 h-10">
-      {data.map((d, i) => (
-        <div key={i} title={`${d.week} : ${d[field]}%`} className="flex-1 rounded-t-sm transition-all"
-          style={{ height: `${Math.max((d[field] / max) * 100, d[field] > 0 ? 6 : 0)}%`, backgroundColor: color + "99" }} />
-      ))}
+      {data.map((d, i) => {
+        const isSelected = selectedWeek === d.week;
+        const isDimmed = !!selectedWeek && !isSelected;
+        const weekDate = new Date(d.week + "T12:00:00Z").toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+        return (
+          <div key={i}
+            onClick={() => onBarClick?.(isSelected ? "" : d.week)}
+            title={`Sem. du ${weekDate} : ${d[field]}%`}
+            className={`flex-1 rounded-t-sm transition-all ${onBarClick ? "cursor-pointer" : ""} ${isDimmed ? "opacity-25" : ""} ${isSelected ? "ring-1 ring-current ring-offset-1" : ""}`}
+            style={{ height: `${Math.max((d[field] / max) * 100, d[field] > 0 ? 6 : 0)}%`, backgroundColor: color + (isSelected ? "dd" : "99") }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Weekly drill-down panel ────────────────────────────────────────────────
+function WeekPanel({ week, runs, prompts, onClose }: {
+  week: string;
+  runs: RunClean[];
+  prompts: PromptSet[];
+  onClose: () => void;
+}) {
+  const promptMap = Object.fromEntries(prompts.map(p => [p.id, p]));
+  const weekRuns = runs.filter(r => getWeekKey(r.run_at) === week).sort((a, b) => a.platform.localeCompare(b.platform));
+  const weekStart = new Date(week + "T12:00:00Z");
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  const fmtShort = (d: Date) => d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+  const label = `${fmtShort(weekStart)} – ${fmtShort(weekEnd)}`;
+  const cited = weekRuns.filter(r => r.cited).length;
+  const mentioned = weekRuns.filter(r => r.mentioned).length;
+  if (!weekRuns.length) return null;
+  return (
+    <div className="rounded-xl border border-hairline bg-white overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-hairline bg-accent/30">
+        <div className="flex items-center gap-4 flex-wrap">
+          <p className="text-xs font-semibold text-ink">Semaine du {label}</p>
+          <span className="text-xs text-green-700 font-medium">{cited} citation{cited !== 1 ? "s" : ""}</span>
+          <span className="text-xs text-blue-600 font-medium">{mentioned} mention{mentioned !== 1 ? "s" : ""}</span>
+          <span className="text-xs text-ink-soft">{weekRuns.length} run{weekRuns.length !== 1 ? "s" : ""}</span>
+        </div>
+        <button onClick={onClose} className="text-xs text-ink-soft hover:text-ink transition px-1">✕</button>
+      </div>
+      <div className="divide-y divide-hairline/60 max-h-72 overflow-y-auto">
+        {weekRuns.map(run => {
+          const prompt = promptMap[run.prompt_id];
+          return (
+            <div key={run.id} className="px-5 py-3 flex items-start gap-4">
+              <PlatformBadge platform={run.platform} />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-ink-soft line-clamp-1">{prompt?.prompt_text ?? "—"}</p>
+                {run.response_text && (
+                  <p className="text-xs text-ink mt-1 leading-relaxed line-clamp-2 opacity-70">{run.response_text}</p>
+                )}
+              </div>
+              <div className="shrink-0 flex flex-col items-end gap-1">
+                <CitedBadge cited={run.cited} mentioned={run.mentioned} />
+                <span className="text-xs text-ink-soft">{new Date(run.run_at).toLocaleDateString("fr-FR")}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -216,6 +302,8 @@ export default function CitationsPage() {
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [running, setRunning] = useState<string | null>(null);
   const [metricMode, setMetricMode] = useState<"citations" | "mentions">("citations");
+  const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
+  const [runAllStatus, setRunAllStatus] = useState<{ loading: boolean; ran?: number; errors?: number } | null>(null);
 
   // Setup form
   const [form, setForm] = useState({ tracked_url: "", prompt_text: "", intent: "Informational" as Intent, topic: "", language: "fr" });
@@ -265,6 +353,18 @@ export default function CitationsPage() {
   async function togglePrompt(id: string, active: boolean) {
     await fetch("/api/citations/prompts", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, active }) });
     await loadData();
+  }
+
+  async function runAll() {
+    setRunAllStatus({ loading: true });
+    try {
+      const res = await fetch("/api/citations/run-all", { method: "POST" });
+      const data = await res.json() as { ran?: number; errors?: number };
+      setRunAllStatus({ loading: false, ran: data.ran ?? 0, errors: data.errors ?? 0 });
+      await loadData();
+    } catch {
+      setRunAllStatus({ loading: false, errors: 1 });
+    }
   }
 
   async function runNow(promptId: string) {
@@ -422,13 +522,13 @@ export default function CitationsPage() {
                   <p className="text-xs text-ink-soft mb-1">Citations (URL)</p>
                   <p className="text-4xl font-bold text-green-700">{totalCited}</p>
                   <p className="text-xs text-ink-soft mt-2">URL apparaît dans les sources IA</p>
-                  <div className="mt-3"><TrendBars data={results?.trend ?? []} field="share" /></div>
+                  <div className="mt-3"><TrendBars data={results?.trend ?? []} field="share" selectedWeek={selectedWeek} onBarClick={w => setSelectedWeek(w || null)} /></div>
                 </div>
                 <div className={`rounded-2xl border p-5 ${metricMode === "mentions" ? "border-blue-200 bg-blue-50" : "border-hairline bg-white"}`}>
                   <p className="text-xs text-ink-soft mb-1">Mentions (texte)</p>
                   <p className="text-4xl font-bold text-blue-600">{totalMentioned}</p>
                   <p className="text-xs text-ink-soft mt-2">Marque évoquée dans la réponse</p>
-                  <div className="mt-3"><TrendBars data={results?.trend ?? []} field="mentionShare" /></div>
+                  <div className="mt-3"><TrendBars data={results?.trend ?? []} field="mentionShare" selectedWeek={selectedWeek} onBarClick={w => setSelectedWeek(w || null)} /></div>
                 </div>
                 <div className="rounded-2xl border border-hairline bg-white p-5">
                   <p className="text-xs text-ink-soft mb-1">Runs ({days}j)</p>
@@ -437,6 +537,16 @@ export default function CitationsPage() {
                   <p className="text-xs text-ink-soft mt-1">{activePlatforms.join(" · ")}</p>
                 </div>
               </div>
+
+              {/* Weekly drill-down */}
+              {selectedWeek && results && (
+                <WeekPanel
+                  week={selectedWeek}
+                  runs={results.runs ?? []}
+                  prompts={results.prompts}
+                  onClose={() => setSelectedWeek(null)}
+                />
+              )}
 
               {/* Platform breakdown */}
               <div className="rounded-2xl border border-hairline bg-white p-6">
@@ -822,10 +932,22 @@ export default function CitationsPage() {
           {/* Liste des prompts */}
           {prompts.length > 0 && (
             <div className="rounded-2xl border border-hairline bg-white">
-              <div className="px-6 py-4 border-b border-hairline flex items-center justify-between">
+              <div className="px-6 py-4 border-b border-hairline flex items-center justify-between flex-wrap gap-2">
                 <h2 className="font-semibold text-sm text-ink">Prompts configurés ({prompts.length})</h2>
-                <p className="text-xs text-ink-soft">Cron hebdomadaire · lundi 8h</p>
+                <div className="flex items-center gap-3">
+                  <p className="text-xs text-ink-soft">Cron hebdomadaire · lundi 8h</p>
+                  <button onClick={runAll} disabled={runAllStatus?.loading}
+                    className="rounded-xl border border-hairline px-3 py-1.5 text-xs font-medium text-ink-soft hover:text-brand hover:border-brand transition disabled:opacity-50">
+                    {runAllStatus?.loading ? "Exécution…" : "▶ Lancer maintenant"}
+                  </button>
+                </div>
               </div>
+              {runAllStatus && !runAllStatus.loading && (
+                <div className={`px-6 py-2 text-xs border-b border-hairline ${(runAllStatus.errors ?? 0) > 0 ? "bg-amber-50 text-amber-700" : "bg-green-50 text-green-700"}`}>
+                  Run terminé : {runAllStatus.ran} exécution{(runAllStatus.ran ?? 0) !== 1 ? "s" : ""}
+                  {(runAllStatus.errors ?? 0) > 0 && `, ${runAllStatus.errors} erreur${runAllStatus.errors !== 1 ? "s" : ""}`}
+                </div>
+              )}
               <div className="divide-y divide-hairline">
                 {prompts.map(p => (
                   <div key={p.id} className="flex items-start gap-4 px-6 py-4">
