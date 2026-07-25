@@ -1,3 +1,9 @@
+export interface WcCredentials {
+  storeUrl: string;
+  consumerKey: string;
+  consumerSecret: string;
+}
+
 export interface WooDraftProductParams {
   name: string;
   descriptionHtml: string;
@@ -12,14 +18,29 @@ export interface WooDraftProductResult {
   editUrl: string;
 }
 
-export async function createDraftProduct(p: WooDraftProductParams): Promise<WooDraftProductResult> {
-  const url = process.env.WOOCOMMERCE_URL;
-  const key = process.env.WOOCOMMERCE_CONSUMER_KEY;
-  const secret = process.env.WOOCOMMERCE_CONSUMER_SECRET;
-  if (!url || !key || !secret) {
-    throw new Error("WooCommerce non configuré (WOOCOMMERCE_URL / CONSUMER_KEY / CONSUMER_SECRET manquants)");
-  }
-  const base = url.replace(/\/$/, "");
+export interface WooDraftCategoryParams {
+  name: string;
+  description?: string;
+  metaTitle?: string;
+  metaDescription?: string;
+}
+
+export interface WooDraftCategoryResult {
+  id: number;
+  slug: string;
+  link: string;
+  editUrl: string;
+}
+
+function wcBasicAuth(key: string, secret: string): string {
+  return "Basic " + Buffer.from(`${key}:${secret}`).toString("base64");
+}
+
+export async function createDraftProduct(
+  creds: WcCredentials,
+  p: WooDraftProductParams
+): Promise<WooDraftProductResult> {
+  const base = creds.storeUrl.replace(/\/$/, "");
 
   const body: Record<string, unknown> = {
     name: p.name,
@@ -33,10 +54,12 @@ export async function createDraftProduct(p: WooDraftProductParams): Promise<WooD
   if (p.metaDescription) metaData.push({ key: "_yoast_wpseo_metadesc", value: p.metaDescription });
   if (metaData.length > 0) body.meta_data = metaData;
 
-  const params = new URLSearchParams({ consumer_key: key, consumer_secret: secret });
-  const res = await fetch(`${base}/wp-json/wc/v3/products?${params}`, {
+  const res = await fetch(`${base}/wp-json/wc/v3/products`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": wcBasicAuth(creds.consumerKey, creds.consumerSecret),
+    },
     body: JSON.stringify(body),
   });
 
@@ -50,5 +73,42 @@ export async function createDraftProduct(p: WooDraftProductParams): Promise<WooD
     id: data.id,
     permalink: data.permalink,
     editUrl: `${base}/wp-admin/post.php?post=${data.id}&action=edit`,
+  };
+}
+
+export async function createProductCategory(
+  creds: WcCredentials,
+  p: WooDraftCategoryParams
+): Promise<WooDraftCategoryResult> {
+  const base = creds.storeUrl.replace(/\/$/, "");
+
+  const body: Record<string, unknown> = { name: p.name };
+  if (p.description) body.description = p.description;
+
+  const metaData: { key: string; value: string }[] = [];
+  if (p.metaTitle) metaData.push({ key: "_yoast_wpseo_title", value: p.metaTitle });
+  if (p.metaDescription) metaData.push({ key: "_yoast_wpseo_metadesc", value: p.metaDescription });
+  if (metaData.length > 0) body.yoast_head_json = { title: p.metaTitle, description: p.metaDescription };
+
+  const res = await fetch(`${base}/wp-json/wc/v3/products/categories`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": wcBasicAuth(creds.consumerKey, creds.consumerSecret),
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`WooCommerce Categories API ${res.status}: ${text.slice(0, 300)}`);
+  }
+
+  const data = await res.json();
+  return {
+    id: data.id,
+    slug: data.slug,
+    link: data.link,
+    editUrl: `${base}/wp-admin/term.php?taxonomy=product_cat&tag_ID=${data.id}`,
   };
 }

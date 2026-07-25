@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getSeoNewsDigest, formatDigestForPrompt } from "@/lib/seoNews";
 import { getValidAccessToken, listGscSites, getGscQueriesWithPages, getGscQueriesByTopics, getGscQueriesByPatterns, getGscSiteMetrics, GSC_INTENT_PATTERNS } from "@/lib/gscOAuth";
-import { createDraftProduct } from "@/lib/woocommerce";
+import { createDraftProduct, createProductCategory } from "@/lib/woocommerce";
+import { createDraftPost, createDraftPage } from "@/lib/wpPublish";
+import { getWcConnection } from "@/lib/wcConnections";
+import { getAuthUser } from "@/lib/supabaseServer";
 import { buildLinkGraphWithSignals } from "@/lib/linkGraph";
 import { fetchWpContentForUrls } from "@/lib/wpContent";
 import { searchRedditPosts, getSubredditTopPosts, extractSemanticCorpus, findLinkOpportunities } from "@/lib/reddit";
@@ -132,7 +135,12 @@ Pour analyze_competitor_backlinks : utilise cet outil dès que l'utilisateur veu
 
 Règle générale impérative pour tous les outils : quand tu décides d'appeler un outil, appelle-le immédiatement dans le même tour de réponse. N'écris jamais de message d'annonce du type "je lance la génération" ou "un instant, je récupère les données" sans appeler l'outil dans la même réponse — ce serait une réponse vide qui n'aboutit à rien. Soit tu appelles l'outil tout de suite, soit tu réponds directement en texte.
 
-Tu peux aussi publier une fiche produit déjà générée en brouillon sur WooCommerce (laplantation.com), via l'outil publish_product_to_woocommerce — mais UNIQUEMENT quand l'utilisateur le demande explicitement (ex: "publie cette fiche sur WooCommerce", "crée ce produit"). N'appelle JAMAIS cet outil automatiquement juste après avoir généré une fiche produit, même si l'utilisateur semble satisfait du résultat — la publication, même en brouillon, est une action sur un site réel et doit toujours être une décision explicite de l'utilisateur. Reprends le contenu déjà généré dans la conversation plutôt que de le réécrire.
+Tu peux publier du contenu directement sur la boutique WooCommerce/WordPress connectée par l'utilisateur, via quatre outils dédiés — mais UNIQUEMENT quand l'utilisateur le demande explicitement ("publie cette fiche", "crée cet article sur mon site", "envoie ça sur WooCommerce"). N'appelle JAMAIS ces outils automatiquement juste après une génération de contenu — la publication, même en brouillon, est une action sur un site réel et doit toujours être une décision explicite. Reprends le contenu déjà généré dans la conversation plutôt que de le réécrire. Si l'utilisateur n'a pas encore connecté de boutique, dis-lui de le faire sur [la page Paramètres](/settings).
+
+- publish_product_to_woocommerce : fiche produit → WooCommerce (brouillon)
+- publish_category_to_woocommerce : page de catégorie produit → WooCommerce
+- publish_article_to_wordpress : article de blog → WordPress (brouillon)
+- publish_page_to_wordpress : page de contenu → WordPress (brouillon)
 
 Si l'utilisateur a connecté sa Google Search Console et demande des données réelles sur un domaine (mots-clés positionnés, requêtes longue traîne, performances de recherche, clics, impressions, position), utilise immédiatement l'outil get_search_console_data avec le domaine mentionné, sans poser de questions de clarification au préalable — l'outil te dira lui-même si le domaine n'est pas accessible. N'utilise PAS cet outil si l'utilisateur n'a pas mentionné de domaine précis ou ne demande pas de données chiffrées issues de la Search Console.
 
@@ -262,7 +270,7 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: "publish_product_to_woocommerce",
-    description: "Crée une fiche produit en BROUILLON sur WooCommerce (laplantation.com). N'utilise cet outil QUE si l'utilisateur demande explicitement de publier/créer le produit sur WooCommerce — jamais automatiquement juste après une génération de fiche produit. Reprends le contenu déjà généré dans la conversation (title SEO, meta description, description complète) plutôt que de le réécrire.",
+    description: "Crée une fiche produit en BROUILLON sur la boutique WooCommerce connectée par l'utilisateur. N'utilise cet outil QUE si l'utilisateur demande explicitement de publier/créer le produit — jamais automatiquement. Reprends le contenu déjà généré dans la conversation plutôt que de le réécrire.",
     input_schema: {
       type: "object",
       properties: {
@@ -273,6 +281,49 @@ const tools: Anthropic.Tool[] = [
         prix: { type: "string", description: "Prix régulier, si connu" },
       },
       required: ["nom_produit", "description_complete"],
+    },
+  },
+  {
+    name: "publish_category_to_woocommerce",
+    description: "Crée une page de catégorie produit sur la boutique WooCommerce connectée. Utiliser après avoir généré le contenu de la catégorie, uniquement si l'utilisateur le demande explicitement.",
+    input_schema: {
+      type: "object",
+      properties: {
+        nom_categorie: { type: "string", description: "Nom de la catégorie" },
+        description: { type: "string", description: "Description de la catégorie en markdown" },
+        title_seo: { type: "string", description: "Balise title SEO" },
+        meta_description: { type: "string", description: "Meta description" },
+      },
+      required: ["nom_categorie"],
+    },
+  },
+  {
+    name: "publish_article_to_wordpress",
+    description: "Publie un article de blog en BROUILLON sur le WordPress connecté. N'utilise cet outil QUE sur demande explicite de l'utilisateur. Reprends le contenu généré dans la conversation plutôt que de le réécrire.",
+    input_schema: {
+      type: "object",
+      properties: {
+        titre: { type: "string", description: "Titre de l'article (H1)" },
+        contenu_markdown: { type: "string", description: "Contenu complet de l'article en markdown" },
+        extrait: { type: "string", description: "Extrait court (méta/résumé), si disponible" },
+        title_seo: { type: "string", description: "Balise title SEO, si différente du titre H1" },
+        meta_description: { type: "string", description: "Meta description déjà générée" },
+      },
+      required: ["titre", "contenu_markdown"],
+    },
+  },
+  {
+    name: "publish_page_to_wordpress",
+    description: "Crée une page WordPress en BROUILLON (page SEO, landing page, page de contenu). N'utilise cet outil QUE sur demande explicite. Reprends le contenu généré dans la conversation.",
+    input_schema: {
+      type: "object",
+      properties: {
+        titre: { type: "string", description: "Titre de la page" },
+        contenu_markdown: { type: "string", description: "Contenu complet en markdown" },
+        title_seo: { type: "string", description: "Balise title SEO" },
+        meta_description: { type: "string", description: "Meta description" },
+      },
+      required: ["titre", "contenu_markdown"],
     },
   },
   {
@@ -551,21 +602,89 @@ interface PublishProductParams {
   prix?: string;
 }
 
-async function publishProductToWoo(p: PublishProductParams): Promise<string> {
+interface PublishCategoryParams {
+  nom_categorie: string;
+  description?: string;
+  title_seo?: string;
+  meta_description?: string;
+}
+
+interface PublishWpContentParams {
+  titre: string;
+  contenu_markdown: string;
+  extrait?: string;
+  title_seo?: string;
+  meta_description?: string;
+}
+
+async function publishProductToWoo(p: PublishProductParams, userId: string): Promise<string> {
+  const conn = await getWcConnection(userId);
+  if (!conn) {
+    return "❌ Aucune boutique WooCommerce connectée. Rendez-vous sur [la page Paramètres](/settings) pour connecter votre boutique.";
+  }
   try {
     const descriptionHtml = await marked.parse(p.description_complete);
-    const result = await createDraftProduct({
-      name: p.nom_produit,
-      descriptionHtml,
-      metaTitle: p.title_seo,
-      metaDescription: p.meta_description,
-      regularPrice: p.prix,
-    });
-    return `✅ Brouillon créé sur WooCommerce : **${p.nom_produit}**\n\n[Voir/éditer dans WordPress](${result.editUrl})\n\nLe produit est en statut brouillon — relis-le et publie-le toi-même quand tu es prêt.`;
+    const result = await createDraftProduct(
+      { storeUrl: conn.storeUrl, consumerKey: conn.wcConsumerKey, consumerSecret: conn.wcConsumerSecret },
+      { name: p.nom_produit, descriptionHtml, metaTitle: p.title_seo, metaDescription: p.meta_description, regularPrice: p.prix }
+    );
+    return `✅ Fiche produit créée en brouillon sur **${conn.storeUrl}**\n\n**${p.nom_produit}**\n\n[Éditer dans WordPress ↗](${result.editUrl})\n\nLe produit est en statut brouillon — relis-le et publie-le toi-même quand tu es prêt.\n\n---\n\n${p.description_complete}`;
   } catch (e) {
-    console.error("[assistant woocommerce] error:", e);
-    const msg = e instanceof Error ? e.message : "erreur inconnue";
-    return `❌ Erreur lors de la création du brouillon WooCommerce : ${msg}`;
+    console.error("[assistant woocommerce product] error:", e);
+    return `❌ Erreur WooCommerce : ${e instanceof Error ? e.message : "erreur inconnue"}`;
+  }
+}
+
+async function publishCategoryToWoo(p: PublishCategoryParams, userId: string): Promise<string> {
+  const conn = await getWcConnection(userId);
+  if (!conn) {
+    return "❌ Aucune boutique WooCommerce connectée. Rendez-vous sur [la page Paramètres](/settings) pour connecter votre boutique.";
+  }
+  try {
+    const result = await createProductCategory(
+      { storeUrl: conn.storeUrl, consumerKey: conn.wcConsumerKey, consumerSecret: conn.wcConsumerSecret },
+      { name: p.nom_categorie, description: p.description, metaTitle: p.title_seo, metaDescription: p.meta_description }
+    );
+    return `✅ Catégorie produit créée sur **${conn.storeUrl}**\n\n**${p.nom_categorie}** (slug: \`${result.slug}\`)\n\n[Éditer dans WordPress ↗](${result.editUrl})\n\n${p.description ?? ""}`;
+  } catch (e) {
+    console.error("[assistant woocommerce category] error:", e);
+    return `❌ Erreur WooCommerce Catégories : ${e instanceof Error ? e.message : "erreur inconnue"}`;
+  }
+}
+
+async function publishArticleToWp(p: PublishWpContentParams, userId: string): Promise<string> {
+  const conn = await getWcConnection(userId);
+  if (!conn) {
+    return "❌ Aucune boutique WordPress connectée. Rendez-vous sur [la page Paramètres](/settings) pour connecter votre site.";
+  }
+  try {
+    const contentHtml = await marked.parse(p.contenu_markdown);
+    const result = await createDraftPost(
+      { storeUrl: conn.storeUrl, wpUsername: conn.wpUsername, wpAppPassword: conn.wpAppPassword },
+      { title: p.titre, contentHtml, excerpt: p.extrait, metaTitle: p.title_seo, metaDescription: p.meta_description }
+    );
+    return `✅ Article publié en brouillon sur **${conn.storeUrl}**\n\n**${p.titre}**\n\n[Éditer dans WordPress ↗](${result.editUrl})\n\n---\n\n${p.contenu_markdown}`;
+  } catch (e) {
+    console.error("[assistant wp article] error:", e);
+    return `❌ Erreur WordPress (article) : ${e instanceof Error ? e.message : "erreur inconnue"}`;
+  }
+}
+
+async function publishPageToWp(p: PublishWpContentParams, userId: string): Promise<string> {
+  const conn = await getWcConnection(userId);
+  if (!conn) {
+    return "❌ Aucune boutique WordPress connectée. Rendez-vous sur [la page Paramètres](/settings) pour connecter votre site.";
+  }
+  try {
+    const contentHtml = await marked.parse(p.contenu_markdown);
+    const result = await createDraftPage(
+      { storeUrl: conn.storeUrl, wpUsername: conn.wpUsername, wpAppPassword: conn.wpAppPassword },
+      { title: p.titre, contentHtml, metaTitle: p.title_seo, metaDescription: p.meta_description }
+    );
+    return `✅ Page créée en brouillon sur **${conn.storeUrl}**\n\n**${p.titre}**\n\n[Éditer dans WordPress ↗](${result.editUrl})\n\n---\n\n${p.contenu_markdown}`;
+  } catch (e) {
+    console.error("[assistant wp page] error:", e);
+    return `❌ Erreur WordPress (page) : ${e instanceof Error ? e.message : "erreur inconnue"}`;
   }
 }
 
@@ -1320,11 +1439,14 @@ const TERMINAL_TOOLS = new Set([
   "generate_strategy_action_plan",
   "reddit_research",
   "publish_product_to_woocommerce",
+  "publish_category_to_woocommerce",
+  "publish_article_to_wordpress",
+  "publish_page_to_wordpress",
 ]);
 
 type ToolOutcome = { terminal: true; reply: string } | { terminal: false; result: string };
 
-async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: string | undefined): Promise<ToolOutcome> {
+async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: string | undefined, userId: string | undefined): Promise<ToolOutcome> {
   switch (toolUse.name) {
     // ── Outils terminaux (livrables) ──
     case "generate_article":
@@ -1338,7 +1460,13 @@ async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: stri
     case "reddit_research":
       return { terminal: true, reply: await generateRedditResearch(toolUse.input as RedditResearchParams) };
     case "publish_product_to_woocommerce":
-      return { terminal: true, reply: await publishProductToWoo(toolUse.input as PublishProductParams) };
+      return { terminal: true, reply: await publishProductToWoo(toolUse.input as PublishProductParams, userId ?? "") };
+    case "publish_category_to_woocommerce":
+      return { terminal: true, reply: await publishCategoryToWoo(toolUse.input as PublishCategoryParams, userId ?? "") };
+    case "publish_article_to_wordpress":
+      return { terminal: true, reply: await publishArticleToWp(toolUse.input as PublishWpContentParams, userId ?? "") };
+    case "publish_page_to_wordpress":
+      return { terminal: true, reply: await publishPageToWp(toolUse.input as PublishWpContentParams, userId ?? "") };
 
     // ── Outils data (réinjectés dans la boucle) ──
     case "get_kpu_paa": {
@@ -1403,7 +1531,10 @@ const TOOL_LABELS: Record<string, string> = {
   generate_content_plan: "Construction du plan de contenu…",
   generate_strategy_action_plan: "Élaboration du plan stratégique…",
   reddit_research: "Recherche Reddit en cours…",
-  publish_product_to_woocommerce: "Publication sur WooCommerce…",
+  publish_product_to_woocommerce: "Publication fiche produit sur WooCommerce…",
+  publish_category_to_woocommerce: "Création catégorie sur WooCommerce…",
+  publish_article_to_wordpress: "Publication article sur WordPress…",
+  publish_page_to_wordpress: "Publication page sur WordPress…",
 };
 
 export async function POST(req: NextRequest) {
@@ -1420,6 +1551,8 @@ export async function POST(req: NextRequest) {
   }
 
   const sessionId = req.cookies.get("gsc_session")?.value;
+  const authUser = await getAuthUser();
+  const userId = authUser?.id;
   const encoder = new TextEncoder();
 
   // Charger le contexte d'audit si un auditId est fourni
@@ -1490,7 +1623,7 @@ export async function POST(req: NextRequest) {
           const terminalUse = toolUses.find(t => TERMINAL_TOOLS.has(t.name));
           if (terminalUse) {
             send("status", JSON.stringify({ label: TOOL_LABELS[terminalUse.name] ?? terminalUse.name }));
-            const outcome = await runAssistantTool(terminalUse, sessionId);
+            const outcome = await runAssistantTool(terminalUse, sessionId, userId);
             if (outcome.terminal) {
               send("token", JSON.stringify(outcome.reply));
               send("done", "");
@@ -1504,7 +1637,7 @@ export async function POST(req: NextRequest) {
             send("status", JSON.stringify({ label: TOOL_LABELS[tu.name] ?? tu.name }));
           }
           conversation.push({ role: "assistant", content: finalMsg.content });
-          const outcomes = await Promise.all(toolUses.map(tu => runAssistantTool(tu, sessionId)));
+          const outcomes = await Promise.all(toolUses.map(tu => runAssistantTool(tu, sessionId, userId)));
           const toolResults: Anthropic.ToolResultBlockParam[] = toolUses.map((tu, i) => ({
             type: "tool_result",
             tool_use_id: tu.id,

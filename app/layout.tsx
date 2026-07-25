@@ -58,6 +58,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   { href: "/assistant", label: "Assistant" },
                   { href: "/citations", label: "Citations IA" },
                   { href: "/tarifs", label: "Tarifs" },
+                  { href: "/settings", label: "Paramètres" },
                 ].map(({ href, label }) => (
                   <Link
                     key={href}
