@@ -98,14 +98,80 @@ function IconMessage({ className = "h-3.5 w-3.5" }: { className?: string }) {
   );
 }
 
+function IconPenLine({ className = "h-3.5 w-3.5" }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+    </svg>
+  );
+}
+
+function IconPackage({ className = "h-3.5 w-3.5" }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>
+    </svg>
+  );
+}
+
+function IconUploadCloud({ className = "h-3.5 w-3.5" }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/>
+      <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+    </svg>
+  );
+}
+
+function IconSearch({ className = "h-3.5 w-3.5" }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+    </svg>
+  );
+}
+
+function IconReddit({ className = "h-3.5 w-3.5" }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10"/><path d="M14.5 9a3.5 3.5 0 0 1 0 6"/><path d="M9.5 9a3.5 3.5 0 0 0 0 6"/><path d="M12 6v2"/><circle cx="12" cy="5" r="1"/>
+    </svg>
+  );
+}
+
 // ── Data ─────────────────────────────────────────────────────────────────────
 
-const TOOLS: { label: string; icon: React.ReactNode; desc: string; prompt: string }[] = [
+interface Tool { label: string; icon: React.ReactNode; desc: string; prompt: string; featured?: boolean }
+
+const TOOLS: Tool[] = [
+  // ── Top 3 : outils de création/publication ────────────────────────────────
+  {
+    label: "Génération article",
+    icon: <IconPenLine />,
+    desc: "Article SEO & GEO complet",
+    prompt: "Génère un article de blog complet et optimisé SEO pour ce site. Demande-moi le sujet, le mot-clé principal et le public cible si tu ne les connais pas encore.",
+    featured: true,
+  },
+  {
+    label: "Fiche produit",
+    icon: <IconPackage />,
+    desc: "Fiche e-commerce optimisée",
+    prompt: "Génère une fiche produit e-commerce complète et optimisée SEO (600-900 mots, title, meta, description structurée). Demande-moi le nom du produit et ses caractéristiques si tu ne les connais pas.",
+    featured: true,
+  },
+  {
+    label: "Publication CMS",
+    icon: <IconUploadCloud />,
+    desc: "Publier sur WordPress / WooCommerce",
+    prompt: "Je veux publier du contenu sur mon site WordPress ou WooCommerce. Dis-moi quel type de contenu (article, page, fiche produit, catégorie) et je m'en occupe directement depuis l'assistant.",
+    featured: true,
+  },
+  // ── Outils data & analyse ─────────────────────────────────────────────────
   {
     label: "Analyse SERP",
     icon: <IconChartColumn />,
     desc: "Top 10, intentions, snippets",
-    prompt: "Lance une analyse SERP sur les mots-clés principaux de ce site. Pour chaque mot-clé analysé : identifie l'intention de recherche, décris la structure des résultats (featured snippets, PAA, ads, local pack…), note les opportunités de positionnement et propose un lien vers les résultats Google.",
+    prompt: "Lance une analyse SERP sur les mots-clés principaux de ce site. Pour chaque mot-clé : identifie l'intention de recherche, décris la structure des résultats (featured snippets, PAA, ads, local pack…) et note les opportunités de positionnement.",
   },
   {
     label: "Longue traîne",
@@ -115,20 +181,38 @@ const TOOLS: { label: string; icon: React.ReactNode; desc: string; prompt: strin
   },
   {
     label: "Ranking domaine",
-    icon: <IconGlobe />,
+    icon: <IconSearch />,
     desc: "Positions actuelles du domaine",
     prompt: "Vérifie les positions actuelles de ce domaine sur ses mots-clés principaux. Indique pour chaque mot-clé : la position, l'URL rankée, le volume estimé et les variations récentes si disponibles.",
   },
   {
     label: "Backlinks concurrents",
-    icon: <IconChartColumn />,
+    icon: <IconGlobe />,
     desc: "Sources de liens à dupliquer",
     prompt: "Analyse les backlinks des principaux concurrents de ce domaine. Identifie les sources de liens les plus intéressantes à cibler pour une stratégie de netlinking.",
   },
   {
+    label: "Données GSC",
+    icon: <IconChartColumn />,
+    desc: "Requêtes & positions Search Console",
+    prompt: "Récupère les données Google Search Console de ce site : top requêtes, pages associées, clics, impressions et positions moyennes. Donne-moi le domaine si je ne le connais pas encore.",
+  },
+  {
+    label: "Données Semrush",
+    icon: <IconChartColumn />,
+    desc: "Mots-clés & backlinks Semrush",
+    prompt: "Analyse les données Semrush pour ce domaine : mots-clés positionnés, top pages organiques et profil de backlinks. Donne-moi le domaine si je ne le connais pas encore.",
+  },
+  {
+    label: "Reddit search",
+    icon: <IconReddit />,
+    desc: "Sémantique & ninja linking",
+    prompt: "Analyse les discussions Reddit sur la thématique principale de ce site. Identifie le vocabulaire réel des internautes, les questions récurrentes, les pain points, et les opportunités de ninja linking.",
+  },
+  {
     label: "Plan de contenu",
     icon: <IconWandSparkles />,
-    desc: "Pilier + satellites",
+    desc: "Pilier + articles satellites",
     prompt: "Crée un plan de contenu éditorial complet avec page pilier et articles satellites pour la thématique principale de ce site. Inclus les mots-clés cibles, intentions, priorités et maillage interne suggéré.",
   },
   {
@@ -136,12 +220,6 @@ const TOOLS: { label: string; icon: React.ReactNode; desc: string; prompt: strin
     icon: <IconSparkles className="h-3.5 w-3.5" />,
     desc: "Plan d'action prioritaire",
     prompt: "Génère un plan stratégique SEO complet et priorisé pour ce site. Couvre les axes : SEO technique, contenu, netlinking, maillage interne, SEO local et GEO. Pour chaque axe : actions concrètes, impact estimé et ordre de priorité.",
-  },
-  {
-    label: "Publication WooCommerce",
-    icon: <IconGlobe />,
-    desc: "Brouillon produit WC",
-    prompt: "Crée un brouillon de produit complet et optimisé prêt à publier sur WooCommerce pour ce site. Génère le contenu, les catégories, les tags et les métadonnées SEO.",
   },
 ];
 
@@ -515,8 +593,29 @@ function AssistantPageInner() {
           <div className="text-xs font-medium uppercase tracking-wider text-ink-soft mb-2">
             Outils
           </div>
-          <ul className="space-y-0.5">
-            {TOOLS.map(({ label, icon, desc, prompt }) => (
+
+          {/* Top 3 featured */}
+          <div className="grid grid-cols-3 gap-1 mb-3">
+            {TOOLS.filter(t => t.featured).map(({ label, icon, desc, prompt }) => (
+              <button
+                key={label}
+                onClick={() => send(prompt)}
+                disabled={loading}
+                title={desc}
+                className="flex flex-col items-center gap-1 rounded-lg border border-brand/20 bg-brand/5 px-1 py-2 text-center text-brand hover:bg-brand/10 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <span className="text-brand">{icon}</span>
+                <span className="text-[10px] font-medium leading-tight">{label}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Divider */}
+          <div className="border-t border-hairline mb-2" />
+
+          {/* Rest of tools — scrollable */}
+          <ul className="space-y-0.5 overflow-y-auto" style={{ maxHeight: "190px" }}>
+            {TOOLS.filter(t => !t.featured).map(({ label, icon, desc, prompt }) => (
               <li key={label}>
                 <button
                   onClick={() => send(prompt)}
