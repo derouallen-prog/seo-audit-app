@@ -1,10 +1,10 @@
 import { PerplexityConnector } from "./citations/perplexity";
 import { GeminiConnector } from "./citations/gemini";
 import { ClaudeConnector } from "./citations/claude";
-import type { CitationResult, Platform } from "./citations/types";
+import type { CitationResult, Platform, PlatformConnector } from "./citations/types";
 import { extractHostname } from "./citations/types";
 
-const CONNECTORS = {
+const CONNECTORS: Partial<Record<Platform, PlatformConnector>> = {
   perplexity: new PerplexityConnector(),
   gemini: new GeminiConnector(),
   claude: new ClaudeConnector(),
