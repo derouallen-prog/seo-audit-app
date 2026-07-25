@@ -451,8 +451,8 @@ const tools: Anthropic.Tool[] = [
         site_url: { type: "string", description: "Le site à vérifier (ex: https://laboratoire-roles.fr ou laboratoire-roles.fr)" },
         platforms: {
           type: "array",
-          items: { type: "string", enum: ["perplexity", "gemini"] },
-          description: "Plateformes à interroger. Défaut : ['perplexity', 'gemini']. Utilise les deux sauf si l'utilisateur précise une seule plateforme.",
+          items: { type: "string", enum: ["perplexity", "gemini", "openai"] },
+          description: "Plateformes à interroger. Défaut : ['perplexity', 'gemini', 'openai']. Utilise les trois sauf si l'utilisateur précise une ou deux plateformes spécifiques.",
         },
       },
       required: ["keyword", "site_url"],
@@ -1493,7 +1493,7 @@ async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: stri
     case "reddit_research":
       return { terminal: true, reply: await generateRedditResearch(toolUse.input as RedditResearchParams) };
     case "check_geo_visibility": {
-      const p = toolUse.input as { keyword: string; site_url: string; platforms?: ("perplexity" | "gemini")[] };
+      const p = toolUse.input as { keyword: string; site_url: string; platforms?: ("perplexity" | "gemini" | "openai")[] };
       try {
         return { terminal: true, reply: await checkGeoVisibility(p) };
       } catch (e) {

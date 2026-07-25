@@ -1,6 +1,7 @@
 import { PerplexityConnector } from "./citations/perplexity";
 import { GeminiConnector } from "./citations/gemini";
 import { ClaudeConnector } from "./citations/claude";
+import { OpenAIConnector } from "./citations/openai";
 import type { CitationResult, Platform, PlatformConnector } from "./citations/types";
 import { extractHostname } from "./citations/types";
 
@@ -8,11 +9,13 @@ const CONNECTORS: Partial<Record<Platform, PlatformConnector>> = {
   perplexity: new PerplexityConnector(),
   gemini: new GeminiConnector(),
   claude: new ClaudeConnector(),
+  openai: new OpenAIConnector(),
 };
 
 const PLATFORM_LABELS: Record<string, string> = {
   perplexity: "Perplexity",
   gemini: "Gemini (Google Search)",
+  openai: "ChatGPT (OpenAI web search)",
   claude: "Claude (claude.ai)",
 };
 
@@ -24,7 +27,7 @@ export interface GeoCheckParams {
 
 export async function checkGeoVisibility(p: GeoCheckParams): Promise<string> {
   const { keyword, site_url } = p;
-  const platforms: Platform[] = p.platforms?.length ? p.platforms : ["perplexity", "gemini"];
+  const platforms: Platform[] = p.platforms?.length ? p.platforms : ["perplexity", "gemini", "openai"];
 
   const domain = extractHostname(site_url);
 
