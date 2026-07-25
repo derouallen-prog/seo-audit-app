@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import Image from "next/image";
 import type { PromptSet, Intent } from "@/lib/citations/types";
 import { INTENTS, PLATFORMS } from "@/lib/citations/types";
 
@@ -138,7 +139,7 @@ function DomainAutocomplete({ value, onChange }: { value: string; onChange: (dom
             <button key={s.domain} type="button" onMouseDown={() => select(s.domain)}
               className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-accent/40 transition-colors text-left">
               {s.logo
-                ? <img src={s.logo} alt="" width={24} height={24} className="w-6 h-6 rounded shrink-0 object-contain" />
+                ? <Image src={s.logo} alt="" width={24} height={24} unoptimized className="w-6 h-6 rounded shrink-0 object-contain" />
                 : <div className="w-6 h-6 rounded bg-accent shrink-0 flex items-center justify-center text-xs font-bold text-ink-soft">{s.name[0]}</div>
               }
               <div className="min-w-0">

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { z } from "zod";
 import type { Analysis } from "@/lib/types";
 import { computeScore, gradeFromScore } from "@/lib/score";
@@ -335,7 +336,7 @@ export default function HomePage() {
                         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-accent/40 transition-colors text-left"
                       >
                         {s.logo
-                          ? <img src={s.logo} alt="" width={28} height={28} className="w-7 h-7 rounded-lg shrink-0 object-contain border border-hairline" />
+                          ? <Image src={s.logo} alt="" width={28} height={28} unoptimized className="w-7 h-7 rounded-lg shrink-0 object-contain border border-hairline" />
                           : <div className="w-7 h-7 rounded-lg bg-brand-soft shrink-0 flex items-center justify-center text-xs font-bold text-brand">{s.name[0]}</div>
                         }
                         <div className="min-w-0">
