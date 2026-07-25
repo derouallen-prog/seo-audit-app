@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { getSeoNewsDigest, formatDigestForPrompt } from "@/lib/seoNews";
 import { getValidAccessToken, listGscSites, getGscQueriesWithPages, getGscQueriesByTopics, getGscQueriesByPatterns, getGscSiteMetrics, GSC_INTENT_PATTERNS } from "@/lib/gscOAuth";
 import { createDraftProduct, createProductCategory } from "@/lib/woocommerce";
+import { checkGeoVisibility } from "@/lib/geoVisibilityCheck";
 import { createDraftPost, createDraftPage } from "@/lib/wpPublish";
 import { getWcConnection } from "@/lib/wcConnections";
 import { getAuthUser } from "@/lib/supabaseServer";
@@ -130,6 +131,8 @@ Pour check_domain_ranking : utilise cet outil dès que l'utilisateur demande à 
 Pour get_kpu_paa : utilise cet outil dès que l'utilisateur demande les questions "People Also Ask" (PAA) ou "Questions posées par les internautes" de Google pour un mot-clé. C'est la source la plus fiable pour alimenter une FAQ SEO ou un plan de contenu en questions réelles. Passe le mot-clé dans la langue du marché cible (country + language : 'fr' pour la France, 'us'/'en' pour les USA). Le résultat est une arborescence de questions Google en profondeur — utilise-la pour enrichir les articles, les FAQ structured data, et le GEO (citabilité par les IA).
 
 Pour get_kpu_suggestions : utilise cet outil dès que l'utilisateur demande des suggestions Google Autocomplete, des mots-clés sémantiques connexes, ou des questions Reddit/Quora sur un sujet. Complémentaire à find_longtail_keywords (FetchSERP) et get_semrush_data mode keyword : KPU donne des suggestions issues de la recherche réelle (Autocomplete) et des communautés (Reddit/Quora), Semrush donne les volumes et la difficulté, FetchSERP donne les variations SERP. Utilise KPU en priorité pour la découverte sémantique et les FAQ conversationnelles.
+
+Pour check_geo_visibility : utilise cet outil dès que l'utilisateur demande si un site (le sien ou un concurrent) est cité ou mentionné sur Perplexity, ChatGPT, Gemini, les IA, ou les moteurs génératifs pour un mot-clé donné. L'outil interroge RÉELLEMENT Perplexity et Gemini avec la requête, vérifie si le domaine cible apparaît dans leurs citations ou dans le texte de la réponse, et retourne la réponse brute + les sources citées + une synthèse de visibilité GEO. Exemples de déclencheurs : "est-ce que mon site est cité sur Perplexity quand on cherche X ?", "est-ce que laboratoire-roles.fr apparaît sur ChatGPT ou Perplexity pour cette requête ?", "analyse ma visibilité IA sur ce mot-clé". Toujours extraire le keyword exact et le site_url depuis la demande de l'utilisateur avant d'appeler.
 
 Pour analyze_competitor_backlinks : utilise cet outil dès que l'utilisateur veut analyser les backlinks d'un concurrent, identifier des sources de liens à dupliquer, ou auditer le profil de netlinking d'un domaine tiers. Transmets le domaine cible sans www. Complémentaire à get_semrush_data mode domain qui donne aussi un aperçu des backlinks — FetchSERP fournit une liste détaillée avec ancres.
 
@@ -436,6 +439,23 @@ const tools: Anthropic.Tool[] = [
         pages_number: { type: "number", description: "Profondeur d'analyse : pages de résultats à scanner. Défaut : 3" },
       },
       required: ["domain"],
+    },
+  },
+  {
+    name: "check_geo_visibility",
+    description: "Interroge directement Perplexity et Gemini (avec recherche web activée) pour vérifier si un site est cité ou mentionné dans leurs réponses à une requête donnée. Utilise cet outil quand l'utilisateur demande si son site (ou un concurrent) apparaît sur Perplexity, ChatGPT, Gemini, ou les IA en général pour un mot-clé. Retourne la réponse réelle du LLM, la position de citation, les sources concurrentes citées, et une synthèse de visibilité GEO.",
+    input_schema: {
+      type: "object",
+      properties: {
+        keyword: { type: "string", description: "La requête à taper — exactement comme l'utilisateur la formulerait sur Perplexity ou Gemini (ex: 'laboratoire de prothèse dentaire à Paris')" },
+        site_url: { type: "string", description: "Le site à vérifier (ex: https://laboratoire-roles.fr ou laboratoire-roles.fr)" },
+        platforms: {
+          type: "array",
+          items: { type: "string", enum: ["perplexity", "gemini"] },
+          description: "Plateformes à interroger. Défaut : ['perplexity', 'gemini']. Utilise les deux sauf si l'utilisateur précise une seule plateforme.",
+        },
+      },
+      required: ["keyword", "site_url"],
     },
   },
   {
@@ -1450,6 +1470,7 @@ const TERMINAL_TOOLS = new Set([
   "generate_content_plan",
   "generate_strategy_action_plan",
   "reddit_research",
+  "check_geo_visibility",
   "publish_product_to_woocommerce",
   "publish_category_to_woocommerce",
   "publish_article_to_wordpress",
@@ -1471,6 +1492,14 @@ async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: stri
       return { terminal: true, reply: await generateStrategyActionPlan(sessionId, toolUse.input as StrategyParams) };
     case "reddit_research":
       return { terminal: true, reply: await generateRedditResearch(toolUse.input as RedditResearchParams) };
+    case "check_geo_visibility": {
+      const p = toolUse.input as { keyword: string; site_url: string; platforms?: ("perplexity" | "gemini")[] };
+      try {
+        return { terminal: true, reply: await checkGeoVisibility(p) };
+      } catch (e) {
+        return { terminal: true, reply: `❌ Erreur lors de la vérification GEO : ${e instanceof Error ? e.message : "erreur inconnue"}` };
+      }
+    }
     case "publish_product_to_woocommerce":
       return { terminal: true, reply: await publishProductToWoo(toolUse.input as PublishProductParams, userId ?? "") };
     case "publish_category_to_woocommerce":
@@ -1543,6 +1572,7 @@ const TOOL_LABELS: Record<string, string> = {
   generate_content_plan: "Construction du plan de contenu…",
   generate_strategy_action_plan: "Élaboration du plan stratégique…",
   reddit_research: "Recherche Reddit en cours…",
+  check_geo_visibility: "Interrogation des LLMs (Perplexity & Gemini)…",
   publish_product_to_woocommerce: "Publication fiche produit sur WooCommerce…",
   publish_category_to_woocommerce: "Création catégorie sur WooCommerce…",
   publish_article_to_wordpress: "Publication article sur WordPress…",
