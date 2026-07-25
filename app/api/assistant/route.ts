@@ -135,7 +135,7 @@ Pour analyze_competitor_backlinks : utilise cet outil dès que l'utilisateur veu
 
 Règle générale impérative pour tous les outils : quand tu décides d'appeler un outil, appelle-le immédiatement dans le même tour de réponse. N'écris jamais de message d'annonce du type "je lance la génération" ou "un instant, je récupère les données" sans appeler l'outil dans la même réponse — ce serait une réponse vide qui n'aboutit à rien. Soit tu appelles l'outil tout de suite, soit tu réponds directement en texte.
 
-Tu peux publier du contenu directement sur la boutique WooCommerce/WordPress connectée par l'utilisateur, via quatre outils dédiés — mais UNIQUEMENT quand l'utilisateur le demande explicitement ("publie cette fiche", "crée cet article sur mon site", "envoie ça sur WooCommerce"). N'appelle JAMAIS ces outils automatiquement juste après une génération de contenu — la publication, même en brouillon, est une action sur un site réel et doit toujours être une décision explicite. Reprends le contenu déjà généré dans la conversation plutôt que de le réécrire. Si l'utilisateur n'a pas encore connecté de boutique, dis-lui de le faire sur [la page Paramètres](/settings).
+Tu peux publier du contenu directement sur la boutique WooCommerce/WordPress connectée par l'utilisateur, via quatre outils dédiés — mais UNIQUEMENT quand l'utilisateur le demande explicitement ("publie cette fiche", "crée cet article sur mon site", "envoie ça sur WooCommerce"). N'appelle JAMAIS ces outils automatiquement juste après une génération de contenu — la publication, même en brouillon, est une action sur un site réel et doit toujours être une décision explicite. Reprends le contenu déjà généré dans la conversation plutôt que de le réécrire. Si l'utilisateur n'a pas encore connecté de boutique, indique-lui de connecter son WordPress depuis [la page Intégrations](/integrations) en 2 clics — pas besoin de clé API.
 
 - publish_product_to_woocommerce : fiche produit → WooCommerce (brouillon)
 - publish_category_to_woocommerce : page de catégorie produit → WooCommerce
@@ -620,12 +620,18 @@ interface PublishWpContentParams {
 async function publishProductToWoo(p: PublishProductParams, userId: string): Promise<string> {
   const conn = await getWcConnection(userId);
   if (!conn) {
-    return "❌ Aucune boutique WooCommerce connectée. Rendez-vous sur [la page Paramètres](/settings) pour connecter votre boutique.";
+    return "❌ Aucune boutique WooCommerce connectée. [→ Connecter mon WordPress](/integrations)";
   }
   try {
     const descriptionHtml = await marked.parse(p.description_complete);
     const result = await createDraftProduct(
-      { storeUrl: conn.storeUrl, consumerKey: conn.wcConsumerKey, consumerSecret: conn.wcConsumerSecret },
+      {
+        storeUrl: conn.storeUrl,
+        consumerKey: conn.wcConsumerKey || undefined,
+        consumerSecret: conn.wcConsumerSecret || undefined,
+        wpUsername: conn.wpUsername || undefined,
+        wpAppPassword: conn.wpAppPassword || undefined,
+      },
       { name: p.nom_produit, descriptionHtml, metaTitle: p.title_seo, metaDescription: p.meta_description, regularPrice: p.prix }
     );
     return `✅ Fiche produit créée en brouillon sur **${conn.storeUrl}**\n\n**${p.nom_produit}**\n\n[Éditer dans WordPress ↗](${result.editUrl})\n\nLe produit est en statut brouillon — relis-le et publie-le toi-même quand tu es prêt.\n\n---\n\n${p.description_complete}`;
@@ -638,11 +644,17 @@ async function publishProductToWoo(p: PublishProductParams, userId: string): Pro
 async function publishCategoryToWoo(p: PublishCategoryParams, userId: string): Promise<string> {
   const conn = await getWcConnection(userId);
   if (!conn) {
-    return "❌ Aucune boutique WooCommerce connectée. Rendez-vous sur [la page Paramètres](/settings) pour connecter votre boutique.";
+    return "❌ Aucune boutique WooCommerce connectée. [→ Connecter mon WordPress](/integrations)";
   }
   try {
     const result = await createProductCategory(
-      { storeUrl: conn.storeUrl, consumerKey: conn.wcConsumerKey, consumerSecret: conn.wcConsumerSecret },
+      {
+        storeUrl: conn.storeUrl,
+        consumerKey: conn.wcConsumerKey || undefined,
+        consumerSecret: conn.wcConsumerSecret || undefined,
+        wpUsername: conn.wpUsername || undefined,
+        wpAppPassword: conn.wpAppPassword || undefined,
+      },
       { name: p.nom_categorie, description: p.description, metaTitle: p.title_seo, metaDescription: p.meta_description }
     );
     return `✅ Catégorie produit créée sur **${conn.storeUrl}**\n\n**${p.nom_categorie}** (slug: \`${result.slug}\`)\n\n[Éditer dans WordPress ↗](${result.editUrl})\n\n${p.description ?? ""}`;
@@ -655,7 +667,7 @@ async function publishCategoryToWoo(p: PublishCategoryParams, userId: string): P
 async function publishArticleToWp(p: PublishWpContentParams, userId: string): Promise<string> {
   const conn = await getWcConnection(userId);
   if (!conn) {
-    return "❌ Aucune boutique WordPress connectée. Rendez-vous sur [la page Paramètres](/settings) pour connecter votre site.";
+    return "❌ Aucun site WordPress connecté. [→ Connecter mon WordPress](/integrations)";
   }
   try {
     const contentHtml = await marked.parse(p.contenu_markdown);
@@ -673,7 +685,7 @@ async function publishArticleToWp(p: PublishWpContentParams, userId: string): Pr
 async function publishPageToWp(p: PublishWpContentParams, userId: string): Promise<string> {
   const conn = await getWcConnection(userId);
   if (!conn) {
-    return "❌ Aucune boutique WordPress connectée. Rendez-vous sur [la page Paramètres](/settings) pour connecter votre site.";
+    return "❌ Aucun site WordPress connecté. [→ Connecter mon WordPress](/integrations)";
   }
   try {
     const contentHtml = await marked.parse(p.contenu_markdown);

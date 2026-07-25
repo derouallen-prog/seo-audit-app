@@ -8,8 +8,8 @@ const supabaseAdmin = createClient(
 
 export interface WcConnectionData {
   storeUrl: string;
-  wcConsumerKey: string;
-  wcConsumerSecret: string;
+  wcConsumerKey: string;   // vide si connexion via Application Password
+  wcConsumerSecret: string; // vide si connexion via Application Password
   wpUsername: string;
   wpAppPassword: string;
 }
@@ -25,9 +25,9 @@ export async function getWcConnection(userId: string): Promise<WcConnectionData 
 
   return {
     storeUrl: data.store_url,
-    wcConsumerKey: decryptToken(data.wc_consumer_key),
-    wcConsumerSecret: decryptToken(data.wc_consumer_secret),
-    wpUsername: data.wp_username,
+    wcConsumerKey: data.wc_consumer_key ? decryptToken(data.wc_consumer_key) : "",
+    wcConsumerSecret: data.wc_consumer_secret ? decryptToken(data.wc_consumer_secret) : "",
+    wpUsername: data.wp_username ?? "",
     wpAppPassword: decryptToken(data.wp_app_password),
   };
 }
@@ -40,8 +40,9 @@ export async function saveWcConnection(userId: string, conn: WcConnectionData): 
     .upsert({
       user_id: userId,
       store_url: base,
-      wc_consumer_key: encryptToken(conn.wcConsumerKey),
-      wc_consumer_secret: encryptToken(conn.wcConsumerSecret),
+      // Nullable — null pour les connexions via Application Password
+      wc_consumer_key: conn.wcConsumerKey ? encryptToken(conn.wcConsumerKey) : null,
+      wc_consumer_secret: conn.wcConsumerSecret ? encryptToken(conn.wcConsumerSecret) : null,
       wp_username: conn.wpUsername,
       wp_app_password: encryptToken(conn.wpAppPassword),
       updated_at: new Date().toISOString(),

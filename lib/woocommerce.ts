@@ -1,7 +1,11 @@
 export interface WcCredentials {
   storeUrl: string;
-  consumerKey: string;
-  consumerSecret: string;
+  // Méthode A : WooCommerce Consumer Keys (traditionnel)
+  consumerKey?: string;
+  consumerSecret?: string;
+  // Méthode B : WordPress Application Password (WP 5.6+ / WC 4.8+)
+  wpUsername?: string;
+  wpAppPassword?: string;
 }
 
 export interface WooDraftProductParams {
@@ -32,8 +36,14 @@ export interface WooDraftCategoryResult {
   editUrl: string;
 }
 
-function wcBasicAuth(key: string, secret: string): string {
-  return "Basic " + Buffer.from(`${key}:${secret}`).toString("base64");
+function wcAuth(creds: WcCredentials): string {
+  if (creds.consumerKey && creds.consumerSecret) {
+    return "Basic " + Buffer.from(`${creds.consumerKey}:${creds.consumerSecret}`).toString("base64");
+  }
+  if (creds.wpUsername && creds.wpAppPassword) {
+    return "Basic " + Buffer.from(`${creds.wpUsername}:${creds.wpAppPassword}`).toString("base64");
+  }
+  throw new Error("WooCommerce : aucune méthode d'authentification configurée");
 }
 
 export async function createDraftProduct(
@@ -58,7 +68,7 @@ export async function createDraftProduct(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": wcBasicAuth(creds.consumerKey, creds.consumerSecret),
+      "Authorization": wcAuth(creds),
     },
     body: JSON.stringify(body),
   });
@@ -94,7 +104,7 @@ export async function createProductCategory(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": wcBasicAuth(creds.consumerKey, creds.consumerSecret),
+      "Authorization": wcAuth(creds),
     },
     body: JSON.stringify(body),
   });
