@@ -111,6 +111,83 @@ export async function searchCategories(
   }));
 }
 
+export interface WooProductDetail {
+  id: number;
+  name: string;
+  status: string;
+  permalink: string;
+  editUrl: string;
+  description: string;
+  shortDescription: string;
+  meta: { key: string; value: unknown }[];
+}
+
+export async function getProduct(creds: WcCredentials, productId: number): Promise<WooProductDetail> {
+  const base = creds.storeUrl.replace(/\/$/, "");
+  const res = await fetch(`${base}/wp-json/wc/v3/products/${productId}`, {
+    headers: { "Authorization": wcAuth(creds) },
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`WooCommerce get product ${res.status}: ${text.slice(0, 200)}`);
+  }
+  const d = await res.json();
+  return {
+    id: d.id,
+    name: d.name,
+    status: d.status,
+    permalink: d.permalink,
+    editUrl: `${base}/wp-admin/post.php?post=${d.id}&action=edit`,
+    description: d.description ?? "",
+    shortDescription: d.short_description ?? "",
+    // Les champs ACF sont stockés en post meta : `champ` porte la valeur,
+    // `_champ` porte la field key ACF (field_xxx) — les deux sont requis à l'écriture.
+    meta: (d.meta_data ?? []).map((m: { key: string; value: unknown }) => ({ key: m.key, value: m.value })),
+  };
+}
+
+export interface WooProductUpdate {
+  name?: string;
+  status?: "draft" | "publish" | "pending" | "private";
+  description?: string;
+  shortDescription?: string;
+  meta?: { key: string; value: string }[];
+}
+
+export async function updateProduct(
+  creds: WcCredentials,
+  productId: number,
+  fields: WooProductUpdate
+): Promise<WooDraftProductResult> {
+  const base = creds.storeUrl.replace(/\/$/, "");
+  const body: Record<string, unknown> = {};
+  if (fields.name !== undefined) body.name = fields.name;
+  if (fields.status !== undefined) body.status = fields.status;
+  if (fields.description !== undefined) body.description = fields.description;
+  if (fields.shortDescription !== undefined) body.short_description = fields.shortDescription;
+  if (fields.meta?.length) body.meta_data = fields.meta;
+
+  if (Object.keys(body).length === 0) throw new Error("Aucun champ à mettre à jour");
+
+  const res = await fetch(`${base}/wp-json/wc/v3/products/${productId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "Authorization": wcAuth(creds) },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`WooCommerce update product ${res.status}: ${text.slice(0, 300)}`);
+  }
+  const data = await res.json();
+  return {
+    id: data.id,
+    permalink: data.permalink,
+    editUrl: `${base}/wp-admin/post.php?post=${data.id}&action=edit`,
+  };
+}
+
 export async function createDraftProduct(
   creds: WcCredentials,
   p: WooDraftProductParams

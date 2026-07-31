@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getSeoNewsDigest, formatDigestForPrompt } from "@/lib/seoNews";
 import { getValidAccessToken, listGscSites, getGscQueriesWithPages, getGscQueriesByTopics, getGscQueriesByPatterns, getGscSiteMetrics, GSC_INTENT_PATTERNS } from "@/lib/gscOAuth";
-import { createDraftProduct, createProductCategory, searchProducts, searchCategories } from "@/lib/woocommerce";
+import { createDraftProduct, createProductCategory, searchProducts, searchCategories, getProduct, updateProduct } from "@/lib/woocommerce";
 import { enqueueScript } from "@/lib/wpBridge";
 import { checkGeoVisibility } from "@/lib/geoVisibilityCheck";
 import { createDraftPost, createDraftPage } from "@/lib/wpPublish";
@@ -142,13 +142,17 @@ Règle générale impérative pour tous les outils : quand tu décides d'appeler
 Tu peux publier du contenu directement sur la boutique WooCommerce/WordPress connectée par l'utilisateur, via quatre outils dédiés — mais UNIQUEMENT quand l'utilisateur le demande explicitement ("publie cette fiche", "crée cet article sur mon site", "envoie ça sur WooCommerce"). N'appelle JAMAIS ces outils automatiquement juste après une génération de contenu — la publication, même en brouillon, est une action sur un site réel et doit toujours être une décision explicite. Reprends le contenu déjà généré dans la conversation plutôt que de le réécrire. Si l'utilisateur n'a pas encore connecté de boutique, indique-lui de connecter son WordPress depuis [la page Intégrations](/integrations) en 2 clics — pas besoin de clé API.
 
 - search_woocommerce : rechercher produits ou catégories existants dans la boutique (par nom → retourne ID, statut, URL édition)
+- get_woocommerce_product : lire une fiche produit existante (description + tous les champs ACF/Yoast avec leurs field keys)
+- update_woocommerce_product : mettre à jour une fiche produit existante (description, description courte, champs ACF/Yoast) via l'API REST
 - publish_product_to_woocommerce : fiche produit → WooCommerce (brouillon)
 - publish_category_to_woocommerce : page de catégorie produit → WooCommerce
 - publish_article_to_wordpress : article de blog → WordPress (brouillon)
 - publish_page_to_wordpress : page de contenu → WordPress (brouillon)
 - inject_wp_script : exécute un script JavaScript directement dans le navigateur de l'utilisateur sur une page WP Admin, via Mind Bridge
 
-Pour inject_wp_script : utilise cet outil dès que tu dois remplir des champs ACF, modifier des métadonnées, ou interagir avec l'interface WP Admin d'une façon qui n'est pas possible via l'API REST. RÈGLES ABSOLUES : (1) n'écris JAMAIS le script JS dans ton texte de réponse avant d'appeler l'outil — génère le script directement dans le paramètre "script" de l'outil. (2) Le paramètre "script" doit TOUJOURS contenir le code JavaScript complet et fonctionnel, jamais null ou vide. (3) Quand tu appelles l'outil, précise TOUJOURS dans ta réponse texte que l'utilisateur doit avoir Mind Bridge actif sur la PAGE EXACTE fournie dans target_url — pas sur une autre page WP Admin. Mind Bridge s'exécute sur la page où le bookmarklet a été cliqué ; si l'utilisateur n'est pas sur la bonne URL, le script ne fera rien. Dis-lui : "Assure-toi que Mind Bridge est actif sur cette page précise : [URL]. Si tu es sur une autre page, navigue d'abord vers cette URL puis clique sur le bookmarklet." Si l'utilisateur n'a pas encore configuré Mind Bridge, indique-lui d'aller sur [la page Intégrations](/integrations).
+Pour modifier une fiche produit existante, la voie NORMALE et fiable est l'API REST, jamais Mind Bridge. Procédure obligatoire en trois temps : (1) search_woocommerce pour retrouver l'ID du produit, (2) get_woocommerce_product avec cet ID pour relever la structure réelle des champs — sur beaucoup de thèmes le contenu visible n'est PAS dans la description WooCommerce mais dans des champs ACF, et get_woocommerce_product te donne leurs field keys, (3) update_woocommerce_product en réécrivant exactement les clés relevées. Règle ACF impérative : pour chaque champ ACF tu dois écrire DEUX entrées meta — la valeur (\`mon_champ\`) et la field key (\`_mon_champ\` = \`field_xxxxx\`) ; sans la field key, ACF n'affiche pas la valeur. Pour un répéteur, écris le compteur (\`repeteur\` = "4") puis chaque ligne indexée (\`repeteur_0_titre\`, \`repeteur_0_paragraphe\`, \`repeteur_1_titre\`…), chacune avec sa field key. Les valeurs de champs ACF texte long attendent du HTML (\`<p>\`, \`<strong>\`, \`<a href>\`), pas du markdown.
+
+Pour inject_wp_script : n'utilise cet outil qu'en DERNIER RECOURS, quand l'API REST ne peut objectivement pas faire le travail (interaction avec un écran WP Admin sans équivalent REST). Pour tout ce qui touche au contenu ou aux champs d'un produit, passe par update_woocommerce_product. RÈGLES ABSOLUES si tu l'utilises quand même : (1) n'écris JAMAIS le script JS dans ton texte de réponse avant d'appeler l'outil — génère le script directement dans le paramètre "script" de l'outil. (2) Le paramètre "script" doit TOUJOURS contenir le code JavaScript complet et fonctionnel, jamais null ou vide. (3) Quand tu appelles l'outil, précise TOUJOURS dans ta réponse texte que l'utilisateur doit avoir Mind Bridge actif sur la PAGE EXACTE fournie dans target_url — pas sur une autre page WP Admin. Mind Bridge s'exécute sur la page où le bookmarklet a été cliqué ; si l'utilisateur n'est pas sur la bonne URL, le script ne fera rien. Dis-lui : "Assure-toi que Mind Bridge est actif sur cette page précise : [URL]. Si tu es sur une autre page, navigue d'abord vers cette URL puis clique sur le bookmarklet." Si l'utilisateur n'a pas encore configuré Mind Bridge, indique-lui d'aller sur [la page Intégrations](/integrations).
 
 Pour search_woocommerce : utilise cet outil dès que l'utilisateur mentionne un produit ou une catégorie existante ("le produit Gingembre jeune", "la catégorie Épices", "retrouve ce produit dans ma boutique"). Tu peux l'appeler avant de publier pour vérifier si un produit existe déjà et éviter les doublons. Retourne toujours l'ID et l'URL d'édition WP Admin pour que l'utilisateur puisse accéder directement au produit.
 
@@ -288,6 +292,42 @@ const tools: Anthropic.Tool[] = [
         query: { type: "string", description: "Terme de recherche (nom du produit ou de la catégorie)" },
       },
       required: ["type", "query"],
+    },
+  },
+  {
+    name: "get_woocommerce_product",
+    description: "Lit une fiche produit WooCommerce existante par son ID : description, description courte, et TOUS les champs personnalisés (ACF, Yoast) avec leurs field keys. Appelle TOUJOURS cet outil avant update_woocommerce_product pour connaître la structure réelle des champs du thème — beaucoup de sites stockent le contenu visible dans des champs ACF et non dans la description WooCommerce.",
+    input_schema: {
+      type: "object",
+      properties: {
+        product_id: { type: "number", description: "ID numérique du produit WooCommerce" },
+      },
+      required: ["product_id"],
+    },
+  },
+  {
+    name: "update_woocommerce_product",
+    description: "Met à jour une fiche produit WooCommerce existante via l'API REST : description, description courte, et champs personnalisés ACF/Yoast. N'utilise cet outil QUE sur demande explicite de l'utilisateur. Appelle d'abord get_woocommerce_product pour connaître les clés de champs exactes.",
+    input_schema: {
+      type: "object",
+      properties: {
+        product_id: { type: "number", description: "ID numérique du produit à mettre à jour" },
+        description_html: { type: "string", description: "Nouvelle description longue en HTML. Omettre pour ne pas y toucher." },
+        short_description_html: { type: "string", description: "Nouvelle description courte en HTML. Omettre pour ne pas y toucher." },
+        meta: {
+          type: "array",
+          description: "Champs personnalisés à écrire. Pour un champ ACF, écris TOUJOURS la paire : {key:'mon_champ', value:'...'} ET {key:'_mon_champ', value:'field_xxxxx'} (la field key relevée via get_woocommerce_product). Pour un répéteur ACF, écris le compteur {key:'repeteur', value:'3'} puis les lignes indexées repeteur_0_sous_champ, repeteur_1_sous_champ, etc.",
+          items: {
+            type: "object",
+            properties: {
+              key: { type: "string" },
+              value: { type: "string" },
+            },
+            required: ["key", "value"],
+          },
+        },
+      },
+      required: ["product_id"],
     },
   },
   {
@@ -698,6 +738,78 @@ async function searchWoocommerce(p: { type: "products" | "categories"; query: st
     return lines.join("\n");
   } catch (e) {
     return `❌ Erreur recherche WooCommerce : ${e instanceof Error ? e.message : "erreur inconnue"}`;
+  }
+}
+
+function wcCredsFrom(conn: { storeUrl: string; wcConsumerKey: string; wcConsumerSecret: string; wpUsername: string; wpAppPassword: string }) {
+  return {
+    storeUrl: conn.storeUrl,
+    consumerKey: conn.wcConsumerKey || undefined,
+    consumerSecret: conn.wcConsumerSecret || undefined,
+    wpUsername: conn.wpUsername || undefined,
+    wpAppPassword: conn.wpAppPassword || undefined,
+  };
+}
+
+async function getWooProduct(productId: number, userId: string): Promise<string> {
+  const conn = await getWcConnection(userId);
+  if (!conn) return "❌ Aucune boutique WooCommerce connectée. [→ Connecter mon WordPress](/integrations)";
+  try {
+    const p = await getProduct(wcCredsFrom(conn), productId);
+    const fieldKeys = new Map<string, string>();
+    for (const m of p.meta) {
+      if (m.key.startsWith("_") && typeof m.value === "string" && m.value.startsWith("field_")) {
+        fieldKeys.set(m.key.slice(1), m.value);
+      }
+    }
+    const lines = [
+      `**${p.name}** (ID ${p.id}) — statut : ${p.status}`,
+      `[Éditer ↗](${p.editUrl})`,
+      ``,
+      `**description** (${p.description.length} car.) : ${p.description.slice(0, 400) || "_vide_"}`,
+      `**short_description** (${p.shortDescription.length} car.) : ${p.shortDescription.slice(0, 400) || "_vide_"}`,
+      ``,
+      `**Champs personnalisés :**`,
+    ];
+    for (const m of p.meta) {
+      if (m.key.startsWith("_") && fieldKeys.has(m.key.slice(1))) continue;
+      const val = typeof m.value === "string" ? m.value : JSON.stringify(m.value);
+      if (!val) continue;
+      const fk = fieldKeys.get(m.key);
+      lines.push(`- \`${m.key}\`${fk ? ` (ACF field key : \`${fk}\`)` : ""} = ${val.slice(0, 300)}`);
+    }
+    return lines.join("\n");
+  } catch (e) {
+    return `❌ Erreur lecture produit : ${e instanceof Error ? e.message : "erreur inconnue"}`;
+  }
+}
+
+interface UpdateProductParams {
+  product_id?: number;
+  description_html?: string;
+  short_description_html?: string;
+  meta?: { key: string; value: string }[];
+}
+
+async function updateWooProduct(p: UpdateProductParams, userId: string): Promise<string> {
+  const conn = await getWcConnection(userId);
+  if (!conn) return "❌ Aucune boutique WooCommerce connectée. [→ Connecter mon WordPress](/integrations)";
+  if (!p.product_id) return "❌ L'ID du produit est manquant. Utilise search_woocommerce pour le retrouver.";
+  try {
+    const result = await updateProduct(wcCredsFrom(conn), p.product_id, {
+      description: p.description_html,
+      shortDescription: p.short_description_html,
+      meta: p.meta,
+    });
+    const changed = [
+      p.description_html !== undefined ? "description longue" : null,
+      p.short_description_html !== undefined ? "description courte" : null,
+      p.meta?.length ? `${p.meta.length} champ(s) personnalisé(s)` : null,
+    ].filter(Boolean).join(", ");
+    return `✅ **Fiche produit mise à jour** sur ${conn.storeUrl}\n\n**Champs modifiés :** ${changed}\n\n[Voir la fiche ↗](${result.permalink}) · [Éditer dans WordPress ↗](${result.editUrl})`;
+  } catch (e) {
+    console.error("[assistant woo update] error:", e);
+    return `❌ Erreur mise à jour WooCommerce : ${e instanceof Error ? e.message : "erreur inconnue"}`;
   }
 }
 
@@ -1537,6 +1649,7 @@ const TERMINAL_TOOLS = new Set([
   "check_geo_visibility",
   "inject_wp_script",
   "publish_product_to_woocommerce",
+  "update_woocommerce_product",
   "publish_category_to_woocommerce",
   "publish_article_to_wordpress",
   "publish_page_to_wordpress",
@@ -1588,6 +1701,10 @@ async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: stri
     }
     case "search_woocommerce":
       return { terminal: false, result: await searchWoocommerce(toolUse.input as { type: "products" | "categories"; query: string }, userId ?? "") };
+    case "get_woocommerce_product":
+      return { terminal: false, result: await getWooProduct((toolUse.input as { product_id: number }).product_id, userId ?? "") };
+    case "update_woocommerce_product":
+      return { terminal: true, reply: await updateWooProduct(toolUse.input as UpdateProductParams, userId ?? "") };
     case "publish_product_to_woocommerce":
       return { terminal: true, reply: await publishProductToWoo(toolUse.input as PublishProductParams, userId ?? "") };
     case "publish_category_to_woocommerce":
@@ -1663,6 +1780,8 @@ const TOOL_LABELS: Record<string, string> = {
   check_geo_visibility: "Interrogation des LLMs (Perplexity & Gemini)…",
   inject_wp_script: "Envoi du script via Mind Bridge…",
   search_woocommerce: "Recherche dans la boutique WooCommerce…",
+  get_woocommerce_product: "Lecture de la fiche produit et de ses champs…",
+  update_woocommerce_product: "Mise à jour de la fiche produit sur WooCommerce…",
   publish_product_to_woocommerce: "Publication fiche produit sur WooCommerce…",
   publish_category_to_woocommerce: "Création catégorie sur WooCommerce…",
   publish_article_to_wordpress: "Publication article sur WordPress…",
