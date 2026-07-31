@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Playfair_Display } from "next/font/google";
 import NavUser from "@/app/components/NavUser";
+import MobileMenu from "@/app/components/MobileMenu";
 
 const playfair = Playfair_Display({
   subsets: ["latin"],
@@ -71,7 +72,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </nav>
 
               <div className="ml-auto flex items-center gap-2">
-                <Link href="/assistant" className="hidden sm:block">
+                <Link href="/assistant" className="hidden md:block">
                   <button className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-ink-soft transition-colors hover:bg-accent hover:text-ink">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-brand" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
@@ -81,6 +82,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   </button>
                 </Link>
                 <NavUser />
+                <MobileMenu />
               </div>
             </div>
           </header>
@@ -88,9 +90,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <main>{children}</main>
 
           {/* Footer */}
-          <footer className="mt-24 border-t border-hairline bg-muted/40">
-            <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-              <div className="grid gap-12 lg:grid-cols-[1.4fr_repeat(4,1fr)]">
+          <footer className="mt-16 border-t border-hairline bg-muted/40 sm:mt-24">
+            <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-16 lg:px-8">
+              <div className="grid gap-8 sm:gap-12 lg:grid-cols-[1.4fr_repeat(4,1fr)]">
 
                 {/* Brand bloc */}
                 <div className="max-w-sm">
@@ -139,7 +141,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 ))}
               </div>
 
-              <div className="mt-12 flex flex-col items-start justify-between gap-4 border-t border-hairline pt-6 text-xs text-ink-soft sm:flex-row sm:items-center">
+              <div className="mt-8 flex flex-col items-start justify-between gap-4 border-t border-hairline pt-6 text-xs text-ink-soft sm:mt-12 sm:flex-row sm:items-center">
                 <div>© {new Date().getFullYear()} Search Mind · Fait avec attention à Paris</div>
                 <div className="font-mono">v1.0.0 · beta</div>
               </div>

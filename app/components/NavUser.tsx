@@ -9,7 +9,7 @@ export default async function NavUser() {
     const initials = (user.email?.[0] ?? "U").toUpperCase();
     return (
       <div className="flex items-center gap-2">
-        <Link href="/dashboard" className="hidden sm:block">
+        <Link href="/dashboard" className="hidden md:block">
           <button className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-ink-soft transition-colors hover:bg-accent hover:text-ink">
             Mes audits
           </button>

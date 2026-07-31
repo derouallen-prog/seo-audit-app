@@ -321,7 +321,7 @@ function ExportBar({ content }: { content: string }) {
   }
 
   return (
-    <div className="mt-1.5 flex items-center gap-1.5 pl-1 opacity-0 group-hover:opacity-100 transition-opacity">
+    <div className="mt-1.5 flex items-center gap-1.5 pl-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
       <button
         onClick={copyText}
         title="Copier le texte"
@@ -818,7 +818,7 @@ function AssistantPageInner() {
           {/* Messages area */}
           <div
             ref={scrollAreaRef}
-            className="relative flex-1 space-y-6 overflow-y-auto px-5 py-6 sm:px-8"
+            className="relative flex-1 space-y-4 overflow-y-auto px-3 py-4 sm:space-y-6 sm:px-6 sm:py-6"
             onDragOver={onDragOver}
             onDragLeave={onDragLeave}
             onDrop={onDrop}
@@ -1029,7 +1029,8 @@ function AssistantPageInner() {
               </button>
             </div>
             <div className="mt-2 flex items-center justify-between text-xs text-ink-soft">
-              <span>Entrée pour envoyer · Maj+Entrée pour un retour à la ligne · Glisser-déposer pour joindre</span>
+              <span className="hidden sm:block">Entrée pour envoyer · Maj+Entrée pour un retour à la ligne · Glisser-déposer pour joindre</span>
+              <span className="sm:hidden">Maj+Entrée pour un retour à la ligne</span>
               <span className="font-mono hidden sm:block">mind-agent · Claude</span>
             </div>
           </form>
