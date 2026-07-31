@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect, useRef } from "react";
+import { Suspense, useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 
 interface ConnectionInfo {
@@ -38,6 +38,22 @@ function IntegrationsContent() {
   const [siteUrl, setSiteUrl] = useState("");
   const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [bridgeToken, setBridgeToken] = useState<string | null>(null);
+  const [bookmarkletUrl, setBookmarkletUrl] = useState<string>("");
+  const [bridgeCopied, setBridgeCopied] = useState(false);
+
+  const loadBridgeToken = useCallback(async () => {
+    try {
+      const res = await fetch("/api/wp/bridge-token");
+      if (!res.ok) return;
+      const data = await res.json() as { token: string };
+      setBridgeToken(data.token);
+      const bookmarklet = `javascript:(function(){var s=document.createElement('script');s.src='${window.location.origin}/mind-bridge.js?t=${encodeURIComponent(data.token)}';document.head.appendChild(s);})();`;
+      setBookmarkletUrl(bookmarklet);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   function showToast(type: "success" | "error", msg: string) {
     setToast({ type, msg });
@@ -54,7 +70,10 @@ function IntegrationsContent() {
 
     fetch("/api/wc/connection")
       .then((r) => r.json())
-      .then((data: ConnectionInfo) => setConn(data))
+      .then((data: ConnectionInfo) => {
+        setConn(data);
+        if (data.connected) loadBridgeToken();
+      })
       .catch(() => setConn({ connected: false }))
       .finally(() => setLoading(false));
 
@@ -224,6 +243,86 @@ function IntegrationsContent() {
             <span className="font-medium text-ink">WooCommerce inclus</span> — si votre site utilise WooCommerce, l&apos;assistant peut également créer des fiches produit et des catégories de produits en brouillon avec la même connexion.
           </div>
         </div>
+      )}
+
+      {/* Mind Bridge — shown only when WP is connected */}
+      {conn?.connected && (
+        <section className="mb-8">
+          <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-ink-soft">Exécution dans le navigateur</h2>
+          <div className="rounded-2xl border border-hairline bg-background p-6 shadow-sm">
+            <div className="flex items-start gap-4">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-hairline bg-brand/10 text-brand text-xl">
+                ⚡
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-ink">Mind Bridge</span>
+                  <span className="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">Bookmarklet</span>
+                </div>
+                <p className="mt-1 max-w-lg text-sm text-ink-soft">
+                  Permet à l&apos;assistant d&apos;exécuter des scripts JavaScript directement dans votre navigateur sur les pages WP Admin — pour remplir des champs ACF, modifier des métadonnées, et bien plus.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 border-t border-hairline pt-6">
+              <h3 className="mb-4 text-sm font-medium text-ink">Installation en 2 étapes</h3>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="flex gap-3 rounded-xl bg-accent/60 p-4">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold text-white">1</span>
+                  <div>
+                    <div className="text-xs font-semibold text-ink">Glissez le bouton dans vos favoris</div>
+                    <div className="mt-1 text-xs text-ink-soft">Faites glisser le bouton violet ci-dessous vers la barre de favoris de votre navigateur.</div>
+                  </div>
+                </div>
+                <div className="flex gap-3 rounded-xl bg-accent/60 p-4">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold text-white">2</span>
+                  <div>
+                    <div className="text-xs font-semibold text-ink">Cliquez dessus sur une page WP Admin</div>
+                    <div className="mt-1 text-xs text-ink-soft">Sur n&apos;importe quelle page de votre WordPress Admin, cliquez sur le favori — un badge violet apparaît en bas à droite.</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+                {bookmarkletUrl ? (
+                  <a
+                    href={bookmarkletUrl}
+                    className="inline-flex cursor-grab items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90 active:cursor-grabbing select-none"
+                    onClick={(e) => e.preventDefault()}
+                    draggable
+                  >
+                    <span>⚡</span>
+                    Mind Bridge
+                  </a>
+                ) : (
+                  <div className="h-10 w-36 animate-pulse rounded-xl bg-accent" />
+                )}
+                <span className="text-xs text-ink-soft">← Glissez ce bouton vers votre barre de favoris</span>
+              </div>
+
+              {bridgeToken && (
+                <div className="mt-4">
+                  <button
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(bookmarkletUrl);
+                      setBridgeCopied(true);
+                      setTimeout(() => setBridgeCopied(false), 2000);
+                    }}
+                    className="text-xs text-ink-soft underline underline-offset-2 hover:text-ink transition-colors"
+                  >
+                    {bridgeCopied ? "✓ Copié !" : "Ou copier le code du bookmarklet"}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 flex items-start gap-2 rounded-xl bg-accent/40 p-3 text-xs text-ink-soft">
+              <span className="mt-0.5">ℹ️</span>
+              <span>Mind Bridge ne fonctionne que sur les pages où vous l&apos;avez activé. Il s&apos;exécute dans votre navigateur, en utilisant votre session WP Admin — aucun accès supplémentaire n&apos;est accordé.</span>
+            </div>
+          </div>
+        </section>
       )}
 
       {/* Coming soon */}

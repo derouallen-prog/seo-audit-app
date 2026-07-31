@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { getSeoNewsDigest, formatDigestForPrompt } from "@/lib/seoNews";
 import { getValidAccessToken, listGscSites, getGscQueriesWithPages, getGscQueriesByTopics, getGscQueriesByPatterns, getGscSiteMetrics, GSC_INTENT_PATTERNS } from "@/lib/gscOAuth";
 import { createDraftProduct, createProductCategory, searchProducts, searchCategories } from "@/lib/woocommerce";
+import { enqueueScript } from "@/lib/wpBridge";
 import { checkGeoVisibility } from "@/lib/geoVisibilityCheck";
 import { createDraftPost, createDraftPage } from "@/lib/wpPublish";
 import { getWcConnection } from "@/lib/wcConnections";
@@ -145,6 +146,9 @@ Tu peux publier du contenu directement sur la boutique WooCommerce/WordPress con
 - publish_category_to_woocommerce : page de catégorie produit → WooCommerce
 - publish_article_to_wordpress : article de blog → WordPress (brouillon)
 - publish_page_to_wordpress : page de contenu → WordPress (brouillon)
+- inject_wp_script : exécute un script JavaScript directement dans le navigateur de l'utilisateur sur une page WP Admin, via Mind Bridge
+
+Pour inject_wp_script : utilise cet outil dès que tu dois remplir des champs ACF, modifier des métadonnées, ou interagir avec l'interface WP Admin d'une façon qui n'est pas possible via l'API REST. Génère le script JavaScript complet (en une seule expression ou IIFE), puis appelle l'outil — il sera transmis automatiquement au navigateur si Mind Bridge est actif. Si l'utilisateur n'a pas encore configuré Mind Bridge, indique-lui d'aller sur [la page Intégrations](/integrations) pour installer le bookmarklet en 30 secondes.
 
 Pour search_woocommerce : utilise cet outil dès que l'utilisateur mentionne un produit ou une catégorie existante ("le produit Gingembre jeune", "la catégorie Épices", "retrouve ce produit dans ma boutique"). Tu peux l'appeler avant de publier pour vérifier si un produit existe déjà et éviter les doublons. Retourne toujours l'ID et l'URL d'édition WP Admin pour que l'utilisateur puisse accéder directement au produit.
 
@@ -454,6 +458,19 @@ const tools: Anthropic.Tool[] = [
         pages_number: { type: "number", description: "Profondeur d'analyse : pages de résultats à scanner. Défaut : 3" },
       },
       required: ["domain"],
+    },
+  },
+  {
+    name: "inject_wp_script",
+    description: "Injecte et exécute un script JavaScript directement dans le navigateur de l'utilisateur sur une page WordPress Admin, via Mind Bridge (bookmarklet). Utilise cet outil quand tu as généré un script ACF ou WP Admin à exécuter — il sera transmis automatiquement au navigateur si Mind Bridge est actif. L'utilisateur doit avoir activé Mind Bridge sur la page WP Admin cible avant l'exécution.",
+    input_schema: {
+      type: "object",
+      properties: {
+        script: { type: "string", description: "Le code JavaScript complet à exécuter sur la page WP Admin" },
+        description: { type: "string", description: "Description courte de ce que fait le script (affichée dans le badge Mind Bridge)" },
+        target_url: { type: "string", description: "URL de la page WP Admin où exécuter le script (ex: https://site.com/wp-admin/post.php?post=123&action=edit). Optionnel mais recommandé." },
+      },
+      required: ["script", "description"],
     },
   },
   {
@@ -1518,6 +1535,7 @@ const TERMINAL_TOOLS = new Set([
   "generate_strategy_action_plan",
   "reddit_research",
   "check_geo_visibility",
+  "inject_wp_script",
   "publish_product_to_woocommerce",
   "publish_category_to_woocommerce",
   "publish_article_to_wordpress",
@@ -1545,6 +1563,24 @@ async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: stri
         return { terminal: true, reply: await checkGeoVisibility(p) };
       } catch (e) {
         return { terminal: true, reply: `❌ Erreur lors de la vérification GEO : ${e instanceof Error ? e.message : "erreur inconnue"}` };
+      }
+    }
+    case "inject_wp_script": {
+      const p = toolUse.input as { script: string; description: string; target_url?: string };
+      if (!userId) {
+        return { terminal: true, reply: "❌ Vous devez être connecté pour utiliser Mind Bridge." };
+      }
+      try {
+        await enqueueScript(userId, p.script, p.description, p.target_url);
+        const targetMsg = p.target_url
+          ? `\n\n**Page cible :** [${p.target_url}](${p.target_url})`
+          : "";
+        return {
+          terminal: true,
+          reply: `✅ **Script envoyé via Mind Bridge**\n\n**Action :** ${p.description}\n\nSi Mind Bridge est actif sur la page WP Admin, le script va s'exécuter automatiquement dans les 2 secondes.${targetMsg}\n\n> Si Mind Bridge n'est pas encore actif, cliquez sur votre bookmarklet "Mind Bridge" dans la barre de favoris, puis ouvrez la page WP Admin cible. Le script s'exécutera dès la connexion établie.`,
+        };
+      } catch (e) {
+        return { terminal: true, reply: `❌ Erreur Mind Bridge : ${e instanceof Error ? e.message : "erreur inconnue"}` };
       }
     }
     case "search_woocommerce":
@@ -1622,6 +1658,7 @@ const TOOL_LABELS: Record<string, string> = {
   generate_strategy_action_plan: "Élaboration du plan stratégique…",
   reddit_research: "Recherche Reddit en cours…",
   check_geo_visibility: "Interrogation des LLMs (Perplexity & Gemini)…",
+  inject_wp_script: "Envoi du script via Mind Bridge…",
   search_woocommerce: "Recherche dans la boutique WooCommerce…",
   publish_product_to_woocommerce: "Publication fiche produit sur WooCommerce…",
   publish_category_to_woocommerce: "Création catégorie sur WooCommerce…",
