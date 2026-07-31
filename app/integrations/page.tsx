@@ -67,8 +67,8 @@ function IntegrationsContent() {
         + `b.style="position:fixed;bottom:20px;right:20px;z-index:2147483647;background:#7c3aed;color:#fff;border-radius:12px;padding:8px 14px;font-size:13px;font-family:system-ui;display:flex;align-items:center;gap:8px;box-shadow:0 4px 20px rgba(0,0,0,.3)";`
         + `b.innerHTML='<span id="__mb_d" style="width:8px;height:8px;border-radius:50%;background:#4ade80;flex-shrink:0"></span><span id="__mb_l">Mind Bridge actif</span><span style="margin-left:6px;cursor:pointer;opacity:.7;font-size:17px" onclick="clearInterval(window.__mbI);this.parentNode.remove();window.__mbA=0">×</span>';`
         + `document.body.appendChild(b);`
-        + `function upd(ok){var d=document.getElementById("__mb_d"),l=document.getElementById("__mb_l");if(d)d.style.background=ok===null?"#facc15":ok?"#4ade80":"#f87171";if(l)l.textContent=ok===null?"Exécution…":"Mind Bridge actif";}`
-        + `function ex(s){upd(null);var ok=true,res="ok";try{eval(s.script);}catch(e){ok=false;res=String(e);}fetch(a+"/api/wp/bridge",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:t,id:s.id,success:ok,result:res})}).catch(function(){});setTimeout(function(){upd(ok);},1200);}`
+        + `function upd(ok,msg){var d=document.getElementById("__mb_d"),l=document.getElementById("__mb_l");if(d)d.style.background=ok===null?"#facc15":ok?"#4ade80":"#f87171";if(l)l.textContent=msg||(ok===null?"Exécution…":"Mind Bridge actif");}`
+        + `function ex(s){upd(null);var ok=true,res="ok";try{eval(s.script);}catch(e){ok=false;res=String(e);}fetch(a+"/api/wp/bridge",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:t,id:s.id,success:ok,result:res})}).catch(function(){});upd(ok,ok?"✓ Script exécuté":"✗ "+res.slice(0,60));setTimeout(function(){upd(true,"Mind Bridge actif");},6000);}`
         + `window.__mbI=setInterval(function(){fetch(a+"/api/wp/bridge?token="+encodeURIComponent(t)).then(function(r){return r.json();}).then(function(data){(data.scripts||[]).forEach(ex);}).catch(function(){});},2000);`
         + `})();`;
       const bookmarklet = "javascript:" + code;
