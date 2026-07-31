@@ -41,6 +41,13 @@ function IntegrationsContent() {
   const [bridgeToken, setBridgeToken] = useState<string | null>(null);
   const [bookmarkletUrl, setBookmarkletUrl] = useState<string>("");
   const [bridgeCopied, setBridgeCopied] = useState(false);
+  const bookmarkletRef = useRef<HTMLAnchorElement>(null);
+
+  useEffect(() => {
+    if (bookmarkletRef.current && bookmarkletUrl) {
+      bookmarkletRef.current.setAttribute("href", bookmarkletUrl);
+    }
+  }, [bookmarkletUrl]);
 
   const loadBridgeToken = useCallback(async () => {
     try {
@@ -287,7 +294,7 @@ function IntegrationsContent() {
               <div className="mt-5 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
                 {bookmarkletUrl ? (
                   <a
-                    href={bookmarkletUrl}
+                    ref={bookmarkletRef}
                     className="inline-flex cursor-grab items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90 active:cursor-grabbing select-none"
                     onClick={(e) => e.preventDefault()}
                     draggable
