@@ -58,6 +58,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   { href: "/", label: "Audit" },
                   { href: "/assistant", label: "Assistant" },
                   { href: "/citations", label: "Citations IA" },
+                  { href: "/dashboard", label: "Mes audits" },
                   { href: "/tarifs", label: "Tarifs" },
                   { href: "/integrations", label: "Intégrations" },
                 ].map(({ href, label }) => (
@@ -101,44 +102,65 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     L&apos;observatoire SEO qui traduit vos données en actions. Audit, Core Web Vitals, mots-clés, backlinks et un assistant IA — dans une seule interface.
                   </p>
                   <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-hairline bg-background px-3 py-1.5 text-xs text-ink-soft">
-                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-good" />
-                    Tous les systèmes opérationnels
+                    <span className="h-1.5 w-1.5 rounded-full bg-good" />
+                    Bêta publique
                   </div>
                 </div>
 
                 {/* Colonnes liens */}
-                {[
-                  {
-                    title: "Produit",
-                    links: ["Audit SEO", "Core Web Vitals", "Mots-clés", "Backlinks", "Assistant IA"],
-                  },
-                  {
-                    title: "Ressources",
-                    links: ["Documentation", "Guides SEO", "Changelog", "Statut", "API"],
-                  },
-                  {
-                    title: "Entreprise",
-                    links: ["À propos", "Blog", "Clients", "Tarifs", "Contact"],
-                  },
-                  {
-                    title: "Légal",
-                    links: ["Confidentialité", "CGU", "Mentions légales", "DPA", "Sécurité"],
-                  },
-                ].map(({ title, links }) => (
-                  <div key={title}>
-                    <div className="text-xs font-semibold uppercase tracking-wider text-ink">{title}</div>
-                    <ul className="mt-4 space-y-2.5">
-                      {links.map((l) => (
-                        <li key={l}>
-                          <a
-                            href={l === "Tarifs" ? "/tarifs" : "#"}
-                            className="text-sm text-ink-soft transition-colors hover:text-brand"
-                          >{l}</a>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wider text-ink">Produit</div>
+                  <ul className="mt-4 space-y-2.5">
+                    {[
+                      { label: "Audit SEO", href: "/" },
+                      { label: "Assistant IA", href: "/assistant" },
+                      { label: "Citations IA", href: "/citations" },
+                      { label: "Intégrations", href: "/integrations" },
+                      { label: "Tarifs", href: "/tarifs" },
+                    ].map(({ label, href }) => (
+                      <li key={label}>
+                        <Link href={href} className="text-sm text-ink-soft transition-colors hover:text-brand">{label}</Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wider text-ink">Ressources</div>
+                  <ul className="mt-4 space-y-2.5">
+                    {["Documentation", "Guides SEO", "Changelog", "API"].map((l) => (
+                      <li key={l}>
+                        <span className="text-sm text-ink-soft/50 cursor-default" title="Bientôt disponible">{l}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wider text-ink">Entreprise</div>
+                  <ul className="mt-4 space-y-2.5">
+                    {["À propos", "Blog", "Contact"].map((l) => (
+                      <li key={l}>
+                        <span className="text-sm text-ink-soft/50 cursor-default" title="Bientôt disponible">{l}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wider text-ink">Légal</div>
+                  <ul className="mt-4 space-y-2.5">
+                    {[
+                      { label: "Confidentialité", href: "/legal/confidentialite" },
+                      { label: "CGU", href: "/legal/cgu" },
+                      { label: "Mentions légales", href: "/legal/mentions" },
+                    ].map(({ label, href }) => (
+                      <li key={label}>
+                        <Link href={href} className="text-sm text-ink-soft transition-colors hover:text-brand">{label}</Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </div>
 
               <div className="mt-8 flex flex-col items-start justify-between gap-4 border-t border-hairline pt-6 text-xs text-ink-soft sm:mt-12 sm:flex-row sm:items-center">

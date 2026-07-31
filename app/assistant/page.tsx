@@ -372,6 +372,7 @@ function AssistantPageInner() {
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isAnonymous, setIsAnonymous] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -584,7 +585,10 @@ function AssistantPageInner() {
       if (sid) {
         setSessionId(sid);
         sessionIdRef.current = sid;
+        setIsAnonymous(false);
         router.replace(`/assistant?session=${sid}` + (auditId ? `&auditId=${auditId}` : ""));
+      } else {
+        setIsAnonymous(true);
       }
     }
 
@@ -954,6 +958,16 @@ function AssistantPageInner() {
             {error && <p className="text-sm text-red-600 pl-11">{error}</p>}
             <div ref={bottomRef} />
           </div>
+
+          {/* Anonymous session banner */}
+          {isAnonymous && (
+            <div className="mx-4 mb-0 mt-2 flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
+              <span>Conversation non sauvegardée — connectez-vous pour conserver votre historique.</span>
+              <a href="/auth" className="shrink-0 font-medium text-amber-900 underline hover:text-amber-700">
+                Se connecter
+              </a>
+            </div>
+          )}
 
           {/* Input form */}
           <form

@@ -298,6 +298,7 @@ export default function CitationsPage() {
   const [results, setResults] = useState<ResultsData | null>(null);
   const [prompts, setPrompts] = useState<PromptSet[]>([]);
   const [loading, setLoading] = useState(true);
+  const [notLoggedIn, setNotLoggedIn] = useState(false);
   const [days, setDays] = useState(30);
   const [language, setLanguage] = useState<string>("");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
@@ -325,6 +326,7 @@ export default function CitationsPage() {
         fetch("/api/citations/prompts"),
         fetch(`/api/citations/results?days=${days}${lang}`),
       ]);
+      if (pRes.status === 401 || rRes.status === 401) { setNotLoggedIn(true); return; }
       if (pRes.ok) { const d = await pRes.json() as { prompts: PromptSet[] }; setPrompts(d.prompts ?? []); }
       if (rRes.ok) { const d = await rRes.json() as ResultsData; setResults(d); }
     } finally { setLoading(false); }
@@ -427,6 +429,33 @@ export default function CitationsPage() {
   const availableLanguages = results?.languages ?? [];
   const activePlatforms = PLATFORMS.filter(p => results?.citationShare[p] || results?.mentionShare[p]);
 
+  if (notLoggedIn) {
+    return (
+      <div className="flex min-h-[calc(100dvh-4rem)] items-center justify-center px-4 py-16">
+        <div className="w-full max-w-sm text-center">
+          <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-brand/10">
+            <svg className="h-7 w-7 text-brand" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V20c0 1 0 1 1 1z"/>
+              <path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3c0 1 0 1 1 1z"/>
+            </svg>
+          </div>
+          <h1 className="font-display text-2xl text-ink mb-2">Citations IA</h1>
+          <p className="text-sm text-ink-soft mb-6">Connectez-vous pour configurer vos prompts et suivre votre visibilité sur les moteurs IA.</p>
+          <a
+            href="/auth"
+            className="inline-flex items-center gap-2 rounded-xl bg-brand px-6 py-2.5 text-sm font-medium text-white hover:bg-brand-dark transition shadow glow-brand"
+          >
+            Se connecter
+          </a>
+          <p className="mt-4 text-xs text-ink-soft">
+            Pas encore de compte ?{" "}
+            <a href="/auth" className="text-brand hover:underline">Créer un compte gratuit</a>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
 
@@ -434,7 +463,7 @@ export default function CitationsPage() {
       <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="font-display text-3xl text-ink">Visibilité IA</h1>
-          <p className="mt-1 text-sm text-ink-soft">Mentions et citations de votre marque sur Perplexity, Claude et Gemini.</p>
+          <p className="mt-1 text-sm text-ink-soft">Mentions et citations de votre marque sur Perplexity, Claude, Gemini, ChatGPT et Copilot.</p>
         </div>
         <button onClick={() => setTab("setup")}
           className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark transition">
