@@ -46,6 +46,71 @@ function wcAuth(creds: WcCredentials): string {
   throw new Error("WooCommerce : aucune méthode d'authentification configurée");
 }
 
+export interface WooSearchResult {
+  id: number;
+  name: string;
+  slug: string;
+  status: string;
+  permalink?: string;
+  editUrl: string;
+  price?: string;
+  sku?: string;
+}
+
+export async function searchProducts(
+  creds: WcCredentials,
+  query: string,
+  perPage = 10
+): Promise<WooSearchResult[]> {
+  const base = creds.storeUrl.replace(/\/$/, "");
+  const params = new URLSearchParams({ search: query, per_page: String(perPage), status: "any" });
+  const res = await fetch(`${base}/wp-json/wc/v3/products?${params}`, {
+    headers: { "Authorization": wcAuth(creds) },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`WooCommerce search products ${res.status}: ${text.slice(0, 200)}`);
+  }
+  const data = await res.json() as { id: number; name: string; slug: string; status: string; permalink: string; price: string; sku: string }[];
+  return data.map(p => ({
+    id: p.id,
+    name: p.name,
+    slug: p.slug,
+    status: p.status,
+    permalink: p.permalink,
+    editUrl: `${base}/wp-admin/post.php?post=${p.id}&action=edit`,
+    price: p.price,
+    sku: p.sku,
+  }));
+}
+
+export async function searchCategories(
+  creds: WcCredentials,
+  query: string,
+  perPage = 10
+): Promise<WooSearchResult[]> {
+  const base = creds.storeUrl.replace(/\/$/, "");
+  const params = new URLSearchParams({ search: query, per_page: String(perPage) });
+  const res = await fetch(`${base}/wp-json/wc/v3/products/categories?${params}`, {
+    headers: { "Authorization": wcAuth(creds) },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`WooCommerce search categories ${res.status}: ${text.slice(0, 200)}`);
+  }
+  const data = await res.json() as { id: number; name: string; slug: string; count: number; link: string }[];
+  return data.map(c => ({
+    id: c.id,
+    name: c.name,
+    slug: c.slug,
+    status: `${c.count} produit(s)`,
+    permalink: c.link,
+    editUrl: `${base}/wp-admin/term.php?taxonomy=product_cat&tag_ID=${c.id}`,
+  }));
+}
+
 export async function createDraftProduct(
   creds: WcCredentials,
   p: WooDraftProductParams

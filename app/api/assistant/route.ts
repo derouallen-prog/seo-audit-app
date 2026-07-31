@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getSeoNewsDigest, formatDigestForPrompt } from "@/lib/seoNews";
 import { getValidAccessToken, listGscSites, getGscQueriesWithPages, getGscQueriesByTopics, getGscQueriesByPatterns, getGscSiteMetrics, GSC_INTENT_PATTERNS } from "@/lib/gscOAuth";
-import { createDraftProduct, createProductCategory } from "@/lib/woocommerce";
+import { createDraftProduct, createProductCategory, searchProducts, searchCategories } from "@/lib/woocommerce";
 import { checkGeoVisibility } from "@/lib/geoVisibilityCheck";
 import { createDraftPost, createDraftPage } from "@/lib/wpPublish";
 import { getWcConnection } from "@/lib/wcConnections";
@@ -140,10 +140,13 @@ Règle générale impérative pour tous les outils : quand tu décides d'appeler
 
 Tu peux publier du contenu directement sur la boutique WooCommerce/WordPress connectée par l'utilisateur, via quatre outils dédiés — mais UNIQUEMENT quand l'utilisateur le demande explicitement ("publie cette fiche", "crée cet article sur mon site", "envoie ça sur WooCommerce"). N'appelle JAMAIS ces outils automatiquement juste après une génération de contenu — la publication, même en brouillon, est une action sur un site réel et doit toujours être une décision explicite. Reprends le contenu déjà généré dans la conversation plutôt que de le réécrire. Si l'utilisateur n'a pas encore connecté de boutique, indique-lui de connecter son WordPress depuis [la page Intégrations](/integrations) en 2 clics — pas besoin de clé API.
 
+- search_woocommerce : rechercher produits ou catégories existants dans la boutique (par nom → retourne ID, statut, URL édition)
 - publish_product_to_woocommerce : fiche produit → WooCommerce (brouillon)
 - publish_category_to_woocommerce : page de catégorie produit → WooCommerce
 - publish_article_to_wordpress : article de blog → WordPress (brouillon)
 - publish_page_to_wordpress : page de contenu → WordPress (brouillon)
+
+Pour search_woocommerce : utilise cet outil dès que l'utilisateur mentionne un produit ou une catégorie existante ("le produit Gingembre jeune", "la catégorie Épices", "retrouve ce produit dans ma boutique"). Tu peux l'appeler avant de publier pour vérifier si un produit existe déjà et éviter les doublons. Retourne toujours l'ID et l'URL d'édition WP Admin pour que l'utilisateur puisse accéder directement au produit.
 
 Si l'utilisateur a connecté sa Google Search Console et demande des données réelles sur un domaine (mots-clés positionnés, requêtes longue traîne, performances de recherche, clics, impressions, position), utilise immédiatement l'outil get_search_console_data avec le domaine mentionné, sans poser de questions de clarification au préalable — l'outil te dira lui-même si le domaine n'est pas accessible. N'utilise PAS cet outil si l'utilisateur n'a pas mentionné de domaine précis ou ne demande pas de données chiffrées issues de la Search Console.
 
@@ -269,6 +272,18 @@ const tools: Anthropic.Tool[] = [
         jours: { type: "number", description: "Période en jours à analyser (par défaut 28). Ignoré si mois est fourni." },
       },
       required: ["domaine"],
+    },
+  },
+  {
+    name: "search_woocommerce",
+    description: "Recherche des produits ou des catégories existants dans la boutique WooCommerce connectée par l'utilisateur, par nom. Utilise cet outil dès que l'utilisateur mentionne un produit ou une catégorie existante et a besoin de son ID, de son URL d'édition, ou de confirmer qu'il existe. Retourne l'ID, le nom, le statut et l'URL d'édition WP Admin.",
+    input_schema: {
+      type: "object",
+      properties: {
+        type: { type: "string", enum: ["products", "categories"], description: "Type de recherche : 'products' pour les fiches produit, 'categories' pour les catégories WooCommerce" },
+        query: { type: "string", description: "Terme de recherche (nom du produit ou de la catégorie)" },
+      },
+      required: ["type", "query"],
     },
   },
   {
@@ -635,6 +650,38 @@ interface PublishWpContentParams {
   extrait?: string;
   title_seo?: string;
   meta_description?: string;
+}
+
+async function searchWoocommerce(p: { type: "products" | "categories"; query: string }, userId: string): Promise<string> {
+  const conn = await getWcConnection(userId);
+  if (!conn) {
+    return "❌ Aucune boutique WooCommerce connectée. [→ Connecter mon WordPress](/integrations)";
+  }
+  const creds = {
+    storeUrl: conn.storeUrl,
+    consumerKey: conn.wcConsumerKey || undefined,
+    consumerSecret: conn.wcConsumerSecret || undefined,
+    wpUsername: conn.wpUsername || undefined,
+    wpAppPassword: conn.wpAppPassword || undefined,
+  };
+  try {
+    const results = p.type === "products"
+      ? await searchProducts(creds, p.query)
+      : await searchCategories(creds, p.query);
+
+    if (results.length === 0) {
+      return `Aucun(e) ${p.type === "products" ? "produit" : "catégorie"} trouvé(e) pour "${p.query}" dans la boutique **${conn.storeUrl}**.`;
+    }
+
+    const label = p.type === "products" ? "Produits" : "Catégories";
+    const lines = [`**${label} trouvé(s) pour "${p.query}" dans ${conn.storeUrl} :**\n`];
+    for (const r of results) {
+      lines.push(`- **${r.name}** (ID: ${r.id}) — statut: ${r.status}${r.sku ? ` · SKU: ${r.sku}` : ""} — [Éditer ↗](${r.editUrl})`);
+    }
+    return lines.join("\n");
+  } catch (e) {
+    return `❌ Erreur recherche WooCommerce : ${e instanceof Error ? e.message : "erreur inconnue"}`;
+  }
 }
 
 async function publishProductToWoo(p: PublishProductParams, userId: string): Promise<string> {
@@ -1500,6 +1547,8 @@ async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: stri
         return { terminal: true, reply: `❌ Erreur lors de la vérification GEO : ${e instanceof Error ? e.message : "erreur inconnue"}` };
       }
     }
+    case "search_woocommerce":
+      return { terminal: false, result: await searchWoocommerce(toolUse.input as { type: "products" | "categories"; query: string }, userId ?? "") };
     case "publish_product_to_woocommerce":
       return { terminal: true, reply: await publishProductToWoo(toolUse.input as PublishProductParams, userId ?? "") };
     case "publish_category_to_woocommerce":
@@ -1573,6 +1622,7 @@ const TOOL_LABELS: Record<string, string> = {
   generate_strategy_action_plan: "Élaboration du plan stratégique…",
   reddit_research: "Recherche Reddit en cours…",
   check_geo_visibility: "Interrogation des LLMs (Perplexity & Gemini)…",
+  search_woocommerce: "Recherche dans la boutique WooCommerce…",
   publish_product_to_woocommerce: "Publication fiche produit sur WooCommerce…",
   publish_category_to_woocommerce: "Création catégorie sur WooCommerce…",
   publish_article_to_wordpress: "Publication article sur WordPress…",
