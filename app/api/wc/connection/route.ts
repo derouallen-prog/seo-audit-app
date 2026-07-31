@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/supabaseServer";
-import { getWcConnection, saveWcConnection, deleteWcConnection, saveSiteProfile } from "@/lib/wcConnections";
+import { getWcConnections, saveWcConnection, deleteWcConnection, setDefaultWcConnection, saveSiteProfile } from "@/lib/wcConnections";
 import { analyzeSiteProfile } from "@/lib/wcSiteProfile";
 
 export const dynamic = "force-dynamic";
@@ -9,13 +9,17 @@ export async function GET() {
   const user = await getAuthUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const conn = await getWcConnection(user.id);
-  if (!conn) return NextResponse.json({ connected: false });
-
+  const connections = await getWcConnections(user.id);
   return NextResponse.json({
-    connected: true,
-    storeUrl: conn.storeUrl,
-    wpUsername: conn.wpUsername,
+    connected: connections.length > 0,
+    connections: connections.map((c) => ({
+      id: c.id,
+      storeUrl: c.storeUrl,
+      label: c.label,
+      isDefault: c.isDefault,
+      wpUsername: c.wpUsername,
+      hasProfile: !!c.siteProfile,
+    })),
   });
 }
 
@@ -29,6 +33,7 @@ export async function POST(req: NextRequest) {
     wcConsumerSecret?: string;
     wpUsername?: string;
     wpAppPassword?: string;
+    label?: string;
   };
 
   try {
@@ -37,13 +42,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Corps invalide" }, { status: 400 });
   }
 
-  const { storeUrl, wcConsumerKey, wcConsumerSecret, wpUsername, wpAppPassword } = body;
+  const { storeUrl, wcConsumerKey, wcConsumerSecret, wpUsername, wpAppPassword, label } = body;
 
   if (!storeUrl || !wcConsumerKey || !wcConsumerSecret || !wpUsername || !wpAppPassword) {
     return NextResponse.json({ error: "Tous les champs sont requis" }, { status: 400 });
   }
 
-  // Valider que l'URL est bien un site WP accessible
   try {
     const url = new URL(storeUrl.startsWith("http") ? storeUrl : `https://${storeUrl}`);
     if (!["http:", "https:"].includes(url.protocol)) {
@@ -57,19 +61,21 @@ export async function POST(req: NextRequest) {
   try {
     await saveWcConnection(user.id, {
       storeUrl: canonicalUrl,
+      label,
       wcConsumerKey,
       wcConsumerSecret,
       wpUsername,
       wpAppPassword,
     });
-    // Analyse de la structure du site en arrière-plan (sans bloquer la réponse)
+
+    // Analyse structure en arrière-plan
     analyzeSiteProfile({
       storeUrl: canonicalUrl,
       consumerKey: wcConsumerKey || undefined,
       consumerSecret: wcConsumerSecret || undefined,
       wpUsername: wpUsername || undefined,
       wpAppPassword: wpAppPassword || undefined,
-    }).then((profile) => saveSiteProfile(user.id, profile)).catch(console.error);
+    }).then((profile) => saveSiteProfile(user.id, profile, canonicalUrl)).catch(console.error);
 
     return NextResponse.json({ ok: true });
   } catch (e) {
@@ -77,10 +83,24 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(req: NextRequest) {
   const user = await getAuthUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  await deleteWcConnection(user.id);
+  const { searchParams } = new URL(req.url);
+  const connectionId = searchParams.get("id") ?? undefined;
+
+  await deleteWcConnection(user.id, connectionId);
+  return NextResponse.json({ ok: true });
+}
+
+export async function PATCH(req: NextRequest) {
+  const user = await getAuthUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { id } = await req.json() as { id?: string };
+  if (!id) return NextResponse.json({ error: "ID manquant" }, { status: 400 });
+
+  await setDefaultWcConnection(user.id, id);
   return NextResponse.json({ ok: true });
 }

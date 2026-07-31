@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
       storeUrl: siteUrl,
       wpUsername: userLogin,
       wpAppPassword: password,
-    }).then((profile) => saveSiteProfile(user.id, profile)).catch(console.error);
+    }).then((profile) => saveSiteProfile(user.id, profile, siteUrl)).catch(console.error);
 
     return NextResponse.redirect(new URL("/integrations?connected=true", req.nextUrl.origin));
   } catch (e) {

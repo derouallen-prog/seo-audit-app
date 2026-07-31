@@ -3,10 +3,18 @@
 import { Suspense, useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 
-interface ConnectionInfo {
-  connected: boolean;
-  storeUrl?: string;
+interface SiteConnection {
+  id: string;
+  storeUrl: string;
+  label?: string;
+  isDefault: boolean;
   wpUsername?: string;
+  hasProfile: boolean;
+}
+
+interface ConnectionsResponse {
+  connected: boolean;
+  connections: SiteConnection[];
 }
 
 function WordPressLogo() {
@@ -31,10 +39,27 @@ const COMING_SOON = [
   { name: "Wix", color: "#FAAD00", icon: "Wix", desc: "Sites Wix" },
 ];
 
+function IconRefresh({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" />
+    </svg>
+  );
+}
+
+function IconSpin({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="10" strokeOpacity=".25" /><path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function IntegrationsContent() {
   const searchParams = useSearchParams();
-  const [conn, setConn] = useState<ConnectionInfo | null>(null);
+  const [connections, setConnections] = useState<SiteConnection[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showAddForm, setShowAddForm] = useState(false);
   const [siteUrl, setSiteUrl] = useState("");
   const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -42,8 +67,10 @@ function IntegrationsContent() {
   const [bookmarkletUrl, setBookmarkletUrl] = useState<string>("");
   const [bridgeCopied, setBridgeCopied] = useState(false);
   const bookmarkletRef = useRef<HTMLAnchorElement>(null);
-  const [scanning, setScanning] = useState(false);
-  const [scanDone, setScanDone] = useState(false);
+  const [scanningId, setScanningId] = useState<string | null>(null);
+  const [scannedIds, setScannedIds] = useState<Set<string>>(new Set());
+
+  const hasConnections = connections.length > 0;
 
   useEffect(() => {
     if (bookmarkletRef.current && bookmarkletUrl) {
@@ -57,7 +84,6 @@ function IntegrationsContent() {
       if (!res.ok) return;
       const data = await res.json() as { token: string };
       setBridgeToken(data.token);
-      // Bookmarklet auto-contenu : évite les problèmes de CSP et de document.currentScript null
       const t = data.token;
       const a = window.location.origin;
       const code = `(function(){`
@@ -73,17 +99,21 @@ function IntegrationsContent() {
         + `function ex(s){upd(null);var ok=true,res="ok";try{eval(s.script);}catch(e){ok=false;res=String(e);}fetch(a+"/api/wp/bridge",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:t,id:s.id,success:ok,result:res})}).catch(function(){});upd(ok,ok?"✓ Script exécuté":"✗ "+res.slice(0,60));setTimeout(function(){upd(true,"Mind Bridge actif");},6000);}`
         + `window.__mbI=setInterval(function(){fetch(a+"/api/wp/bridge?token="+encodeURIComponent(t)).then(function(r){return r.json();}).then(function(data){(data.scripts||[]).forEach(ex);}).catch(function(){});},2000);`
         + `})();`;
-      const bookmarklet = "javascript:" + code;
-      setBookmarkletUrl(bookmarklet);
-    } catch {
-      // ignore
-    }
+      setBookmarkletUrl("javascript:" + code);
+    } catch { /* ignore */ }
   }, []);
 
   function showToast(type: "success" | "error", msg: string) {
     setToast({ type, msg });
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(null), 5000);
+  }
+
+  async function reload() {
+    const res = await fetch("/api/wc/connection");
+    const data = await res.json() as ConnectionsResponse;
+    setConnections(data.connections ?? []);
+    if (data.connected) loadBridgeToken();
   }
 
   useEffect(() => {
@@ -93,42 +123,39 @@ function IntegrationsContent() {
     else if (error === "rejected") showToast("error", "Connexion annulée.");
     else if (error) showToast("error", "Erreur lors de la connexion. Réessayez.");
 
-    fetch("/api/wc/connection")
-      .then((r) => r.json())
-      .then((data: ConnectionInfo) => {
-        setConn(data);
-        if (data.connected) loadBridgeToken();
-      })
-      .catch(() => setConn({ connected: false }))
-      .finally(() => setLoading(false));
+    reload().finally(() => setLoading(false));
 
-    return () => {
-      if (toastTimer.current) clearTimeout(toastTimer.current);
-    };
+    return () => { if (toastTimer.current) clearTimeout(toastTimer.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleDisconnect() {
-    await fetch("/api/wc/connection", { method: "DELETE" });
-    setConn({ connected: false });
-    showToast("success", "WordPress déconnecté.");
+  async function handleDisconnect(id: string) {
+    await fetch(`/api/wc/connection?id=${id}`, { method: "DELETE" });
+    await reload();
+    showToast("success", "Site déconnecté.");
   }
 
-  async function handleScan() {
-    setScanning(true);
-    setScanDone(false);
+  async function handleSetDefault(id: string) {
+    await fetch("/api/wc/connection", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    await reload();
+    showToast("success", "Site par défaut mis à jour.");
+  }
+
+  async function handleScan(id: string) {
+    setScanningId(id);
     try {
-      const res = await fetch("/api/wc/scan", { method: "POST" });
+      const res = await fetch(`/api/wc/scan?id=${id}`, { method: "POST" });
       if (res.ok) {
-        setScanDone(true);
-        showToast("success", "Analyse du thème terminée — l'assistant connaît maintenant la structure de votre site.");
+        setScannedIds((s) => new Set([...s, id]));
+        showToast("success", "Analyse du thème terminée — l'assistant connaît la structure de ce site.");
+        await reload();
       } else {
         showToast("error", "Erreur lors de l'analyse du thème.");
       }
     } catch {
       showToast("error", "Erreur lors de l'analyse du thème.");
     } finally {
-      setScanning(false);
+      setScanningId(null);
     }
   }
 
@@ -145,13 +172,7 @@ function IntegrationsContent() {
     <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6 lg:px-8">
       {/* Toast */}
       {toast && (
-        <div
-          className={`fixed right-6 top-20 z-50 flex items-center gap-3 rounded-xl border px-5 py-3.5 shadow-lg text-sm font-medium transition-all ${
-            toast.type === "success"
-              ? "border-good/30 bg-good/10 text-good"
-              : "border-bad/30 bg-bad/10 text-bad"
-          }`}
-        >
+        <div className={`fixed right-6 top-20 z-50 flex items-center gap-3 rounded-xl border px-5 py-3.5 shadow-lg text-sm font-medium transition-all ${toast.type === "success" ? "border-good/30 bg-good/10 text-good" : "border-bad/30 bg-bad/10 text-bad"}`}>
           <span>{toast.type === "success" ? "✓" : "✕"}</span>
           {toast.msg}
         </div>
@@ -165,169 +186,216 @@ function IntegrationsContent() {
         </p>
       </div>
 
-      {/* WordPress card */}
+      {/* WordPress / WooCommerce section */}
       <section className="mb-8">
-        <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-ink-soft">CMS disponibles</h2>
-        <div className="rounded-2xl border border-hairline bg-background p-6 shadow-sm">
-          <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
-            {/* Left: info */}
-            <div className="flex items-start gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-hairline bg-[#21759B]/10 text-[#21759B]">
-                <WordPressLogo />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-ink">WordPress</span>
-                  {conn?.connected && (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-good/10 px-2 py-0.5 text-xs font-medium text-good">
-                      <span className="h-1.5 w-1.5 rounded-full bg-good" />
-                      Connecté
-                    </span>
-                  )}
-                </div>
-                <p className="mt-1 max-w-sm text-sm text-ink-soft">
-                  Publiez articles, pages et fiches produits WooCommerce en brouillon directement depuis l&apos;assistant — sans quitter l&apos;app.
-                </p>
-                {conn?.connected && conn.storeUrl && (
-                  <p className="mt-2 text-xs text-ink-soft">
-                    <span className="font-medium text-ink">{conn.storeUrl}</span>
-                    {conn.wpUsername ? ` · ${conn.wpUsername}` : ""}
-                  </p>
-                )}
-                {conn?.connected && (
-                  <div className="mt-3 flex items-center gap-3">
-                    <button
-                      onClick={handleScan}
-                      disabled={scanning}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-hairline bg-accent px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:bg-accent/70 disabled:opacity-50"
-                    >
-                      {scanning ? (
-                        <>
-                          <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeOpacity=".25"/><path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round"/></svg>
-                          Analyse en cours…
-                        </>
-                      ) : (
-                        <>
-                          <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-                          {scanDone ? "Ré-analyser le thème" : "Analyser la structure du thème"}
-                        </>
-                      )}
-                    </button>
-                    {scanDone && (
-                      <span className="text-xs text-good">✓ Profil de site à jour</span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-soft">CMS connectés</h2>
+          {hasConnections && (
+            <button
+              onClick={() => setShowAddForm((v) => !v)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-hairline px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:bg-accent"
+            >
+              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+              Ajouter un site
+            </button>
+          )}
+        </div>
 
-            {/* Right: action */}
-            <div className="shrink-0">
-              {loading ? (
-                <div className="h-10 w-28 animate-pulse rounded-lg bg-accent" />
-              ) : conn?.connected ? (
-                <button
-                  onClick={handleDisconnect}
-                  className="rounded-lg border border-hairline px-4 py-2 text-sm text-ink-soft transition-colors hover:border-bad/40 hover:text-bad"
-                >
-                  Déconnecter
-                </button>
-              ) : null}
+        <div className="rounded-2xl border border-hairline bg-background shadow-sm">
+          {/* En-tête de la carte */}
+          <div className="flex items-center gap-4 p-6 pb-4">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-hairline bg-[#21759B]/10 text-[#21759B]">
+              <WordPressLogo />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-ink">WordPress / WooCommerce</span>
+                {hasConnections && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-good/10 px-2 py-0.5 text-xs font-medium text-good">
+                    <span className="h-1.5 w-1.5 rounded-full bg-good" />
+                    {connections.length} site{connections.length > 1 ? "s" : ""} connecté{connections.length > 1 ? "s" : ""}
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 max-w-sm text-sm text-ink-soft">
+                Publiez articles, pages et fiches produits WooCommerce directement depuis l&apos;assistant.
+              </p>
             </div>
           </div>
 
-          {/* Connection form — shown when not connected */}
-          {!loading && !conn?.connected && (
-            <form onSubmit={handleConnect} className="mt-6 border-t border-hairline pt-6">
-              <div className="mb-4">
-                <h3 className="text-sm font-medium text-ink">Connecter votre WordPress</h3>
-                <p className="mt-1 text-xs text-ink-soft">
-                  Utilisez le flux d&apos;autorisation natif WordPress (Application Passwords, disponible depuis WP 5.6). Aucune clé API à copier.
-                </p>
-              </div>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                <div className="flex-1">
-                  <label htmlFor="site_url" className="mb-1.5 block text-xs font-medium text-ink">
-                    URL de votre site
-                  </label>
-                  <input
-                    id="site_url"
-                    type="url"
-                    value={siteUrl}
-                    onChange={(e) => setSiteUrl(e.target.value)}
-                    placeholder="https://votresite.com"
-                    required
-                    className="w-full rounded-lg border border-hairline bg-background px-3 py-2.5 text-sm text-ink placeholder:text-ink-soft/50 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 active:opacity-80"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-                  </svg>
-                  Connecter WordPress
-                </button>
-              </div>
-              <p className="mt-3 text-xs text-ink-soft">
-                Vous serez redirigé vers votre admin WordPress pour approuver l&apos;accès. Aucune clé API, aucun plugin requis.
-              </p>
-            </form>
-          )}
-
-          {/* Steps guide — shown when not connected */}
-          {!loading && !conn?.connected && (
-            <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              {[
-                { n: "1", title: "Entrez votre URL", desc: "L'adresse de votre site WordPress self-hosted." },
-                { n: "2", title: "Autorisez dans WP", desc: "WordPress affiche un écran de confirmation — un clic suffit." },
-                { n: "3", title: "Publiez depuis l'assistant", desc: "Articles, pages, fiches produit WooCommerce — en brouillon." },
-              ].map((s) => (
-                <div key={s.n} className="flex gap-3 rounded-xl bg-accent/60 p-4">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold text-white">
-                    {s.n}
-                  </span>
-                  <div>
-                    <div className="text-xs font-semibold text-ink">{s.title}</div>
-                    <div className="mt-0.5 text-xs text-ink-soft">{s.desc}</div>
+          {/* Liste des sites connectés */}
+          {loading ? (
+            <div className="border-t border-hairline px-6 py-4">
+              <div className="h-16 animate-pulse rounded-xl bg-accent" />
+            </div>
+          ) : hasConnections ? (
+            <div className="border-t border-hairline divide-y divide-hairline">
+              {connections.map((site) => (
+                <div key={site.id} className="flex flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="truncate text-sm font-medium text-ink">{site.label ?? site.storeUrl}</span>
+                      {site.isDefault && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
+                          ★ Défaut
+                        </span>
+                      )}
+                      {site.hasProfile && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-xs text-ink-soft">
+                          ✓ Thème analysé
+                        </span>
+                      )}
+                    </div>
+                    {site.label && (
+                      <p className="mt-0.5 truncate text-xs text-ink-soft">{site.storeUrl}</p>
+                    )}
+                    {site.wpUsername && (
+                      <p className="mt-0.5 text-xs text-ink-soft">{site.wpUsername}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                    {/* Analyser thème */}
+                    <button
+                      onClick={() => handleScan(site.id)}
+                      disabled={scanningId === site.id}
+                      title={site.hasProfile ? "Ré-analyser le thème" : "Analyser la structure du thème"}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-hairline px-2.5 py-1.5 text-xs text-ink-soft transition-colors hover:bg-accent disabled:opacity-50"
+                    >
+                      {scanningId === site.id ? (
+                        <IconSpin className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <IconRefresh className="h-3 w-3" />
+                      )}
+                      {scannedIds.has(site.id) ? "Ré-analyser" : site.hasProfile ? "Ré-analyser" : "Analyser"}
+                    </button>
+                    {/* Définir par défaut */}
+                    {!site.isDefault && connections.length > 1 && (
+                      <button
+                        onClick={() => handleSetDefault(site.id)}
+                        className="inline-flex items-center gap-1.5 rounded-md border border-hairline px-2.5 py-1.5 text-xs text-ink-soft transition-colors hover:bg-accent"
+                      >
+                        Définir par défaut
+                      </button>
+                    )}
+                    {/* Déconnecter */}
+                    <button
+                      onClick={() => handleDisconnect(site.id)}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-hairline px-2.5 py-1.5 text-xs text-ink-soft transition-colors hover:border-bad/40 hover:text-bad"
+                    >
+                      Déconnecter
+                    </button>
                   </div>
                 </div>
               ))}
+            </div>
+          ) : null}
+
+          {/* Formulaire d'ajout */}
+          {(!loading && (!hasConnections || showAddForm)) && (
+            <div className={hasConnections ? "border-t border-hairline" : ""}>
+              <form onSubmit={handleConnect} className="px-6 py-6">
+                {!hasConnections && (
+                  <div className="mb-4">
+                    <h3 className="text-sm font-medium text-ink">Connecter votre WordPress</h3>
+                    <p className="mt-1 text-xs text-ink-soft">
+                      Flux d&apos;autorisation natif WordPress (Application Passwords, WP 5.6+). Aucune clé API à copier.
+                    </p>
+                  </div>
+                )}
+                {hasConnections && (
+                  <h3 className="mb-3 text-sm font-medium text-ink">Connecter un autre site</h3>
+                )}
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <div className="flex-1">
+                    <label htmlFor="site_url" className="mb-1.5 block text-xs font-medium text-ink">
+                      URL du site WordPress
+                    </label>
+                    <input
+                      id="site_url"
+                      type="url"
+                      value={siteUrl}
+                      onChange={(e) => setSiteUrl(e.target.value)}
+                      placeholder="https://votresite.com"
+                      required
+                      className="w-full rounded-lg border border-hairline bg-background px-3 py-2.5 text-sm text-ink placeholder:text-ink-soft/50 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    {hasConnections && (
+                      <button
+                        type="button"
+                        onClick={() => { setShowAddForm(false); setSiteUrl(""); }}
+                        className="rounded-lg border border-hairline px-4 py-2.5 text-sm text-ink-soft hover:bg-accent"
+                      >
+                        Annuler
+                      </button>
+                    )}
+                    <button
+                      type="submit"
+                      className="inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                      </svg>
+                      Connecter
+                    </button>
+                  </div>
+                </div>
+                {!hasConnections && (
+                  <>
+                    <p className="mt-3 text-xs text-ink-soft">
+                      Vous serez redirigé vers votre admin WordPress pour approuver l&apos;accès. Aucune clé API, aucun plugin requis.
+                    </p>
+                    <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      {[
+                        { n: "1", title: "Entrez votre URL", desc: "L'adresse de votre site WordPress self-hosted." },
+                        { n: "2", title: "Autorisez dans WP", desc: "WordPress affiche un écran de confirmation — un clic suffit." },
+                        { n: "3", title: "Publiez depuis l'assistant", desc: "Articles, pages, fiches produit WooCommerce — en brouillon." },
+                      ].map((s) => (
+                        <div key={s.n} className="flex gap-3 rounded-xl bg-accent/60 p-4">
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold text-white">{s.n}</span>
+                          <div>
+                            <div className="text-xs font-semibold text-ink">{s.title}</div>
+                            <div className="mt-0.5 text-xs text-ink-soft">{s.desc}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </form>
             </div>
           )}
         </div>
       </section>
 
       {/* WooCommerce note */}
-      {conn?.connected && (
+      {hasConnections && (
         <div className="mb-8 flex items-start gap-3 rounded-xl border border-hairline bg-accent/40 p-4 text-sm text-ink-soft">
           <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-hairline bg-background text-[#7F54B3]">
             <WooCommerceLogo />
           </div>
           <div>
-            <span className="font-medium text-ink">WooCommerce inclus</span> — si votre site utilise WooCommerce, l&apos;assistant peut également créer des fiches produit et des catégories de produits en brouillon avec la même connexion.
+            <span className="font-medium text-ink">WooCommerce inclus</span> — si votre site utilise WooCommerce, l&apos;assistant peut créer et mettre à jour des fiches produit avec la même connexion. L&apos;assistant connaît automatiquement la structure de votre thème (champs ACF, Yoast, répéteurs) grâce à l&apos;analyse de thème.
           </div>
         </div>
       )}
 
-      {/* Mind Bridge — shown only when WP is connected */}
-      {conn?.connected && (
+      {/* Mind Bridge */}
+      {hasConnections && (
         <section className="mb-8">
           <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-ink-soft">Exécution dans le navigateur</h2>
           <div className="rounded-2xl border border-hairline bg-background p-6 shadow-sm">
             <div className="flex items-start gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-hairline bg-brand/10 text-brand text-xl">
-                ⚡
-              </div>
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-hairline bg-brand/10 text-brand text-xl">⚡</div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="font-semibold text-ink">Mind Bridge</span>
                   <span className="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">Bookmarklet</span>
                 </div>
                 <p className="mt-1 max-w-lg text-sm text-ink-soft">
-                  Permet à l&apos;assistant d&apos;exécuter des scripts JavaScript directement dans votre navigateur sur les pages WP Admin — pour remplir des champs ACF, modifier des métadonnées, et bien plus.
+                  Permet à l&apos;assistant d&apos;exécuter des scripts JavaScript directement dans votre navigateur sur les pages WP Admin — pour les cas que l&apos;API REST ne couvre pas.
                 </p>
               </div>
             </div>
@@ -335,20 +403,18 @@ function IntegrationsContent() {
             <div className="mt-6 border-t border-hairline pt-6">
               <h3 className="mb-4 text-sm font-medium text-ink">Installation en 2 étapes</h3>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="flex gap-3 rounded-xl bg-accent/60 p-4">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold text-white">1</span>
-                  <div>
-                    <div className="text-xs font-semibold text-ink">Glissez le bouton dans vos favoris</div>
-                    <div className="mt-1 text-xs text-ink-soft">Faites glisser le bouton violet ci-dessous vers la barre de favoris de votre navigateur.</div>
+                {[
+                  { n: "1", title: "Glissez le bouton dans vos favoris", desc: "Faites glisser le bouton violet ci-dessous vers la barre de favoris de votre navigateur." },
+                  { n: "2", title: "Cliquez dessus sur une page WP Admin", desc: "Sur n'importe quelle page WP Admin, cliquez sur le favori — un badge violet apparaît en bas à droite." },
+                ].map((s) => (
+                  <div key={s.n} className="flex gap-3 rounded-xl bg-accent/60 p-4">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold text-white">{s.n}</span>
+                    <div>
+                      <div className="text-xs font-semibold text-ink">{s.title}</div>
+                      <div className="mt-1 text-xs text-ink-soft">{s.desc}</div>
+                    </div>
                   </div>
-                </div>
-                <div className="flex gap-3 rounded-xl bg-accent/60 p-4">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold text-white">2</span>
-                  <div>
-                    <div className="text-xs font-semibold text-ink">Cliquez dessus sur une page WP Admin</div>
-                    <div className="mt-1 text-xs text-ink-soft">Sur n&apos;importe quelle page de votre WordPress Admin, cliquez sur le favori — un badge violet apparaît en bas à droite.</div>
-                  </div>
-                </div>
+                ))}
               </div>
 
               <div className="mt-5 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
@@ -359,8 +425,7 @@ function IntegrationsContent() {
                     onClick={(e) => e.preventDefault()}
                     draggable
                   >
-                    <span>⚡</span>
-                    Mind Bridge
+                    <span>⚡</span>Mind Bridge
                   </a>
                 ) : (
                   <div className="h-10 w-36 animate-pulse rounded-xl bg-accent" />
@@ -397,23 +462,15 @@ function IntegrationsContent() {
         <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-ink-soft">Bientôt disponibles</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           {COMING_SOON.map((p) => (
-            <div
-              key={p.name}
-              className="flex items-center gap-4 rounded-2xl border border-hairline bg-background p-5 opacity-60"
-            >
-              <div
-                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white"
-                style={{ backgroundColor: p.color }}
-              >
+            <div key={p.name} className="flex items-center gap-4 rounded-2xl border border-hairline bg-background p-5 opacity-60">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white" style={{ backgroundColor: p.color }}>
                 {p.icon}
               </div>
               <div>
                 <div className="font-semibold text-ink">{p.name}</div>
                 <div className="mt-0.5 text-xs text-ink-soft">{p.desc}</div>
               </div>
-              <span className="ml-auto shrink-0 rounded-full bg-accent px-2 py-0.5 text-xs text-ink-soft">
-                Bientôt
-              </span>
+              <span className="ml-auto shrink-0 rounded-full bg-accent px-2 py-0.5 text-xs text-ink-soft">Bientôt</span>
             </div>
           ))}
         </div>
@@ -424,14 +481,12 @@ function IntegrationsContent() {
 
 export default function IntegrationsPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6 lg:px-8">
-          <div className="h-8 w-48 animate-pulse rounded-lg bg-accent" />
-          <div className="mt-4 h-4 w-72 animate-pulse rounded-lg bg-accent" />
-        </div>
-      }
-    >
+    <Suspense fallback={
+      <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6 lg:px-8">
+        <div className="h-8 w-48 animate-pulse rounded-lg bg-accent" />
+        <div className="mt-4 h-4 w-72 animate-pulse rounded-lg bg-accent" />
+      </div>
+    }>
       <IntegrationsContent />
     </Suspense>
   );
