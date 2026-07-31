@@ -150,7 +150,18 @@ Tu peux publier du contenu directement sur la boutique WooCommerce/WordPress con
 - publish_page_to_wordpress : page de contenu → WordPress (brouillon)
 - inject_wp_script : exécute un script JavaScript directement dans le navigateur de l'utilisateur sur une page WP Admin, via Mind Bridge
 
-Pour modifier une fiche produit existante, la voie NORMALE et fiable est l'API REST, jamais Mind Bridge. Procédure obligatoire en trois temps : (1) search_woocommerce pour retrouver l'ID du produit, (2) get_woocommerce_product avec cet ID pour relever la structure réelle des champs — sur beaucoup de thèmes le contenu visible n'est PAS dans la description WooCommerce mais dans des champs ACF, et get_woocommerce_product te donne leurs field keys, (3) update_woocommerce_product en réécrivant exactement les clés relevées. Règle ACF impérative : pour chaque champ ACF tu dois écrire DEUX entrées meta — la valeur (\`mon_champ\`) et la field key (\`_mon_champ\` = \`field_xxxxx\`) ; sans la field key, ACF n'affiche pas la valeur. Pour un répéteur, écris le compteur (\`repeteur\` = "4") puis chaque ligne indexée (\`repeteur_0_titre\`, \`repeteur_0_paragraphe\`, \`repeteur_1_titre\`…), chacune avec sa field key. Les valeurs de champs ACF texte long attendent du HTML (\`<p>\`, \`<strong>\`, \`<a href>\`), pas du markdown.
+Pour modifier une fiche produit existante, la voie NORMALE et fiable est l'API REST, jamais Mind Bridge. Procédure obligatoire :
+
+(1) search_woocommerce pour retrouver l'ID du produit.
+(2) get_woocommerce_product avec cet ID — indispensable pour deux raisons : relever les field keys ACF exactes, ET noter le nombre actuel d'entrées dans chaque répéteur (champ \`repeteur = "6"\` → l'ancien max est 6).
+(3) update_woocommerce_product avec les champs à modifier.
+
+Règles ACF impératives :
+- Pour chaque champ ACF, écrire DEUX entrées meta : la valeur (\`mon_champ\`) et la field key (\`_mon_champ\` = \`field_xxxxx\` telle que lue via get_woocommerce_product). Sans la field key, ACF ignore la valeur.
+- Pour un répéteur : écrire le nouveau compteur (\`repeteur\` = "N"), puis chaque ligne indexée (\`repeteur_0_titre\`, \`repeteur_0_paragraphe\`…) avec leurs field keys. CRITIQUE : si l'ancien compteur (lu à l'étape 2) est supérieur à N, écrire AUSSI des entrées vides pour chaque index de N à ancien_max-1 (\`repeteur_N_titre\` = "", \`repeteur_N_paragraphe\` = ""…). Sans ce nettoyage, les anciens champs resteraient visibles comme entrées vides sur la page.
+- Les valeurs de champs ACF texte long attendent du HTML (\`<p>\`, \`<strong>\`, \`<a href>\`), pas du markdown.
+
+Règle publication obligatoire : avant d'appeler update_woocommerce_product, demander TOUJOURS à l'utilisateur s'il veut sauvegarder en **brouillon** ou mettre **en ligne**, sauf s'il l'a déjà précisé dans la conversation en cours — dans ce cas, retenir son choix sans redemander pour les mises à jour suivantes dans la même session. Par défaut si non précisé : brouillon.
 
 Pour inject_wp_script : n'utilise cet outil qu'en DERNIER RECOURS, quand l'API REST ne peut objectivement pas faire le travail (interaction avec un écran WP Admin sans équivalent REST). Pour tout ce qui touche au contenu ou aux champs d'un produit, passe par update_woocommerce_product. RÈGLES ABSOLUES si tu l'utilises quand même : (1) n'écris JAMAIS le script JS dans ton texte de réponse avant d'appeler l'outil — génère le script directement dans le paramètre "script" de l'outil. (2) Le paramètre "script" doit TOUJOURS contenir le code JavaScript complet et fonctionnel, jamais null ou vide. (3) Quand tu appelles l'outil, précise TOUJOURS dans ta réponse texte que l'utilisateur doit avoir Mind Bridge actif sur la PAGE EXACTE fournie dans target_url — pas sur une autre page WP Admin. Mind Bridge s'exécute sur la page où le bookmarklet a été cliqué ; si l'utilisateur n'est pas sur la bonne URL, le script ne fera rien. Dis-lui : "Assure-toi que Mind Bridge est actif sur cette page précise : [URL]. Si tu es sur une autre page, navigue d'abord vers cette URL puis clique sur le bookmarklet." Si l'utilisateur n'a pas encore configuré Mind Bridge, indique-lui d'aller sur [la page Intégrations](/integrations).
 
@@ -307,16 +318,17 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: "update_woocommerce_product",
-    description: "Met à jour une fiche produit WooCommerce existante via l'API REST : description, description courte, et champs personnalisés ACF/Yoast. N'utilise cet outil QUE sur demande explicite de l'utilisateur. Appelle d'abord get_woocommerce_product pour connaître les clés de champs exactes.",
+    description: "Met à jour une fiche produit WooCommerce existante via l'API REST : description, description courte, statut de publication, et champs personnalisés ACF/Yoast. N'utilise cet outil QUE sur demande explicite de l'utilisateur. Appelle d'abord get_woocommerce_product pour connaître les clés de champs exactes et le nombre actuel d'entrées dans les répéteurs ACF.",
     input_schema: {
       type: "object",
       properties: {
         product_id: { type: "number", description: "ID numérique du produit à mettre à jour" },
+        publish_status: { type: "string", enum: ["draft", "publish"], description: "Statut après mise à jour : 'draft' pour garder en brouillon, 'publish' pour mettre en ligne. OBLIGATOIRE : demander à l'utilisateur s'il veut brouillon ou en ligne avant d'appeler l'outil, sauf s'il l'a déjà précisé dans cette conversation (retenir son choix pour toute la session)." },
         description_html: { type: "string", description: "Nouvelle description longue en HTML. Omettre pour ne pas y toucher." },
         short_description_html: { type: "string", description: "Nouvelle description courte en HTML. Omettre pour ne pas y toucher." },
         meta: {
           type: "array",
-          description: "Champs personnalisés à écrire. Pour un champ ACF, écris TOUJOURS la paire : {key:'mon_champ', value:'...'} ET {key:'_mon_champ', value:'field_xxxxx'} (la field key relevée via get_woocommerce_product). Pour un répéteur ACF, écris le compteur {key:'repeteur', value:'3'} puis les lignes indexées repeteur_0_sous_champ, repeteur_1_sous_champ, etc.",
+          description: "Champs personnalisés à écrire. Règle ACF obligatoire : pour chaque champ écrire la PAIRE valeur ({key:'champ', value:'...'}) + field key ({key:'_champ', value:'field_xxxxx'}). Pour un répéteur ACF : (1) écrire le nouveau compteur ({key:'repeteur', value:'N'}), (2) écrire chaque ligne indexée (repeteur_0_titre, repeteur_0_paragraphe…), (3) IMPORTANT si l'ancien compteur lu via get_woocommerce_product est supérieur à N, écrire explicitement des entrées vides pour chaque index au-delà de N-1 jusqu'à l'ancien max — sinon les anciens champs resteront visibles en tant qu'entrées vides sur la page.",
           items: {
             type: "object",
             properties: {
@@ -327,7 +339,7 @@ const tools: Anthropic.Tool[] = [
           },
         },
       },
-      required: ["product_id"],
+      required: ["product_id", "publish_status"],
     },
   },
   {
@@ -786,6 +798,7 @@ async function getWooProduct(productId: number, userId: string): Promise<string>
 
 interface UpdateProductParams {
   product_id?: number;
+  publish_status?: "draft" | "publish";
   description_html?: string;
   short_description_html?: string;
   meta?: { key: string; value: string }[];
@@ -795,8 +808,10 @@ async function updateWooProduct(p: UpdateProductParams, userId: string): Promise
   const conn = await getWcConnection(userId);
   if (!conn) return "❌ Aucune boutique WooCommerce connectée. [→ Connecter mon WordPress](/integrations)";
   if (!p.product_id) return "❌ L'ID du produit est manquant. Utilise search_woocommerce pour le retrouver.";
+  const status = p.publish_status ?? "draft";
   try {
     const result = await updateProduct(wcCredsFrom(conn), p.product_id, {
+      status,
       description: p.description_html,
       shortDescription: p.short_description_html,
       meta: p.meta,
@@ -806,7 +821,8 @@ async function updateWooProduct(p: UpdateProductParams, userId: string): Promise
       p.short_description_html !== undefined ? "description courte" : null,
       p.meta?.length ? `${p.meta.length} champ(s) personnalisé(s)` : null,
     ].filter(Boolean).join(", ");
-    return `✅ **Fiche produit mise à jour** sur ${conn.storeUrl}\n\n**Champs modifiés :** ${changed}\n\n[Voir la fiche ↗](${result.permalink}) · [Éditer dans WordPress ↗](${result.editUrl})`;
+    const statusLabel = status === "publish" ? "🟢 **en ligne**" : "📝 **brouillon**";
+    return `✅ **Fiche produit mise à jour** sur ${conn.storeUrl} — statut : ${statusLabel}\n\n**Champs modifiés :** ${changed}\n\n[Voir la fiche ↗](${result.permalink}) · [Éditer dans WordPress ↗](${result.editUrl})`;
   } catch (e) {
     console.error("[assistant woo update] error:", e);
     return `❌ Erreur mise à jour WooCommerce : ${e instanceof Error ? e.message : "erreur inconnue"}`;
