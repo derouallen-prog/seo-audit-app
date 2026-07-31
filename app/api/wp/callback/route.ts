@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/supabaseServer";
-import { saveWcConnection } from "@/lib/wcConnections";
+import { saveWcConnection, saveSiteProfile } from "@/lib/wcConnections";
+import { analyzeSiteProfile } from "@/lib/wcSiteProfile";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,13 @@ export async function GET(req: NextRequest) {
       wpUsername: userLogin,
       wpAppPassword: password,
     });
+    // Analyse structure en arrière-plan
+    analyzeSiteProfile({
+      storeUrl: siteUrl,
+      wpUsername: userLogin,
+      wpAppPassword: password,
+    }).then((profile) => saveSiteProfile(user.id, profile)).catch(console.error);
+
     return NextResponse.redirect(new URL("/integrations?connected=true", req.nextUrl.origin));
   } catch (e) {
     console.error("[wp/callback] error saving connection:", e);

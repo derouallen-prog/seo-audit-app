@@ -42,6 +42,8 @@ function IntegrationsContent() {
   const [bookmarkletUrl, setBookmarkletUrl] = useState<string>("");
   const [bridgeCopied, setBridgeCopied] = useState(false);
   const bookmarkletRef = useRef<HTMLAnchorElement>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanDone, setScanDone] = useState(false);
 
   useEffect(() => {
     if (bookmarkletRef.current && bookmarkletUrl) {
@@ -112,6 +114,24 @@ function IntegrationsContent() {
     showToast("success", "WordPress déconnecté.");
   }
 
+  async function handleScan() {
+    setScanning(true);
+    setScanDone(false);
+    try {
+      const res = await fetch("/api/wc/scan", { method: "POST" });
+      if (res.ok) {
+        setScanDone(true);
+        showToast("success", "Analyse du thème terminée — l'assistant connaît maintenant la structure de votre site.");
+      } else {
+        showToast("error", "Erreur lors de l'analyse du thème.");
+      }
+    } catch {
+      showToast("error", "Erreur lors de l'analyse du thème.");
+    } finally {
+      setScanning(false);
+    }
+  }
+
   function handleConnect(e: React.FormEvent) {
     e.preventDefault();
     const url = siteUrl.trim();
@@ -173,6 +193,30 @@ function IntegrationsContent() {
                     <span className="font-medium text-ink">{conn.storeUrl}</span>
                     {conn.wpUsername ? ` · ${conn.wpUsername}` : ""}
                   </p>
+                )}
+                {conn?.connected && (
+                  <div className="mt-3 flex items-center gap-3">
+                    <button
+                      onClick={handleScan}
+                      disabled={scanning}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-hairline bg-accent px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:bg-accent/70 disabled:opacity-50"
+                    >
+                      {scanning ? (
+                        <>
+                          <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeOpacity=".25"/><path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round"/></svg>
+                          Analyse en cours…
+                        </>
+                      ) : (
+                        <>
+                          <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                          {scanDone ? "Ré-analyser le thème" : "Analyser la structure du thème"}
+                        </>
+                      )}
+                    </button>
+                    {scanDone && (
+                      <span className="text-xs text-good">✓ Profil de site à jour</span>
+                    )}
+                  </div>
                 )}
               </div>
             </div>

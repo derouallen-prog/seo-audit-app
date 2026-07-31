@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/supabaseServer";
-import { getWcConnection, saveWcConnection, deleteWcConnection } from "@/lib/wcConnections";
+import { getWcConnection, saveWcConnection, deleteWcConnection, saveSiteProfile } from "@/lib/wcConnections";
+import { analyzeSiteProfile } from "@/lib/wcSiteProfile";
 
 export const dynamic = "force-dynamic";
 
@@ -52,14 +53,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "URL invalide" }, { status: 400 });
   }
 
+  const canonicalUrl = storeUrl.startsWith("http") ? storeUrl : `https://${storeUrl}`;
   try {
     await saveWcConnection(user.id, {
-      storeUrl: storeUrl.startsWith("http") ? storeUrl : `https://${storeUrl}`,
+      storeUrl: canonicalUrl,
       wcConsumerKey,
       wcConsumerSecret,
       wpUsername,
       wpAppPassword,
     });
+    // Analyse de la structure du site en arrière-plan (sans bloquer la réponse)
+    analyzeSiteProfile({
+      storeUrl: canonicalUrl,
+      consumerKey: wcConsumerKey || undefined,
+      consumerSecret: wcConsumerSecret || undefined,
+      wpUsername: wpUsername || undefined,
+      wpAppPassword: wpAppPassword || undefined,
+    }).then((profile) => saveSiteProfile(user.id, profile)).catch(console.error);
+
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Erreur" }, { status: 500 });

@@ -7,6 +7,7 @@ import { enqueueScript } from "@/lib/wpBridge";
 import { checkGeoVisibility } from "@/lib/geoVisibilityCheck";
 import { createDraftPost, createDraftPage } from "@/lib/wpPublish";
 import { getWcConnection } from "@/lib/wcConnections";
+import { formatProfileForPrompt } from "@/lib/wcSiteProfile";
 import { getAuthUser } from "@/lib/supabaseServer";
 import { buildLinkGraphWithSignals } from "@/lib/linkGraph";
 import { fetchWpContentForUrls } from "@/lib/wpContent";
@@ -1820,6 +1821,17 @@ export async function POST(req: NextRequest) {
   const sessionId = req.cookies.get("gsc_session")?.value;
   const authUser = await getAuthUser();
   const userId = authUser?.id;
+
+  // Profil du site connecté (chargé une fois par requête, injecté dans le système)
+  let wcProfileBlock = "";
+  if (userId) {
+    try {
+      const conn = await getWcConnection(userId);
+      if (conn?.siteProfile) {
+        wcProfileBlock = formatProfileForPrompt(conn.siteProfile);
+      }
+    } catch { /* non bloquant */ }
+  }
   const encoder = new TextEncoder();
 
   // Charger le contexte d'audit si un auditId est fourni
@@ -1849,6 +1861,7 @@ export async function POST(req: NextRequest) {
           SYSTEM_PROMPT,
           auditContextBlock ? `\n\n${auditContextBlock}\n\nRéfère-toi systématiquement à ces données d'audit dans tes réponses, sauf si l'utilisateur pose une question sans rapport avec ce site.` : "",
           newsBlock ? `\n\n${newsBlock}\n\nUtilise ces actualités quand elles sont pertinentes pour la question posée, en citant la source.` : "",
+          wcProfileBlock ? `\n\n---\n\n${wcProfileBlock}\n\nQuand tu mets à jour ce site via update_woocommerce_product, utilise directement les field keys et la structure de répéteur listées ci-dessus — pas besoin d'appeler get_woocommerce_product si les champs cibles sont déjà connus. Appelle get_woocommerce_product uniquement pour les champs qui ne figurent pas dans ce profil.` : "",
         ].join("");
 
         const conversation: Anthropic.MessageParam[] = messages.map((m, i) => {

@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { encryptToken, decryptToken } from "./tokenCrypto";
+import type { WcSiteProfile } from "./wcSiteProfile";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,16 +9,17 @@ const supabaseAdmin = createClient(
 
 export interface WcConnectionData {
   storeUrl: string;
-  wcConsumerKey: string;   // vide si connexion via Application Password
-  wcConsumerSecret: string; // vide si connexion via Application Password
+  wcConsumerKey: string;
+  wcConsumerSecret: string;
   wpUsername: string;
   wpAppPassword: string;
+  siteProfile?: WcSiteProfile | null;
 }
 
 export async function getWcConnection(userId: string): Promise<WcConnectionData | null> {
   const { data, error } = await supabaseAdmin
     .from("woocommerce_connections")
-    .select("store_url, wc_consumer_key, wc_consumer_secret, wp_username, wp_app_password")
+    .select("store_url, wc_consumer_key, wc_consumer_secret, wp_username, wp_app_password, site_profile")
     .eq("user_id", userId)
     .maybeSingle();
 
@@ -29,7 +31,16 @@ export async function getWcConnection(userId: string): Promise<WcConnectionData 
     wcConsumerSecret: data.wc_consumer_secret ? decryptToken(data.wc_consumer_secret) : "",
     wpUsername: data.wp_username ?? "",
     wpAppPassword: decryptToken(data.wp_app_password),
+    siteProfile: data.site_profile ?? null,
   };
+}
+
+export async function saveSiteProfile(userId: string, profile: WcSiteProfile): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from("woocommerce_connections")
+    .update({ site_profile: profile, site_profile_updated_at: new Date().toISOString() })
+    .eq("user_id", userId);
+  if (error) throw new Error(`Erreur sauvegarde profil site: ${error.message}`);
 }
 
 export async function saveWcConnection(userId: string, conn: WcConnectionData): Promise<void> {
