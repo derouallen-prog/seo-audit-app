@@ -18,6 +18,14 @@ interface SessionMeta {
   audit_id?: string | null;
 }
 
+interface PendingFile {
+  id: string;
+  name: string;
+  mimeType: string;
+  textContent?: string;
+  dataUrl?: string;
+}
+
 // ── SVG icons ────────────────────────────────────────────────────────────────
 
 function IconSparkles({ className = "h-4 w-4" }: { className?: string }) {
@@ -296,6 +304,8 @@ function AssistantPageInner() {
   const [streamingContent, setStreamingContent] = useState("");
   const [toolStatus, setToolStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
 
   // Session management
   const [sessionId, setSessionId] = useState<string | null>(sessionParam);
@@ -306,6 +316,7 @@ function AssistantPageInner() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const isAtBottomRef = useRef(true);
   const sessionIdRef = useRef<string | null>(sessionParam);
 
@@ -360,6 +371,55 @@ function AssistantPageInner() {
     if (!ta) return;
     ta.style.height = "auto";
     ta.style.height = Math.min(ta.scrollHeight, 160) + "px";
+  }
+
+  function isTextFile(mimeType: string, name: string): boolean {
+    if (mimeType.startsWith("text/")) return true;
+    const ext = name.split(".").pop()?.toLowerCase() ?? "";
+    return ["md", "markdown", "csv", "json", "xml", "yaml", "yml", "txt"].includes(ext);
+  }
+
+  async function processFiles(files: FileList | File[]) {
+    const arr = Array.from(files);
+    const processed: PendingFile[] = [];
+    for (const file of arr) {
+      const id = Math.random().toString(36).slice(2);
+      if (isTextFile(file.type, file.name)) {
+        const text = await file.text();
+        processed.push({ id, name: file.name, mimeType: file.type || "text/plain", textContent: text });
+      } else if (file.type.startsWith("image/")) {
+        const dataUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.readAsDataURL(file);
+        });
+        processed.push({ id, name: file.name, mimeType: file.type, dataUrl });
+      }
+    }
+    setPendingFiles(prev => [...prev, ...processed]);
+  }
+
+  function removeFile(id: string) {
+    setPendingFiles(prev => prev.filter(f => f.id !== id));
+  }
+
+  function onDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragging(true);
+  }
+
+  function onDragLeave(e: React.DragEvent) {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsDragging(false);
+    }
+  }
+
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files.length > 0) {
+      processFiles(e.dataTransfer.files);
+    }
   }
 
   // Save conversation to Supabase
@@ -422,13 +482,27 @@ function AssistantPageInner() {
   }
 
   async function send(overrideText?: string) {
-    const text = (overrideText ?? input).trim();
-    if (!text || loading) return;
+    const rawText = (overrideText ?? input).trim();
+    if (!rawText && pendingFiles.length === 0) return;
+    if (loading) return;
     setInput("");
     if (textareaRef.current) textareaRef.current.style.height = "auto";
     setError(null);
     setStreamingContent("");
     setToolStatus(null);
+
+    // Build message text: prepend text-file contents
+    const filesToSend = [...pendingFiles];
+    setPendingFiles([]);
+    const textFiles = filesToSend.filter(f => f.textContent !== undefined);
+    const imageFiles = filesToSend.filter(f => f.dataUrl !== undefined);
+
+    let messageText = rawText;
+    for (const f of textFiles) {
+      messageText = `**Fichier joint : ${f.name}**\n\`\`\`\n${f.textContent}\n\`\`\`\n\n${messageText}`;
+    }
+    const text = messageText.trim() || "(Fichier joint)";
+
     const nextMessages: ChatMessage[] = [...messages, { role: "user", content: text }];
     setMessages(nextMessages);
     setLoading(true);
@@ -448,7 +522,11 @@ function AssistantPageInner() {
       const res = await fetch("/api/assistant", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ messages: nextMessages, ...(auditId ? { auditId } : {}) }),
+        body: JSON.stringify({
+          messages: nextMessages,
+          ...(auditId ? { auditId } : {}),
+          ...(imageFiles.length > 0 ? { images: imageFiles.map(f => ({ name: f.name, dataUrl: f.dataUrl! })) } : {}),
+        }),
       });
 
       if (!res.ok || !res.body) {
@@ -668,7 +746,19 @@ function AssistantPageInner() {
           </div>
 
           {/* Messages area */}
-          <div ref={scrollAreaRef} className="flex-1 space-y-6 overflow-y-auto px-5 py-6 sm:px-8">
+          <div
+            ref={scrollAreaRef}
+            className="relative flex-1 space-y-6 overflow-y-auto px-5 py-6 sm:px-8"
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onDrop={onDrop}
+          >
+            {isDragging && (
+              <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-brand bg-brand/5 backdrop-blur-sm">
+                <IconUploadCloud className="h-10 w-10 text-brand opacity-70" />
+                <span className="text-sm font-medium text-brand">Déposez vos fichiers ici</span>
+              </div>
+            )}
 
             {showWelcome && (
               <>
@@ -785,7 +875,51 @@ function AssistantPageInner() {
             className="border-t border-hairline p-4"
             onSubmit={(e) => { e.preventDefault(); send(); }}
           >
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="text/*,.md,.markdown,.csv,.json,.yaml,.yml,image/*"
+              className="hidden"
+              onChange={(e) => { if (e.target.files?.length) { processFiles(e.target.files); e.target.value = ""; } }}
+            />
+
+            {/* File chips */}
+            {pendingFiles.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {pendingFiles.map(f => (
+                  <div key={f.id} className="flex items-center gap-1 rounded-lg border border-brand/30 bg-brand/5 px-2 py-1 text-xs text-brand">
+                    {f.dataUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={f.dataUrl} alt={f.name} className="h-4 w-4 rounded object-cover" />
+                    ) : (
+                      <span className="opacity-60">📄</span>
+                    )}
+                    <span className="max-w-[120px] truncate">{f.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeFile(f.id)}
+                      className="ml-0.5 opacity-60 hover:opacity-100 transition"
+                      aria-label="Retirer le fichier"
+                    >✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="flex items-end gap-2 rounded-2xl border border-hairline bg-background p-2 transition-shadow focus-within:border-brand/40 focus-within:shadow-lg">
+              {/* + button */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={loading}
+                title="Joindre un fichier ou une image"
+                className="h-9 w-9 shrink-0 rounded-lg border border-hairline bg-accent text-ink-soft hover:text-brand hover:border-brand/40 hover:bg-brand/5 disabled:opacity-40 disabled:cursor-not-allowed grid place-items-center transition-colors"
+              >
+                <IconPlus className="h-4 w-4" />
+              </button>
+
               <textarea
                 ref={textareaRef}
                 rows={1}
@@ -803,14 +937,14 @@ function AssistantPageInner() {
               />
               <button
                 type="submit"
-                disabled={loading || !input.trim()}
+                disabled={loading || (!input.trim() && pendingFiles.length === 0)}
                 className="h-11 w-11 shrink-0 rounded-xl bg-brand text-white glow-brand hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed grid place-items-center transition-colors"
               >
                 <IconArrowUp />
               </button>
             </div>
             <div className="mt-2 flex items-center justify-between text-xs text-ink-soft">
-              <span>Entrée pour envoyer · Maj+Entrée pour un retour à la ligne</span>
+              <span>Entrée pour envoyer · Maj+Entrée pour un retour à la ligne · Glisser-déposer pour joindre</span>
               <span className="font-mono hidden sm:block">mind-agent · Claude</span>
             </div>
           </form>
