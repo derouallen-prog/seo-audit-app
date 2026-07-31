@@ -55,7 +55,23 @@ function IntegrationsContent() {
       if (!res.ok) return;
       const data = await res.json() as { token: string };
       setBridgeToken(data.token);
-      const bookmarklet = `javascript:(function(){var s=document.createElement('script');s.src='${window.location.origin}/mind-bridge.js?t=${encodeURIComponent(data.token)}';document.head.appendChild(s);})();`;
+      // Bookmarklet auto-contenu : évite les problèmes de CSP et de document.currentScript null
+      const t = data.token;
+      const a = window.location.origin;
+      const code = `(function(){`
+        + `var t="${t}",a="${a}";`
+        + `if(window.__mbA){return;}window.__mbA=1;`
+        + `localStorage.setItem("__mb",t);`
+        + `var b=document.createElement("div");`
+        + `b.id="__mb_b";`
+        + `b.style="position:fixed;bottom:20px;right:20px;z-index:2147483647;background:#7c3aed;color:#fff;border-radius:12px;padding:8px 14px;font-size:13px;font-family:system-ui;display:flex;align-items:center;gap:8px;box-shadow:0 4px 20px rgba(0,0,0,.3)";`
+        + `b.innerHTML='<span id="__mb_d" style="width:8px;height:8px;border-radius:50%;background:#4ade80;flex-shrink:0"></span><span id="__mb_l">Mind Bridge actif</span><span style="margin-left:6px;cursor:pointer;opacity:.7;font-size:17px" onclick="clearInterval(window.__mbI);this.parentNode.remove();window.__mbA=0">×</span>';`
+        + `document.body.appendChild(b);`
+        + `function upd(ok){var d=document.getElementById("__mb_d"),l=document.getElementById("__mb_l");if(d)d.style.background=ok===null?"#facc15":ok?"#4ade80":"#f87171";if(l)l.textContent=ok===null?"Exécution…":"Mind Bridge actif";}`
+        + `function ex(s){upd(null);var ok=true,res="ok";try{eval(s.script);}catch(e){ok=false;res=String(e);}fetch(a+"/api/wp/bridge",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:t,id:s.id,success:ok,result:res})}).catch(function(){});setTimeout(function(){upd(ok);},1200);}`
+        + `window.__mbI=setInterval(function(){fetch(a+"/api/wp/bridge?token="+encodeURIComponent(t)).then(function(r){return r.json();}).then(function(data){(data.scripts||[]).forEach(ex);}).catch(function(){});},2000);`
+        + `})();`;
+      const bookmarklet = "javascript:" + code;
       setBookmarkletUrl(bookmarklet);
     } catch {
       // ignore
