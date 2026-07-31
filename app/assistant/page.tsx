@@ -9,6 +9,7 @@ import type { Components } from "react-markdown";
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  _attachments?: string[]; // file names for display only
 }
 
 interface SessionMeta {
@@ -256,6 +257,9 @@ const markdownComponents: Components = {
       {children}
     </a>
   ),
+  pre: ({ children }) => (
+    <pre className="overflow-x-auto rounded-lg bg-ink/5 p-3 text-xs font-mono my-2 whitespace-pre-wrap break-all">{children}</pre>
+  ),
   code: ({ children }) => (
     <code className="bg-accent text-ink-soft rounded px-1.5 py-0.5 text-xs font-mono">{children}</code>
   ),
@@ -288,6 +292,61 @@ function formatRelativeDate(iso: string): string {
   if (diffDays === 1) return "Hier";
   if (diffDays < 7) return `Il y a ${diffDays} jours`;
   return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+}
+
+// ── Export toolbar ────────────────────────────────────────────────────────────
+
+function ExportBar({ content }: { content: string }) {
+  function downloadMd() {
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "reponse-mind.md";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function copyText() {
+    navigator.clipboard.writeText(content).catch(() => {});
+  }
+
+  function printPdf() {
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(`<!DOCTYPE html><html><head><title>Export Mind</title><style>body{font-family:system-ui,sans-serif;padding:2rem;max-width:800px;margin:auto}pre{background:#f3f4f6;padding:1rem;border-radius:.5rem;overflow-x:auto;white-space:pre-wrap}code{background:#f3f4f6;padding:.1em .3em;border-radius:.2em}table{border-collapse:collapse;width:100%}td,th{border:1px solid #e5e7eb;padding:.5rem .75rem;text-align:left}</style></head><body>${content.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</body></html>`);
+    win.document.close();
+    win.print();
+  }
+
+  return (
+    <div className="mt-1.5 flex items-center gap-1.5 pl-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      <button
+        onClick={copyText}
+        title="Copier le texte"
+        className="flex items-center gap-1 rounded-md px-2 py-0.5 text-xs text-ink-soft hover:text-ink hover:bg-accent transition"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+        Copier
+      </button>
+      <button
+        onClick={downloadMd}
+        title="Télécharger en Markdown"
+        className="flex items-center gap-1 rounded-md px-2 py-0.5 text-xs text-ink-soft hover:text-ink hover:bg-accent transition"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        .md
+      </button>
+      <button
+        onClick={printPdf}
+        title="Exporter en PDF"
+        className="flex items-center gap-1 rounded-md px-2 py-0.5 text-xs text-ink-soft hover:text-ink hover:bg-accent transition"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></svg>
+        PDF
+      </button>
+    </div>
+  );
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -361,9 +420,9 @@ function AssistantPageInner() {
   }, []);
 
   useEffect(() => {
-    if (isAtBottomRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
+    if (!isAtBottomRef.current) return;
+    const el = scrollAreaRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [messages, loading, streamingContent]);
 
   function autoResize() {
@@ -491,19 +550,22 @@ function AssistantPageInner() {
     setStreamingContent("");
     setToolStatus(null);
 
-    // Build message text: prepend text-file contents
     const filesToSend = [...pendingFiles];
     setPendingFiles([]);
     const textFiles = filesToSend.filter(f => f.textContent !== undefined);
     const imageFiles = filesToSend.filter(f => f.dataUrl !== undefined);
 
-    let messageText = rawText;
-    for (const f of textFiles) {
-      messageText = `**Fichier joint : ${f.name}**\n\`\`\`\n${f.textContent}\n\`\`\`\n\n${messageText}`;
-    }
-    const text = messageText.trim() || "(Fichier joint)";
+    // Display text: only the user's typed message (no file content dumped in bubble)
+    const text = rawText.trim() || "(Fichier joint)";
 
-    const nextMessages: ChatMessage[] = [...messages, { role: "user", content: text }];
+    const nextMessages: ChatMessage[] = [
+      ...messages,
+      {
+        role: "user",
+        content: text,
+        _attachments: filesToSend.length > 0 ? filesToSend.map(f => f.name) : undefined,
+      },
+    ];
     setMessages(nextMessages);
     setLoading(true);
 
@@ -523,8 +585,9 @@ function AssistantPageInner() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          messages: nextMessages,
+          messages: nextMessages.map(m => ({ role: m.role, content: m.content })),
           ...(auditId ? { auditId } : {}),
+          ...(textFiles.length > 0 ? { textFiles: textFiles.map(f => ({ name: f.name, content: f.textContent! })) } : {}),
           ...(imageFiles.length > 0 ? { images: imageFiles.map(f => ({ name: f.name, dataUrl: f.dataUrl! })) } : {}),
         }),
       });
@@ -794,23 +857,38 @@ function AssistantPageInner() {
             )}
 
             {messages.map((m, i) => (
-              <div key={i} className={`flex gap-3 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div key={i} className={`flex gap-3 group ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                 {m.role === "assistant" && (
                   <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand text-white glow-brand self-start">
                     <IconSparkles />
                   </div>
                 )}
-                <div className={`max-w-[720px] ${m.role === "user" ? "max-w-[80%]" : ""}`}>
+                <div className={`min-w-0 ${m.role === "user" ? "max-w-[80%]" : "max-w-[720px] w-full"}`}>
                   {m.role === "user" ? (
-                    <div className="inline-block rounded-2xl rounded-br-md px-4 py-2.5 bg-brand text-white text-sm leading-relaxed">
-                      {m.content}
+                    <div className="flex flex-col items-end gap-1">
+                      {m._attachments && m._attachments.length > 0 && (
+                        <div className="flex flex-wrap gap-1 justify-end mb-0.5">
+                          {m._attachments.map((name, j) => (
+                            <span key={j} className="flex items-center gap-1 rounded-lg border border-brand/30 bg-brand/10 px-2 py-0.5 text-xs text-brand">
+                              <span className="opacity-60">📎</span>
+                              <span className="max-w-[140px] truncate">{name}</span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="inline-block rounded-2xl rounded-br-md px-4 py-2.5 bg-brand text-white text-sm leading-relaxed break-words">
+                        {m.content}
+                      </div>
                     </div>
                   ) : (
-                    <div className="rounded-2xl px-4 py-3 bg-accent text-ink">
-                      <ReactMarkdown components={markdownComponents} remarkPlugins={[remarkGfm]}>
-                        {m.content}
-                      </ReactMarkdown>
-                    </div>
+                    <>
+                      <div className="rounded-2xl px-4 py-3 bg-accent text-ink overflow-hidden">
+                        <ReactMarkdown components={markdownComponents} remarkPlugins={[remarkGfm]}>
+                          {m.content}
+                        </ReactMarkdown>
+                      </div>
+                      <ExportBar content={m.content} />
+                    </>
                   )}
                 </div>
                 {m.role === "user" && (
