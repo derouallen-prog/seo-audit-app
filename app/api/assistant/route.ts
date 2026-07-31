@@ -1566,9 +1566,12 @@ async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: stri
       }
     }
     case "inject_wp_script": {
-      const p = toolUse.input as { script: string; description: string; target_url?: string };
+      const p = toolUse.input as { script?: string; description?: string; target_url?: string };
       if (!userId) {
         return { terminal: true, reply: "❌ Vous devez être connecté pour utiliser Mind Bridge." };
+      }
+      if (!p.script || !p.description) {
+        return { terminal: true, reply: "❌ Mind Bridge : le script ou la description est manquant(e). Génère d'abord le script complet avant d'appeler cet outil." };
       }
       try {
         await enqueueScript(userId, p.script, p.description, p.target_url);
