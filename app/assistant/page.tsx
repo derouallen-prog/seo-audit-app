@@ -8,8 +8,9 @@ import type { Components } from "react-markdown";
 
 interface ChatMessage {
   role: "user" | "assistant";
-  content: string;
-  _attachments?: string[]; // file names for display only
+  content: string;        // full content sent to Claude (includes file text)
+  _display?: string;      // text shown in the UI bubble (without file content)
+  _attachments?: string[]; // file names shown as chips
 }
 
 interface SessionMeta {
@@ -555,14 +556,21 @@ function AssistantPageInner() {
     const textFiles = filesToSend.filter(f => f.textContent !== undefined);
     const imageFiles = filesToSend.filter(f => f.dataUrl !== undefined);
 
-    // Display text: only the user's typed message (no file content dumped in bubble)
-    const text = rawText.trim() || "(Fichier joint)";
+    // UI display text: only what the user typed
+    const displayText = rawText.trim() || "(Fichier joint)";
+
+    // Full content for Claude: user text + embedded file contents
+    const fileBlocks = textFiles.map(f =>
+      `\n\n**Fichier joint : ${f.name}**\n\`\`\`\n${f.textContent}\n\`\`\``
+    ).join("");
+    const fullContent = displayText + fileBlocks;
 
     const nextMessages: ChatMessage[] = [
       ...messages,
       {
         role: "user",
-        content: text,
+        content: fullContent,
+        _display: displayText,
         _attachments: filesToSend.length > 0 ? filesToSend.map(f => f.name) : undefined,
       },
     ];
@@ -572,7 +580,7 @@ function AssistantPageInner() {
     // Create session on first message
     let sid = sessionIdRef.current;
     if (!sid) {
-      sid = await createSession(text);
+      sid = await createSession(displayText);
       if (sid) {
         setSessionId(sid);
         sessionIdRef.current = sid;
@@ -587,7 +595,6 @@ function AssistantPageInner() {
         body: JSON.stringify({
           messages: nextMessages.map(m => ({ role: m.role, content: m.content })),
           ...(auditId ? { auditId } : {}),
-          ...(textFiles.length > 0 ? { textFiles: textFiles.map(f => ({ name: f.name, content: f.textContent! })) } : {}),
           ...(imageFiles.length > 0 ? { images: imageFiles.map(f => ({ name: f.name, dataUrl: f.dataUrl! })) } : {}),
         }),
       });
@@ -632,7 +639,7 @@ function AssistantPageInner() {
               // Auto-save
               if (sid) {
                 const isFirst = nextMessages.length === 1;
-                await saveSession(finalMessages, sid, isFirst ? titleFromMessage(text) : undefined);
+                await saveSession(finalMessages, sid, isFirst ? titleFromMessage(displayText) : undefined);
               }
             } else if (currentEvent === "error") {
               setError(JSON.parse(data) as string);
@@ -877,7 +884,7 @@ function AssistantPageInner() {
                         </div>
                       )}
                       <div className="inline-block rounded-2xl rounded-br-md px-4 py-2.5 bg-brand text-white text-sm leading-relaxed break-words">
-                        {m.content}
+                        {m._display ?? m.content}
                       </div>
                     </div>
                   ) : (

@@ -1580,14 +1580,14 @@ const TOOL_LABELS: Record<string, string> = {
 };
 
 export async function POST(req: NextRequest) {
-  let body: { messages?: { role: "user" | "assistant"; content: string }[]; auditId?: string; images?: { name: string; dataUrl: string }[]; textFiles?: { name: string; content: string }[] };
+  let body: { messages?: { role: "user" | "assistant"; content: string }[]; auditId?: string; images?: { name: string; dataUrl: string }[] };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Corps de requête invalide" }, { status: 400 });
   }
 
-  const { messages, auditId, images, textFiles } = body;
+  const { messages, auditId, images } = body;
   if (!messages || messages.length === 0) {
     return NextResponse.json({ error: "Messages manquants" }, { status: 400 });
   }
@@ -1628,29 +1628,22 @@ export async function POST(req: NextRequest) {
 
         const conversation: Anthropic.MessageParam[] = messages.map((m, i) => {
           const isLast = i === messages.length - 1;
-          const hasTextFiles = isLast && m.role === "user" && textFiles && textFiles.length > 0;
-          const hasImages = isLast && m.role === "user" && images && images.length > 0;
-
-          if (hasTextFiles || hasImages) {
-            // Build the text part: message + appended file contents
-            let fullText = m.content;
-            for (const f of textFiles ?? []) {
-              fullText += `\n\n**Fichier joint : ${f.name}**\n\`\`\`\n${f.content}\n\`\`\``;
-            }
-
-            const parts: Anthropic.ContentBlockParam[] = [
-              { type: "text" as const, text: fullText },
-              ...(images ?? []).map(img => ({
-                type: "image" as const,
-                source: {
-                  type: "base64" as const,
-                  media_type: ((img.dataUrl.split(";")[0] ?? "").split(":")[1] ?? "image/jpeg") as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
-                  data: img.dataUrl.split(",")[1] ?? "",
-                },
-              })),
-            ];
-
-            return { role: "user" as const, content: parts };
+          // Only attach images to the last user message (text files are already in m.content)
+          if (isLast && m.role === "user" && images && images.length > 0) {
+            return {
+              role: "user" as const,
+              content: [
+                { type: "text" as const, text: m.content },
+                ...images.map(img => ({
+                  type: "image" as const,
+                  source: {
+                    type: "base64" as const,
+                    media_type: ((img.dataUrl.split(";")[0] ?? "").split(":")[1] ?? "image/jpeg") as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+                    data: img.dataUrl.split(",")[1] ?? "",
+                  },
+                })),
+              ],
+            };
           }
           return { role: m.role, content: m.content };
         });
