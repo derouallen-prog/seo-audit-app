@@ -1862,14 +1862,10 @@ async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: stri
       const creds = { storeUrl: conn.storeUrl, wpUsername: conn.wpUsername, wpAppPassword: conn.wpAppPassword };
       const { items } = toolUse.input as { items: Array<{ page_url: string; seo_title?: string; meta_description?: string }> };
 
-      const results: Array<{ url: string; status: "ok" | "skipped" | "error"; title?: string; error?: string }> = [];
-      let yoastRestBlocked = false;
+      const results: Array<{ url: string; status: "ok" | "skipped" | "error"; title?: string; error?: string; method?: string }> = [];
+      let usedXmlRpc = false;
 
       for (const item of items) {
-        if (yoastRestBlocked) {
-          results.push({ url: item.page_url, status: "skipped", error: "Arrêté — champs Yoast non accessibles en écriture via REST" });
-          continue;
-        }
         if (!item.seo_title && !item.meta_description) {
           results.push({ url: item.page_url, status: "skipped", error: "Aucune valeur à écrire" });
           continue;
@@ -1880,30 +1876,13 @@ async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: stri
             results.push({ url: item.page_url, status: "error", error: "Post/page introuvable sur ce WordPress (slug non reconnu)" });
             continue;
           }
-          await updateYoastMeta(creds, post.id, post.postType, item.seo_title ?? "", item.meta_description ?? "");
-          results.push({ url: item.page_url, status: "ok", title: post.title });
+          const { method } = await updateYoastMeta(creds, post.id, post.postType, item.seo_title ?? "", item.meta_description ?? "");
+          if (method === "xmlrpc") usedXmlRpc = true;
+          results.push({ url: item.page_url, status: "ok", title: post.title, method });
         } catch (e) {
           const msg = e instanceof Error ? e.message : "erreur inconnue";
-          if (msg.startsWith("YOAST_REST_NOT_REGISTERED")) {
-            yoastRestBlocked = true;
-            results.push({ url: item.page_url, status: "error", error: "Champs Yoast non enregistrés pour l'API REST sur ce site" });
-          } else {
-            results.push({ url: item.page_url, status: "error", error: msg });
-          }
+          results.push({ url: item.page_url, status: "error", error: msg });
         }
-      }
-
-      if (yoastRestBlocked) {
-        return {
-          terminal: true,
-          reply: `## ❌ Mise à jour Yoast impossible via REST API\n\n` +
-            `Les champs Yoast SEO (\`_yoast_wpseo_title\`, \`_yoast_wpseo_metadesc\`) ne sont **pas exposés en écriture** par l'API REST de ce site WordPress.\n\n` +
-            `**Causes possibles :**\n` +
-            `- Yoast SEO < 14.0 (les champs REST n'étaient pas encore enregistrés)\n` +
-            `- Un plugin de sécurité bloque l'écriture des meta protégées (\`_\`) via REST\n` +
-            `- L'option "Activer l'API REST" est désactivée dans les réglages WordPress\n\n` +
-            `**Solution :** mets à jour Yoast SEO vers la dernière version, puis relance la mise à jour. Si le problème persiste, vérifie dans **WordPress → Extensions → Yoast SEO** que la version est 14.0+.`,
-        };
       }
 
       const ok = results.filter(r => r.status === "ok");
@@ -1916,6 +1895,9 @@ async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: stri
       if (skipped.length) report += ` · ${skipped.length} ignorée${skipped.length > 1 ? "s" : ""}`;
       report += `\n\n`;
 
+      if (usedXmlRpc) {
+        report += `> ℹ️ Écriture via XML-RPC (champs Yoast non exposés par l'API REST — comportement normal sur certaines configurations).\n\n`;
+      }
       if (ok.length > 0) {
         report += `### ✅ Mises à jour réussies\n`;
         for (const r of ok) report += `- **${r.title}** — \`${r.url}\`\n`;
