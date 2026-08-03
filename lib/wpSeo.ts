@@ -114,6 +114,7 @@ function parseXmlRpcCustomFields(xml: string): Array<{ id: number; key: string; 
 async function updateYoastMetaViaXmlRpc(
   creds: WpCreds,
   postId: number,
+  postType: "posts" | "pages",
   seoTitle: string,
   metaDescription: string
 ): Promise<void> {
@@ -182,14 +183,47 @@ ${xmlRpcValue(postId)}
     throw new Error("XML-RPC wp.editPost a retourné false");
   }
 
-  // Step 3 — after XML-RPC write, touch the post via REST to trigger Yoast indexable rebuild
-  // (Yoast rebuilds its indexable cache on save_post, which REST update also fires)
+  // Step 3 — verify write was actually persisted (WordPress silently skips protected meta
+  // when user lacks add_post_meta capability for _ prefixed keys)
+  const verifyGetBody = `<?xml version="1.0"?>
+<methodCall><methodName>wp.getPost</methodName><params>
+${xmlRpcValue(1)}
+${xmlRpcValue(creds.wpUsername)}
+${xmlRpcValue(creds.wpAppPassword)}
+${xmlRpcValue(postId)}
+<param><value><array><data><value><string>custom_fields</string></value></data></array></value></param>
+</params></methodCall>`;
+
+  try {
+    const verifyRes = await fetch(xmlrpcUrl, { method: "POST", headers, body: verifyGetBody, signal: AbortSignal.timeout(10000) });
+    if (verifyRes.ok) {
+      const verifyXml = await verifyRes.text();
+      const afterFields = parseXmlRpcCustomFields(verifyXml);
+      // Only verify when we can read back at least some custom fields
+      // (if afterFields is empty, protected meta aren't returned on this config — proceed optimistically)
+      if (afterFields.length > 0) {
+        const titleOk = !seoTitle || afterFields.some(f => f.key === "_yoast_wpseo_title" && f.value === seoTitle);
+        const descOk = !metaDescription || afterFields.some(f => f.key === "_yoast_wpseo_metadesc" && f.value === metaDescription);
+        if (!titleOk || !descOk) {
+          throw new Error(
+            "XMLRPC_META_NOT_PERSISTED: WordPress a refusé silencieusement l'écriture des méta Yoast protégées via XML-RPC " +
+            "(droits insuffisants pour add_post_meta sur les clés _ prefixées, ou plugin de sécurité bloquant)"
+          );
+        }
+      }
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith("XMLRPC_META_NOT_PERSISTED")) throw e;
+    // Ignore other verification errors (timeout, parse) — proceed with touch
+  }
+
+  // Step 4 — touch the post via REST to trigger Yoast indexable rebuild from wp_postmeta
+  // (Yoast hooks into save_post / wp_after_insert_post to rebuild wp_yoast_indexable)
   const auth = makeAuthHeader(creds);
-  const postType = "pages"; // works for both posts/pages since we only touch meta
-  await fetch(`${base}/wp-json/wp/v2/pages/${postId}`, {
+  await fetch(`${base}/wp-json/wp/v2/${postType}/${postId}`, {
     method: "POST",
     headers: { Authorization: auth, "Content-Type": "application/json" },
-    body: JSON.stringify({}), // empty body = touch → fires save_post hooks
+    body: JSON.stringify({}),
     signal: AbortSignal.timeout(10000),
   }).catch(() => {/* ignore — indexable rebuild is best-effort */});
 }
@@ -251,7 +285,7 @@ export async function updateYoastMeta(
   } catch (e) {
     if (e instanceof Error && e.message === "YOAST_REST_NOT_REGISTERED") {
       // REST meta not registered → fall back to XML-RPC (bypasses show_in_rest)
-      await updateYoastMetaViaXmlRpc(creds, postId, seoTitle, metaDescription);
+      await updateYoastMetaViaXmlRpc(creds, postId, postType, seoTitle, metaDescription);
       return { method: "xmlrpc" };
     }
     throw e;

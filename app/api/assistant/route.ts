@@ -1883,7 +1883,15 @@ async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: stri
           results.push({ url: item.page_url, status: "ok", title: post.title, method });
         } catch (e) {
           const msg = e instanceof Error ? e.message : "erreur inconnue";
-          results.push({ url: item.page_url, status: "error", error: msg });
+          if (msg.startsWith("XMLRPC_META_NOT_PERSISTED")) {
+            results.push({
+              url: item.page_url,
+              status: "error",
+              error: "XML-RPC a accepté la requête mais n'a pas écrit les méta Yoast (droits insuffisants pour les clés protégées `_` — vérifier que le compte WordPress est Administrateur, pas seulement Éditeur)",
+            });
+          } else {
+            results.push({ url: item.page_url, status: "error", error: msg });
+          }
         }
       }
 
