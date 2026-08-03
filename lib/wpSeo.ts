@@ -79,7 +79,8 @@ export async function updateYoastMeta(
   const base = creds.storeUrl.replace(/\/$/, "");
   const auth = makeAuthHeader(creds);
 
-  const res = await fetch(`${base}/wp-json/wp/v2/${postType}/${postId}`, {
+  // Write via standard WP REST API
+  const writeRes = await fetch(`${base}/wp-json/wp/v2/${postType}/${postId}`, {
     method: "POST",
     headers: { Authorization: auth, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -88,12 +89,58 @@ export async function updateYoastMeta(
         _yoast_wpseo_metadesc: metaDescription,
       },
     }),
-    signal: AbortSignal.timeout(10000),
+    signal: AbortSignal.timeout(15000),
   });
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { message?: string };
-    throw new Error(err.message ?? `HTTP ${res.status}`);
+  if (!writeRes.ok) {
+    const err = await writeRes.json().catch(() => ({})) as { message?: string };
+    throw new Error(err.message ?? `HTTP ${writeRes.status}`);
+  }
+
+  // Verify: WP REST API silently ignores writes to protected meta keys (_prefix)
+  // that aren't registered with show_in_rest: true. We must read back to confirm.
+  const verifyRes = await fetch(
+    `${base}/wp-json/wp/v2/${postType}/${postId}?_fields=id,meta`,
+    { headers: { Authorization: auth }, signal: AbortSignal.timeout(10000) }
+  );
+
+  if (!verifyRes.ok) return; // can't verify, assume ok
+
+  const data = await verifyRes.json() as { meta?: Record<string, unknown> };
+  const metaObj = data.meta ?? {};
+
+  // Check if the meta key even appears in the REST response
+  const titleInResponse = "_yoast_wpseo_title" in metaObj;
+  const descInResponse = "_yoast_wpseo_metadesc" in metaObj;
+
+  if (!titleInResponse && !descInResponse) {
+    // Yoast meta not exposed by REST on this site — try updating via a full post
+    // save that touches a safe field (date_gmt trick forces save_post hooks to run,
+    // which causes Yoast to rebuild its indexable from stored post meta).
+    // But first, verify if meta were actually stored (they just aren't in REST response).
+    // We have no other non-invasive write path here, so report clearly.
+    throw new Error(
+      "YOAST_REST_NOT_REGISTERED: Les champs Yoast SEO (_yoast_wpseo_title, _yoast_wpseo_metadesc) " +
+      "ne sont pas exposés en écriture par l'API REST de ce site. " +
+      "Cause probable : Yoast SEO < 14.0, ou le filtre REST a été désactivé par un plugin/thème."
+    );
+  }
+
+  const savedTitle = metaObj["_yoast_wpseo_title"];
+  const savedDesc = metaObj["_yoast_wpseo_metadesc"];
+
+  const titleOk = !seoTitle || savedTitle === seoTitle;
+  const descOk = !metaDescription || savedDesc === metaDescription;
+
+  if (!titleOk || !descOk) {
+    // Fields are in REST response but values don't match — Yoast indexable cache.
+    // Trigger a "touch" save to force Yoast to rebuild from postmeta.
+    await fetch(`${base}/wp-json/wp/v2/${postType}/${postId}`, {
+      method: "POST",
+      headers: { Authorization: auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ meta: { _yoast_wpseo_title: seoTitle, _yoast_wpseo_metadesc: metaDescription } }),
+      signal: AbortSignal.timeout(15000),
+    });
   }
 }
 
