@@ -13,6 +13,7 @@ import { buildLinkGraphWithSignals } from "@/lib/linkGraph";
 import { fetchWpContentForUrls } from "@/lib/wpContent";
 import { searchRedditPosts, getSubredditTopPosts, extractSemanticCorpus, findLinkOpportunities } from "@/lib/reddit";
 import { listGbpLocations, getGbpInsightsForLocation } from "@/lib/gbp";
+import { findPostByUrl, updateYoastMeta, parseCsv } from "@/lib/wpSeo";
 import { getSemrushDomainKeywords, getSemrushDomainTopPages, getSemrushBacklinks, getSemrushKeywordIdeas } from "@/lib/semrush";
 import { getKeKeywordData, getKeKeywordTrends } from "@/lib/keywordsEverywhere";
 import { getKpuPeopleAlsoAsk, getKpuSuggestions, formatPaaForAssistant, formatSuggestionsForAssistant } from "@/lib/keywordspeopleuse";
@@ -181,6 +182,18 @@ Quand tu t'appuies sur des données Search Console pour recommander une action d
 Pour les requêtes d'intention (NLP) via get_search_console_data, utilise le paramètre query_type dès que l'utilisateur parle de : "requêtes interrogatives", "requêtes commerciales", "requêtes locales", "requêtes navigationnelles", ou décrit le type de contenu (questions, comparatifs, prix, avis, "comment/pourquoi/quoi"...). Les quatre valeurs disponibles sont : interrogative (comment, pourquoi, quoi, est-ce que, how, what, why...), commercial (prix, acheter, avis, comparatif, offre, buy, review...), navigational (site officiel, connexion, login, contact, horaires...), local (près de, à [ville], near me...). Ce paramètre est exclusif avec thematique — ne passe pas les deux en même temps.
 
 Pour les périodes longues via get_search_console_data, utilise le paramètre mois dès que l'utilisateur dit "sur les 3 mois", "sur 6 mois", "l'année dernière", "sur les 12 derniers mois". Les valeurs acceptées sont 1, 3, 6, ou 12. La Search Console stocke jusqu'à 16 mois de données (dataState=all). Si l'utilisateur ne précise pas de période, laisse le défaut (28 jours). Tu peux combiner mois et query_type dans le même appel : ex. "requêtes interrogatives sur les 6 derniers mois" → { query_type: "interrogative", mois: 6 }.
+
+## Import Google Sheet + mise à jour Yoast en masse
+
+Pour importer un Google Sheet partagé, utilise l'outil fetch_google_sheet dès que l'utilisateur colle une URL docs.google.com/spreadsheets. L'outil retourne les lignes parsées avec les noms de colonnes comme clés. Le Sheet doit être partagé "Tout le monde avec le lien peut voir".
+
+Pour la mise à jour en masse des balises Yoast SEO (title tag + meta description) depuis un Sheet :
+1. Appelle fetch_google_sheet pour récupérer les lignes.
+2. Identifie les colonnes URL, Title et Meta description (peu importe la casse ou la dénomination exacte — recherche les colonnes les plus proches).
+3. Appelle update_yoast_seo_bulk avec le tableau d'items mappés. Ne modifie que les champs non vides.
+4. L'outil trouve automatiquement chaque post/page par son slug d'URL sur le WordPress connecté (essaie posts puis pages), puis écrit _yoast_wpseo_title et _yoast_wpseo_metadesc.
+
+N'appelle JAMAIS update_yoast_seo_bulk sans confirmation explicite de l'utilisateur — c'est une écriture sur un site réel. Si l'utilisateur partage le Sheet et demande "mets à jour les balises Yoast", c'est une confirmation suffisante.
 
 ## Connexion Google Search Console
 
@@ -541,6 +554,41 @@ const tools: Anthropic.Tool[] = [
         },
       },
       required: ["keyword", "site_url"],
+    },
+  },
+  {
+    name: "fetch_google_sheet",
+    description: "Importe les données d'un Google Sheet public (partagé \"Tout le monde avec le lien\") et retourne les lignes sous forme de tableau JSON. Utilise cet outil quand l'utilisateur colle une URL Google Sheets et veut traiter son contenu (mise à jour en masse de balises Yoast, import de données, etc.).",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        url: { type: "string", description: "URL complète du Google Sheet partagé (format docs.google.com/spreadsheets/d/...)" },
+        sheet_name: { type: "string", description: "Nom de l'onglet à lire (optionnel — lit le premier onglet par défaut)" },
+      },
+      required: ["url"],
+    },
+  },
+  {
+    name: "update_yoast_seo_bulk",
+    description: "Met à jour en masse les balises Yoast SEO (title tag et meta description) pour une liste de pages WordPress. Pour chaque URL, trouve le post ou la page correspondante sur le WordPress connecté et écrit les champs _yoast_wpseo_title et _yoast_wpseo_metadesc via l'API REST. Retourne un rapport avec le statut de chaque ligne. N'utilise cet outil QUE sur demande explicite de l'utilisateur.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        items: {
+          type: "array",
+          description: "Liste des pages à mettre à jour",
+          items: {
+            type: "object",
+            properties: {
+              page_url: { type: "string", description: "URL complète de la page WordPress à mettre à jour" },
+              seo_title: { type: "string", description: "Balise title Yoast à écrire (vide = ne pas modifier)" },
+              meta_description: { type: "string", description: "Meta description Yoast à écrire (vide = ne pas modifier)" },
+            },
+            required: ["page_url"],
+          },
+        },
+      },
+      required: ["items"],
     },
   },
   {
@@ -1670,6 +1718,7 @@ const TERMINAL_TOOLS = new Set([
   "publish_category_to_woocommerce",
   "publish_article_to_wordpress",
   "publish_page_to_wordpress",
+  "update_yoast_seo_bulk",
 ]);
 
 type ToolOutcome = { terminal: true; reply: string } | { terminal: false; result: string };
@@ -1769,6 +1818,98 @@ async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: stri
     case "analyze_competitor_backlinks":
       return { terminal: false, result: await analyzeBacklinksForAssistant(toolUse.input as AnalyzeBacklinksParams) };
 
+    case "fetch_google_sheet": {
+      const { url, sheet_name } = toolUse.input as { url: string; sheet_name?: string };
+      // Security: only allow Google Sheets URLs
+      let sheetId: string | null = null;
+      try {
+        const parsed = new URL(url);
+        if (!parsed.hostname.endsWith("google.com")) {
+          return { terminal: false, result: "❌ Seuls les liens Google Sheets (docs.google.com) sont acceptés." };
+        }
+        const match = parsed.pathname.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+        sheetId = match?.[1] ?? null;
+      } catch {
+        return { terminal: false, result: "❌ URL invalide." };
+      }
+      if (!sheetId) return { terminal: false, result: "❌ Impossible d'extraire l'identifiant du Sheet depuis cette URL." };
+
+      const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv${sheet_name ? `&sheet=${encodeURIComponent(sheet_name)}` : ""}`;
+      try {
+        const res = await fetch(exportUrl, { signal: AbortSignal.timeout(15000) });
+        if (!res.ok) {
+          if (res.status === 403 || res.status === 401) {
+            return { terminal: false, result: "❌ Le Sheet n'est pas accessible publiquement. Vérifie que le partage est \"Tout le monde avec le lien peut voir\"." };
+          }
+          return { terminal: false, result: `❌ Erreur lors de l'import : HTTP ${res.status}` };
+        }
+        const raw = await res.text();
+        const rows = parseCsv(raw);
+        if (rows.length === 0) return { terminal: false, result: "⚠️ Le Sheet est vide ou ne contient que la ligne d'en-tête." };
+        const firstRow = rows[0] ?? {};
+        return { terminal: false, result: `Sheet importé avec succès : **${rows.length} lignes**\n\nColonnes détectées : ${Object.keys(firstRow).join(", ")}\n\nDonnées :\n\`\`\`json\n${JSON.stringify(rows, null, 2)}\n\`\`\`` };
+      } catch (e) {
+        return { terminal: false, result: `❌ Erreur réseau lors de l'import du Sheet : ${e instanceof Error ? e.message : "erreur inconnue"}` };
+      }
+    }
+
+    case "update_yoast_seo_bulk": {
+      if (!userId) return { terminal: true, reply: "❌ Vous devez être connecté pour mettre à jour les balises Yoast." };
+      const conn = await getWcConnection(userId);
+      if (!conn?.wpUsername || !conn.wpAppPassword) {
+        return { terminal: true, reply: "❌ Aucune connexion WordPress trouvée ou identifiants manquants. [→ Connecter mon WordPress](/integrations)" };
+      }
+      const creds = { storeUrl: conn.storeUrl, wpUsername: conn.wpUsername, wpAppPassword: conn.wpAppPassword };
+      const { items } = toolUse.input as { items: Array<{ page_url: string; seo_title?: string; meta_description?: string }> };
+
+      const results: Array<{ url: string; status: "ok" | "skipped" | "error"; title?: string; error?: string }> = [];
+
+      for (const item of items) {
+        if (!item.seo_title && !item.meta_description) {
+          results.push({ url: item.page_url, status: "skipped", error: "Aucune valeur à écrire" });
+          continue;
+        }
+        try {
+          const post = await findPostByUrl(creds, item.page_url);
+          if (!post) {
+            results.push({ url: item.page_url, status: "error", error: "Post/page introuvable sur ce WordPress (slug non reconnu)" });
+            continue;
+          }
+          await updateYoastMeta(creds, post.id, post.postType, item.seo_title ?? "", item.meta_description ?? "");
+          results.push({ url: item.page_url, status: "ok", title: post.title });
+        } catch (e) {
+          results.push({ url: item.page_url, status: "error", error: e instanceof Error ? e.message : "erreur inconnue" });
+        }
+      }
+
+      const ok = results.filter(r => r.status === "ok");
+      const errors = results.filter(r => r.status === "error");
+      const skipped = results.filter(r => r.status === "skipped");
+
+      let report = `## Mise à jour Yoast SEO terminée\n\n`;
+      report += `**${ok.length}/${items.length}** pages mises à jour avec succès`;
+      if (errors.length) report += ` · **${errors.length} erreur${errors.length > 1 ? "s" : ""}**`;
+      if (skipped.length) report += ` · ${skipped.length} ignorée${skipped.length > 1 ? "s" : ""}`;
+      report += `\n\n`;
+
+      if (ok.length > 0) {
+        report += `### ✅ Mises à jour réussies\n`;
+        for (const r of ok) report += `- **${r.title}** — \`${r.url}\`\n`;
+        report += `\n`;
+      }
+      if (errors.length > 0) {
+        report += `### ❌ Erreurs\n`;
+        for (const r of errors) report += `- \`${r.url}\` — ${r.error}\n`;
+        report += `\n`;
+      }
+      if (skipped.length > 0) {
+        report += `### ⏭️ Ignorées (aucune valeur à écrire)\n`;
+        for (const r of skipped) report += `- \`${r.url}\`\n`;
+      }
+
+      return { terminal: true, reply: report };
+    }
+
     default:
       return { terminal: false, result: `Outil inconnu : ${toolUse.name}` };
   }
@@ -1803,6 +1944,8 @@ const TOOL_LABELS: Record<string, string> = {
   publish_category_to_woocommerce: "Création catégorie sur WooCommerce…",
   publish_article_to_wordpress: "Publication article sur WordPress…",
   publish_page_to_wordpress: "Publication page sur WordPress…",
+  fetch_google_sheet: "Import du Google Sheet…",
+  update_yoast_seo_bulk: "Mise à jour des balises Yoast sur WordPress…",
 };
 
 export async function POST(req: NextRequest) {
