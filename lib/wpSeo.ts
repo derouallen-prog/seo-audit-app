@@ -23,12 +23,36 @@ export async function findPostByUrl(
   creds: WpCreds,
   pageUrl: string
 ): Promise<{ id: number; postType: "posts" | "pages"; title: string } | null> {
-  const slug = slugFromUrl(pageUrl);
-  if (!slug) return null;
-
   const auth = makeAuthHeader(creds);
   const base = creds.storeUrl.replace(/\/$/, "");
 
+  const slug = slugFromUrl(pageUrl);
+
+  // Homepage: slug is empty or URL matches the site root
+  if (!slug) {
+    // Get WordPress front page setting
+    const settingsRes = await fetch(`${base}/wp-json/wp/v2/settings`, {
+      headers: { Authorization: auth },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (settingsRes.ok) {
+      const settings = await settingsRes.json() as { page_on_front?: number; page_for_posts?: number };
+      const frontPageId = settings.page_on_front ?? 0;
+      if (frontPageId > 0) {
+        const pageRes = await fetch(`${base}/wp-json/wp/v2/pages/${frontPageId}?_fields=id,title`, {
+          headers: { Authorization: auth },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (pageRes.ok) {
+          const page = await pageRes.json() as { id: number; title: { rendered: string } };
+          return { id: page.id, postType: "pages", title: page.title.rendered };
+        }
+      }
+    }
+    return null;
+  }
+
+  // Regular page/post: search by slug
   for (const postType of ["posts", "pages"] as const) {
     const res = await fetch(
       `${base}/wp-json/wp/v2/${postType}?slug=${encodeURIComponent(slug)}&_fields=id,title,type`,
