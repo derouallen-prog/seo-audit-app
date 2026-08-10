@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "keywordspeopleuse": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://mcp-keywordspeopleuse.com/sse",
+        "--header",
+        "Authorization:${KPU_API_KEY}"
+      ],
+      "env": {
+        "KPU_API_KEY": "${KPU_API_KEY}"
+      }
+    }
+  }
+}

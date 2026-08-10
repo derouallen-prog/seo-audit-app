@@ -23,3 +23,17 @@ CREATE TABLE IF NOT EXISTS wp_bridge_queue (
 );
 
 CREATE INDEX IF NOT EXISTS wp_bridge_queue_user_status_idx ON wp_bridge_queue (user_id, status);
+
+-- RLS : chaque utilisateur n'accède qu'à ses propres données
+ALTER TABLE wp_bridge_tokens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wp_bridge_queue  ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "users_own_bridge_tokens"
+  ON wp_bridge_tokens FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "users_own_bridge_queue"
+  ON wp_bridge_queue FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);

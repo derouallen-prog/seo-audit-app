@@ -32,10 +32,23 @@ export async function middleware(req: NextRequest) {
       },
     }
   );
-  await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  // Redirect authenticated users to onboarding if not yet completed
+  const path = req.nextUrl.pathname;
+  const isOnboarding = path === "/onboarding";
+  const isApi = path.startsWith("/api/");
+  const isAuth = path.startsWith("/auth");
+  const isStatic = path.startsWith("/_next") || path.startsWith("/legal");
+
+  if (user && !isOnboarding && !isApi && !isAuth && !isStatic) {
+    const onboardingDone = user.user_metadata?.onboarding_completed === true;
+    if (!onboardingDone) {
+      return NextResponse.redirect(new URL("/onboarding", req.url));
+    }
+  }
 
   // Rate limiting on expensive API routes
-  const path = req.nextUrl.pathname;
   const rule = LIMITS.find(r => r.pattern.test(path));
   if (rule) {
     const ip = clientIp(req);
