@@ -46,28 +46,10 @@ async function wf<T>(token: string, path: string, init?: RequestInit): Promise<T
   return res.json() as Promise<T>;
 }
 
-export async function listSiteDomains(token: string, siteId: string): Promise<string[]> {
-  try {
-    const data = await wf<{ domains: { url: string }[] }>(token, `/sites/${siteId}/domains`);
-    return (data.domains ?? []).map((d) => d.url).filter(Boolean);
-  } catch {
-    return [];
-  }
-}
-
 export async function listSites(token: string): Promise<WebflowSite[]> {
+  // customDomains est déjà inclus dans la réponse /v2/sites
   const data = await wf<{ sites: WebflowSite[] }>(token, "/sites");
-  const sites = data.sites ?? [];
-
-  // Enrichit chaque site avec ses domaines de production
-  const enriched = await Promise.all(
-    sites.map(async (site) => {
-      const domains = await listSiteDomains(token, site.id);
-      return { ...site, customDomains: domains.map((url) => ({ url })) };
-    })
-  );
-
-  return enriched;
+  return data.sites ?? [];
 }
 
 export async function listCollections(token: string, siteId: string): Promise<WebflowCollection[]> {
