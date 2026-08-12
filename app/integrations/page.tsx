@@ -10,6 +10,8 @@ interface SiteConnection {
   isDefault: boolean;
   wpUsername?: string;
   hasProfile: boolean;
+  seoPlugin?: string;
+  seoCompatStatus?: string;
 }
 
 interface ConnectionsResponse {
@@ -69,6 +71,7 @@ function IntegrationsContent() {
   const bookmarkletRef = useRef<HTMLAnchorElement>(null);
   const [scanningId, setScanningId] = useState<string | null>(null);
   const [scannedIds, setScannedIds] = useState<Set<string>>(new Set());
+  const [compatCheckingId, setCompatCheckingId] = useState<string | null>(null);
 
   const hasConnections = connections.length > 0;
 
@@ -139,6 +142,27 @@ function IntegrationsContent() {
     await fetch("/api/wc/connection", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
     await reload();
     showToast("success", "Site par défaut mis à jour.");
+  }
+
+  async function handleCompatCheck(site: SiteConnection) {
+    setCompatCheckingId(site.id);
+    try {
+      const res = await fetch("/api/wc/compat-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storeUrl: site.storeUrl }),
+      });
+      if (res.ok) {
+        await reload();
+        showToast("success", "Test de compatibilité SEO terminé.");
+      } else {
+        showToast("error", "Erreur lors du test de compatibilité.");
+      }
+    } catch {
+      showToast("error", "Erreur lors du test de compatibilité.");
+    } finally {
+      setCompatCheckingId(null);
+    }
   }
 
   async function handleScan(id: string) {
@@ -245,6 +269,28 @@ function IntegrationsContent() {
                           ✓ Thème analysé
                         </span>
                       )}
+                      {/* SEO compat badge */}
+                      {site.seoCompatStatus === "compatible_direct" && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-good/10 px-2 py-0.5 text-xs font-medium text-good">
+                          <span className="h-1.5 w-1.5 rounded-full bg-good" />
+                          SEO opérationnel
+                        </span>
+                      )}
+                      {site.seoCompatStatus === "needs_connector_plugin" && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
+                          ⚠ Plugin requis
+                        </span>
+                      )}
+                      {site.seoCompatStatus === "seo_not_detected" && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-xs text-ink-soft">
+                          Plugin SEO non détecté
+                        </span>
+                      )}
+                      {(site.seoCompatStatus === "checking") && (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-accent px-2 py-0.5 text-xs text-ink-soft">
+                          <IconSpin className="h-3 w-3 animate-spin" /> Vérification…
+                        </span>
+                      )}
                     </div>
                     {site.label && (
                       <p className="mt-0.5 truncate text-xs text-ink-soft">{site.storeUrl}</p>
@@ -252,8 +298,43 @@ function IntegrationsContent() {
                     {site.wpUsername && (
                       <p className="mt-0.5 text-xs text-ink-soft">{site.wpUsername}</p>
                     )}
+                    {/* Plugin requis — CTA */}
+                    {site.seoCompatStatus === "needs_connector_plugin" && (
+                      <div className="mt-2 flex items-start gap-2 rounded-lg border border-warning/20 bg-warning/5 px-3 py-2.5 text-xs text-ink-soft">
+                        <span className="mt-0.5 shrink-0">⚠</span>
+                        <div>
+                          <span className="font-medium text-ink">Les champs SEO ne sont pas accessibles via REST.</span>
+                          {" "}Installez le plugin connecteur Search Mind pour activer la mise à jour automatique des balises.{" "}
+                          <a
+                            href="/downloads/searchmind-connector.zip"
+                            download
+                            className="font-medium text-brand hover:underline"
+                          >
+                            Télécharger le plugin →
+                          </a>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                    {/* Test compatibilité SEO */}
+                    {(site.seoCompatStatus === "unchecked" || site.seoCompatStatus === "needs_connector_plugin" || site.seoCompatStatus === "seo_not_detected") && (
+                      <button
+                        onClick={() => handleCompatCheck(site)}
+                        disabled={compatCheckingId === site.id}
+                        title="Tester la compatibilité SEO"
+                        className="inline-flex items-center gap-1.5 rounded-md border border-hairline px-2.5 py-1.5 text-xs text-ink-soft transition-colors hover:bg-accent disabled:opacity-50"
+                      >
+                        {compatCheckingId === site.id ? (
+                          <IconSpin className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M9 12l2 2 4-4" /><circle cx="12" cy="12" r="10" />
+                          </svg>
+                        )}
+                        Tester SEO
+                      </button>
+                    )}
                     {/* Analyser thème */}
                     <button
                       onClick={() => handleScan(site.id)}
@@ -349,18 +430,48 @@ function IntegrationsContent() {
                     </p>
                     <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
                       {[
-                        { n: "1", title: "Entrez votre URL", desc: "L'adresse de votre site WordPress self-hosted." },
-                        { n: "2", title: "Autorisez dans WP", desc: "WordPress affiche un écran de confirmation — un clic suffit." },
-                        { n: "3", title: "Publiez depuis l'assistant", desc: "Articles, pages, fiches produit WooCommerce — en brouillon." },
+                        {
+                          n: "1",
+                          title: "Entrez votre URL",
+                          desc: "L'adresse de votre site WordPress (ex. monsite.fr).",
+                          icon: (
+                            <svg viewBox="0 0 24 24" className="h-4 w-4 text-brand" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="9" /><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20" /></svg>
+                          ),
+                        },
+                        {
+                          n: "2",
+                          title: "Autorisez en un clic",
+                          desc: "WordPress affiche un écran de confirmation — approuvez, Search Mind reçoit l'accès automatiquement.",
+                          icon: (
+                            <svg viewBox="0 0 24 24" className="h-4 w-4 text-brand" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+                          ),
+                        },
+                        {
+                          n: "3",
+                          title: "Test SEO automatique",
+                          desc: "Search Mind détecte votre plugin SEO (Yoast, Rank Math…) et vérifie que les balises sont accessibles en écriture.",
+                          icon: (
+                            <svg viewBox="0 0 24 24" className="h-4 w-4 text-brand" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M9 12l2 2 4-4" /><circle cx="12" cy="12" r="9" /></svg>
+                          ),
+                        },
                       ].map((s) => (
                         <div key={s.n} className="flex gap-3 rounded-xl bg-accent/60 p-4">
-                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold text-white">{s.n}</span>
+                          <div className="flex flex-col items-center gap-1.5">
+                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold text-white">{s.n}</span>
+                          </div>
                           <div>
-                            <div className="text-xs font-semibold text-ink">{s.title}</div>
+                            <div className="flex items-center gap-1.5 text-xs font-semibold text-ink">{s.icon}{s.title}</div>
                             <div className="mt-0.5 text-xs text-ink-soft">{s.desc}</div>
                           </div>
                         </div>
                       ))}
+                    </div>
+                    <div className="mt-4 flex items-start gap-2 rounded-xl border border-hairline bg-background p-3 text-xs text-ink-soft">
+                      <span className="mt-0.5 shrink-0">ℹ</span>
+                      <span>
+                        <span className="font-medium text-ink">À propos de l&apos;indicateur Yoast dans votre admin WP :</span>
+                        {" "}une balise mise à jour via Search Mind est <span className="font-medium text-ink">immédiatement active sur votre site</span> (le titre et la meta description sont corrects pour Google). L&apos;indicateur visuel dans l&apos;éditeur WordPress peut rester grisé tant que la page n&apos;a pas été rouverte manuellement — c&apos;est un comportement normal de Yoast, pas un problème.
+                      </span>
                     </div>
                   </>
                 )}
@@ -380,6 +491,69 @@ function IntegrationsContent() {
             <span className="font-medium text-ink">WooCommerce inclus</span> — si votre site utilise WooCommerce, l&apos;assistant peut créer et mettre à jour des fiches produit avec la même connexion. L&apos;assistant connaît automatiquement la structure de votre thème (champs ACF, Yoast, répéteurs) grâce à l&apos;analyse de thème.
           </div>
         </div>
+      )}
+
+      {/* Plugin connecteur WordPress */}
+      {connections.some((c) => c.seoCompatStatus === "needs_connector_plugin") && (
+        <section className="mb-8">
+          <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-ink-soft">Plugin connecteur WordPress</h2>
+          <div className="rounded-2xl border border-warning/30 bg-background p-6 shadow-sm">
+            <div className="flex items-start gap-4">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-warning/30 bg-warning/10 text-xl">🔌</div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-ink">Search Mind Connector</span>
+                  <span className="rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">Requis</span>
+                </div>
+                <p className="mt-1 max-w-lg text-sm text-ink-soft">
+                  Votre plugin SEO n&apos;expose pas ses champs via l&apos;API REST WordPress (souvent causé par Elementor ou un builder de page). Ce plugin les rend accessibles en écriture, sans modifier votre thème.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 border-t border-hairline pt-6">
+              <h3 className="mb-4 text-sm font-medium text-ink">Installation en 3 étapes</h3>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {[
+                  { n: "1", title: "Téléchargez le plugin", desc: "Cliquez sur le bouton ci-dessous pour obtenir le fichier .zip." },
+                  { n: "2", title: "Installez dans WordPress", desc: "Extensions → Ajouter une extension → Téléverser → Activer." },
+                  { n: "3", title: "Relancez le test SEO", desc: "Revenez ici et cliquez « Tester SEO » — le statut passera au vert." },
+                ].map((s) => (
+                  <div key={s.n} className="flex gap-3 rounded-xl bg-accent/60 p-4">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-warning text-xs font-bold text-white">{s.n}</span>
+                    <div>
+                      <div className="text-xs font-semibold text-ink">{s.title}</div>
+                      <div className="mt-0.5 text-xs text-ink-soft">{s.desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-5 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+                <a
+                  href="/downloads/searchmind-connector.zip"
+                  download
+                  className="inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  Télécharger searchmind-connector.zip
+                </a>
+                <span className="text-xs text-ink-soft">Plugin léger — open source, aucune donnée collectée</span>
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-start gap-2 rounded-xl bg-accent/40 p-3 text-xs text-ink-soft">
+              <span className="mt-0.5">ℹ</span>
+              <span>
+                Le plugin enregistre les champs meta de votre plugin SEO (Yoast, Rank Math, AIOSEO, SEOPress) en REST et expose un endpoint{" "}
+                <code className="rounded bg-accent px-1 py-0.5 font-mono text-[11px]">searchmind/v1/update-meta</code>{" "}
+                authentifié par clé API. Une fois activé, relancez le test de compatibilité — aucune autre configuration n&apos;est nécessaire.
+              </span>
+            </div>
+          </div>
+        </section>
       )}
 
       {/* Mind Bridge */}

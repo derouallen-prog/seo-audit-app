@@ -19,6 +19,8 @@ export async function GET() {
       isDefault: c.isDefault,
       wpUsername: c.wpUsername,
       hasProfile: !!c.siteProfile,
+      seoPlugin: c.seoPlugin ?? "unknown",
+      seoCompatStatus: c.seoCompatStatus ?? "unchecked",
     })),
   });
 }

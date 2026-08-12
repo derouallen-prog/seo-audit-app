@@ -17,6 +17,8 @@ export interface WcConnectionData {
   wpUsername: string;
   wpAppPassword: string;
   siteProfile?: WcSiteProfile | null;
+  seoPlugin?: string;
+  seoCompatStatus?: string;
 }
 
 /** Retourne le site par défaut (ou le premier si aucun défaut défini) */
@@ -57,7 +59,22 @@ function deserialize(data: Record<string, unknown>): WcConnectionData {
     wpUsername: (data.wp_username as string | null) ?? "",
     wpAppPassword: decryptToken(data.wp_app_password as string),
     siteProfile: (data.site_profile as WcSiteProfile | null) ?? null,
+    seoPlugin: (data.seo_plugin as string | null) ?? "unknown",
+    seoCompatStatus: (data.seo_compat_status as string | null) ?? "unchecked",
   };
+}
+
+export async function saveSeoCompatStatus(
+  userId: string,
+  storeUrl: string,
+  seoPlugin: string,
+  seoCompatStatus: string
+): Promise<void> {
+  await supabaseAdmin
+    .from("woocommerce_connections")
+    .update({ seo_plugin: seoPlugin, seo_compat_status: seoCompatStatus, updated_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .eq("store_url", storeUrl.replace(/\/$/, ""));
 }
 
 export async function saveWcConnection(userId: string, conn: WcConnectionData): Promise<void> {
