@@ -37,9 +37,24 @@ function WooCommerceLogo() {
 
 const COMING_SOON = [
   { name: "Shopify", color: "#96BF48", icon: "S", desc: "Boutique e-commerce Shopify" },
-  { name: "Webflow", color: "#4353FF", icon: "W", desc: "Sites et CMS Webflow" },
   { name: "Wix", color: "#FAAD00", icon: "Wix", desc: "Sites Wix" },
 ];
+
+interface WebflowSite {
+  id: string;
+  displayName: string;
+  shortName: string;
+  previewUrl?: string;
+  lastPublished?: string;
+}
+
+function WebflowLogo({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M17.82 7.01s-1.93 5.9-2.07 6.43c-.07-.5-1.26-6.43-1.26-6.43H11.2s-1.28 6.04-1.36 6.44c-.12-.52-2.04-6.44-2.04-6.44H4.76l3.58 9.98h2.95l1.4-6.19 1.37 6.19h2.96l3.58-9.98H17.82z" />
+    </svg>
+  );
+}
 
 function IconRefresh({ className }: { className?: string }) {
   return (
@@ -72,6 +87,12 @@ function IntegrationsContent() {
   const [scanningId, setScanningId] = useState<string | null>(null);
   const [scannedIds, setScannedIds] = useState<Set<string>>(new Set());
   const [compatCheckingId, setCompatCheckingId] = useState<string | null>(null);
+
+  // Webflow
+  const [webflowSites, setWebflowSites] = useState<WebflowSite[]>([]);
+  const [webflowConnected, setWebflowConnected] = useState(false);
+  const [webflowLoading, setWebflowLoading] = useState(true);
+  const [webflowRefreshing, setWebflowRefreshing] = useState(false);
 
   const hasConnections = connections.length > 0;
 
@@ -126,7 +147,14 @@ function IntegrationsContent() {
     else if (error === "rejected") showToast("error", "Connexion annulée.");
     else if (error) showToast("error", "Erreur lors de la connexion. Réessayez.");
 
+    const wfConnected = searchParams.get("webflow_connected");
+    const wfError = searchParams.get("webflow_error");
+    if (wfConnected === "true") showToast("success", "Webflow connecté avec succès !");
+    else if (wfError === "rejected") showToast("error", "Connexion Webflow annulée.");
+    else if (wfError) showToast("error", "Erreur lors de la connexion Webflow.");
+
     reload().finally(() => setLoading(false));
+    loadWebflow();
 
     return () => { if (toastTimer.current) clearTimeout(toastTimer.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -180,6 +208,39 @@ function IntegrationsContent() {
       showToast("error", "Erreur lors de l'analyse du thème.");
     } finally {
       setScanningId(null);
+    }
+  }
+
+  async function loadWebflow() {
+    setWebflowLoading(true);
+    try {
+      const res = await fetch("/api/webflow/connection");
+      const data = await res.json() as { connected: boolean; sites: WebflowSite[] };
+      setWebflowConnected(data.connected);
+      setWebflowSites(data.sites ?? []);
+    } catch { /* ignore */ } finally {
+      setWebflowLoading(false);
+    }
+  }
+
+  async function handleWebflowDisconnect() {
+    await fetch("/api/webflow/connection", { method: "DELETE" });
+    setWebflowConnected(false);
+    setWebflowSites([]);
+    showToast("success", "Webflow déconnecté.");
+  }
+
+  async function handleWebflowRefresh() {
+    setWebflowRefreshing(true);
+    try {
+      const res = await fetch("/api/webflow/connection", { method: "POST" });
+      const data = await res.json() as { sites: WebflowSite[] };
+      setWebflowSites(data.sites ?? []);
+      showToast("success", "Liste de sites Webflow mise à jour.");
+    } catch {
+      showToast("error", "Impossible de rafraîchir les sites Webflow.");
+    } finally {
+      setWebflowRefreshing(false);
     }
   }
 
@@ -630,6 +691,99 @@ function IntegrationsContent() {
           </div>
         </section>
       )}
+
+      {/* Webflow */}
+      <section className="mb-8">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-soft">Webflow</h2>
+        </div>
+        <div className="rounded-2xl border border-hairline bg-background shadow-sm">
+          <div className="flex items-center gap-4 p-6 pb-4">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-hairline bg-[#4353FF]/10 text-[#4353FF]">
+              <WebflowLogo className="h-8 w-8" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-ink">Webflow</span>
+                {webflowConnected && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-good/10 px-2 py-0.5 text-xs font-medium text-good">
+                    <span className="h-1.5 w-1.5 rounded-full bg-good" />
+                    {webflowSites.length} site{webflowSites.length > 1 ? "s" : ""} connecté{webflowSites.length > 1 ? "s" : ""}
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 max-w-sm text-sm text-ink-soft">
+                Publiez et mettez à jour des articles, pages et éléments CMS sur vos sites Webflow.
+              </p>
+            </div>
+          </div>
+
+          {/* Sites list */}
+          {webflowLoading ? (
+            <div className="border-t border-hairline px-6 py-4">
+              <div className="h-12 animate-pulse rounded-xl bg-accent" />
+            </div>
+          ) : webflowConnected && webflowSites.length > 0 ? (
+            <div className="border-t border-hairline divide-y divide-hairline">
+              {webflowSites.map((site) => (
+                <div key={site.id} className="flex items-center justify-between px-6 py-3">
+                  <div>
+                    <span className="text-sm font-medium text-ink">{site.displayName}</span>
+                    <p className="text-xs text-ink-soft">{site.shortName}.webflow.io</p>
+                  </div>
+                  {site.lastPublished && (
+                    <span className="text-xs text-ink-soft">
+                      Publié {new Date(site.lastPublished).toLocaleDateString("fr-FR")}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {/* Actions */}
+          <div className={`${webflowConnected || webflowLoading ? "border-t border-hairline" : ""} px-6 py-4 flex items-center gap-3`}>
+            {!webflowConnected ? (
+              <a
+                href="/api/webflow/auth"
+                className="inline-flex items-center gap-2 rounded-lg bg-[#4353FF] px-5 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
+              >
+                <WebflowLogo className="h-4 w-4" />
+                Connecter Webflow
+              </a>
+            ) : (
+              <>
+                <button
+                  onClick={handleWebflowRefresh}
+                  disabled={webflowRefreshing}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-hairline px-3 py-1.5 text-xs text-ink-soft transition-colors hover:bg-accent disabled:opacity-50"
+                >
+                  {webflowRefreshing ? (
+                    <IconSpin className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <IconRefresh className="h-3 w-3" />
+                  )}
+                  Rafraîchir les sites
+                </button>
+                <button
+                  onClick={handleWebflowDisconnect}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-hairline px-3 py-1.5 text-xs text-ink-soft transition-colors hover:border-bad/40 hover:text-bad"
+                >
+                  Déconnecter
+                </button>
+              </>
+            )}
+          </div>
+
+          {!webflowConnected && !webflowLoading && (
+            <div className="border-t border-hairline px-6 pb-5">
+              <p className="text-xs text-ink-soft">
+                Vous serez redirigé vers Webflow pour autoriser l&apos;accès. Tous vos sites du workspace seront accessibles depuis l&apos;assistant.
+              </p>
+            </div>
+          )}
+        </div>
+      </section>
 
       {/* Coming soon */}
       <section>
