@@ -46,6 +46,7 @@ interface WebflowSite {
   shortName: string;
   previewUrl?: string;
   lastPublished?: string;
+  customDomains?: { url: string }[];
 }
 
 function WebflowLogo({ className }: { className?: string }) {
@@ -725,11 +726,19 @@ function IntegrationsContent() {
             </div>
           ) : webflowConnected && webflowSites.length > 0 ? (
             <div className="border-t border-hairline divide-y divide-hairline">
-              {webflowSites.map((site) => (
+              {webflowSites.map((site) => {
+                const prodDomain = site.customDomains?.[0]?.url;
+                const displayUrl = prodDomain ?? `${site.shortName}.webflow.io`;
+                return (
                 <div key={site.id} className="flex items-center justify-between px-6 py-3">
                   <div>
                     <span className="text-sm font-medium text-ink">{site.displayName}</span>
-                    <p className="text-xs text-ink-soft">{site.shortName}.webflow.io</p>
+                    <p className="text-xs text-ink-soft">
+                      {displayUrl}
+                      {prodDomain && (
+                        <span className="ml-2 text-ink-soft/60">(staging : {site.shortName}.webflow.io)</span>
+                      )}
+                    </p>
                   </div>
                   {site.lastPublished && (
                     <span className="text-xs text-ink-soft">
@@ -737,7 +746,8 @@ function IntegrationsContent() {
                     </span>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           ) : null}
 
