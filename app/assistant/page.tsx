@@ -312,10 +312,35 @@ function ExportBar({ content }: { content: string }) {
     navigator.clipboard.writeText(content).catch(() => {});
   }
 
-  function printPdf() {
+  async function printPdf() {
     const win = window.open("", "_blank");
     if (!win) return;
-    win.document.write(`<!DOCTYPE html><html><head><title>Export Mind</title><style>body{font-family:system-ui,sans-serif;padding:2rem;max-width:800px;margin:auto}pre{background:#f3f4f6;padding:1rem;border-radius:.5rem;overflow-x:auto;white-space:pre-wrap}code{background:#f3f4f6;padding:.1em .3em;border-radius:.2em}table{border-collapse:collapse;width:100%}td,th{border:1px solid #e5e7eb;padding:.5rem .75rem;text-align:left}</style></head><body>${content.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</body></html>`);
+    // Render markdown → HTML dynamically
+    let html = content;
+    try {
+      const { marked } = await import("marked");
+      html = await marked.parse(content);
+    } catch {
+      // fallback: escape and wrap in <pre> if marked fails
+      html = `<pre style="white-space:pre-wrap">${content.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>`;
+    }
+    win.document.write(`<!DOCTYPE html><html><head><title>Export Mind</title><style>
+      body{font-family:system-ui,sans-serif;padding:2.5rem;max-width:820px;margin:auto;color:#111;line-height:1.65}
+      h1{font-size:1.8rem;font-weight:700;margin:0 0 1.5rem;border-bottom:2px solid #e5e7eb;padding-bottom:.75rem}
+      h2{font-size:1.25rem;font-weight:600;margin:2rem 0 .75rem;color:#1a1a2e}
+      h3{font-size:1.05rem;font-weight:600;margin:1.5rem 0 .5rem}
+      p{margin:.5rem 0 1rem}
+      ul,ol{padding-left:1.5rem;margin:.5rem 0 1rem}
+      li{margin:.3rem 0}
+      strong{font-weight:600}
+      pre{background:#f3f4f6;padding:1rem;border-radius:.5rem;overflow-x:auto;white-space:pre-wrap}
+      code{background:#f3f4f6;padding:.1em .3em;border-radius:.2em;font-size:.875em}
+      table{border-collapse:collapse;width:100%;margin:1rem 0}
+      td,th{border:1px solid #e5e7eb;padding:.5rem .75rem;text-align:left}
+      th{background:#f9fafb;font-weight:600}
+      blockquote{border-left:3px solid #6366f1;margin:1rem 0;padding:.5rem 1rem;color:#555;background:#f9f9ff}
+      @media print{body{padding:1rem}}
+    </style></head><body>${html}</body></html>`);
     win.document.close();
     win.print();
   }
