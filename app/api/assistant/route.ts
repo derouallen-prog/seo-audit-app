@@ -21,6 +21,9 @@ import { getSerpResults, getLongTailKeywords, getDomainRanking, getBacklinks } f
 import { marked } from "marked";
 import { loadAudit } from "@/lib/auditStore";
 import { computeScore, formatAuditForAssistant } from "@/lib/score";
+import { generateMarkdown } from "@/lib/generateMarkdown";
+import { generatePdfBuffer } from "@/lib/generatePdf";
+import { loadAuditWithMeta } from "@/lib/auditStore";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = "claude-sonnet-4-6";
@@ -591,6 +594,21 @@ const tools: Anthropic.Tool[] = [
         },
       },
       required: ["items"],
+    },
+  },
+  {
+    name: "generate_seo_report",
+    description: "Génère un rapport SEO complet et structuré basé sur les données d'audit du site. Utilise cet outil quand l'utilisateur demande 'génère un rapport', 'exporte en PDF', 'rapport complet', 'exporte en markdown', 'rapport d'audit', etc. Le format 'markdown' retourne le rapport directement dans la conversation (sections claires, données chiffrées, recommandations). Le format 'pdf' génère un lien de téléchargement pour un PDF mis en page professionnel.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        format: {
+          type: "string",
+          enum: ["markdown", "pdf"],
+          description: "'markdown' pour un rapport textuel structuré directement dans la conversation, 'pdf' pour un fichier PDF téléchargeable mis en page.",
+        },
+      },
+      required: ["format"],
     },
   },
   {
@@ -1725,7 +1743,7 @@ const TERMINAL_TOOLS = new Set([
 
 type ToolOutcome = { terminal: true; reply: string } | { terminal: false; result: string };
 
-async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: string | undefined, userId: string | undefined): Promise<ToolOutcome> {
+async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: string | undefined, userId: string | undefined, auditId?: string): Promise<ToolOutcome> {
   switch (toolUse.name) {
     // ── Outils terminaux (livrables) ──
     case "generate_article":
@@ -1926,6 +1944,29 @@ async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: stri
       return { terminal: true, reply: report };
     }
 
+    case "generate_seo_report": {
+      const { format } = toolUse.input as { format: "markdown" | "pdf" };
+      if (!auditId) {
+        return { terminal: false, result: "❌ Aucun audit actif. Lancez d'abord un audit sur la page [Audit](/audit), puis revenez dans l'assistant." };
+      }
+      const auditMeta = await loadAuditWithMeta(auditId);
+      if (!auditMeta) {
+        return { terminal: false, result: "❌ Données d'audit introuvables. Relancez l'audit pour régénérer le rapport." };
+      }
+      const { url: auditUrl, data: auditData, score, grade } = auditMeta;
+
+      if (format === "markdown") {
+        const md = generateMarkdown(auditUrl, auditData, score, grade);
+        return { terminal: true, reply: md };
+      } else {
+        const downloadUrl = `/api/export/pdf-download?auditId=${auditId}`;
+        return {
+          terminal: false,
+          result: `Rapport PDF prêt. [**→ Télécharger le rapport PDF**](${downloadUrl})\n\n> Le fichier est généré à la volée avec analyse IA — quelques secondes de chargement.`,
+        };
+      }
+    }
+
     default:
       return { terminal: false, result: `Outil inconnu : ${toolUse.name}` };
   }
@@ -1962,6 +2003,7 @@ const TOOL_LABELS: Record<string, string> = {
   publish_page_to_wordpress: "Publication page sur WordPress…",
   fetch_google_sheet: "Import du Google Sheet…",
   update_yoast_seo_bulk: "Mise à jour des balises Yoast sur WordPress…",
+  generate_seo_report: "Génération du rapport SEO…",
 };
 
 export async function POST(req: NextRequest) {
@@ -2082,7 +2124,7 @@ export async function POST(req: NextRequest) {
           const terminalUse = toolUses.find(t => TERMINAL_TOOLS.has(t.name));
           if (terminalUse) {
             send("status", JSON.stringify({ label: TOOL_LABELS[terminalUse.name] ?? terminalUse.name }));
-            const outcome = await runAssistantTool(terminalUse, sessionId, userId);
+            const outcome = await runAssistantTool(terminalUse, sessionId, userId, auditId);
             if (outcome.terminal) {
               send("token", JSON.stringify(outcome.reply));
               send("done", "");
@@ -2096,7 +2138,7 @@ export async function POST(req: NextRequest) {
             send("status", JSON.stringify({ label: TOOL_LABELS[tu.name] ?? tu.name }));
           }
           conversation.push({ role: "assistant", content: finalMsg.content });
-          const outcomes = await Promise.all(toolUses.map(tu => runAssistantTool(tu, sessionId, userId)));
+          const outcomes = await Promise.all(toolUses.map(tu => runAssistantTool(tu, sessionId, userId, auditId)));
           const toolResults: Anthropic.ToolResultBlockParam[] = toolUses.map((tu, i) => ({
             type: "tool_result",
             tool_use_id: tu.id,

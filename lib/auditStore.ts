@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Analysis } from "./types";
+import type { Grade } from "./score";
 
 const TABLE = "audits";
 
@@ -28,6 +29,24 @@ export async function saveAudit(url: string, data: Analysis, score: number, grad
     return (row as { id: string }).id;
   } catch (e) {
     console.warn("[auditStore] saveAudit exception:", e);
+    return null;
+  }
+}
+
+export async function loadAuditWithMeta(id: string): Promise<{ url: string; data: Analysis; score: number; grade: Grade } | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  try {
+    const { data: row, error } = await sb
+      .from(TABLE)
+      .select("url, data, score, grade")
+      .eq("id", id)
+      .single();
+    if (error || !row) return null;
+    const r = row as { url: string; data: Analysis; score: number; grade: Grade };
+    return { url: r.url, data: r.data, score: r.score, grade: r.grade };
+  } catch (e) {
+    console.warn("[auditStore] loadAuditWithMeta exception:", e);
     return null;
   }
 }
