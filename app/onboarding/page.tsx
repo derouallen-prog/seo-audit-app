@@ -278,18 +278,15 @@ export default function OnboardingPage() {
                   </div>
 
                   {/* Ligne 2 — sitemap */}
-                  {(revealStep >= 2 || detectResult) && (
-                    <div className="flex items-center gap-2.5 text-sm animate-fade-in">
-                      {revealStep < 2
-                        ? <Spinner />
-                        : <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white shrink-0">
-                            <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 8 6.5 11.5 13 4.5" /></svg>
-                          </span>
-                      }
+                  {revealStep >= 2 && (
+                    <div className="flex items-center gap-2.5 text-sm">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white shrink-0">
+                        <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 8 6.5 11.5 13 4.5" /></svg>
+                      </span>
                       <span className="text-ink-soft">
                         {detectResult?.sitemapCount
-                          ? <><span className="font-semibold text-ink tabular-nums">{detectResult.sitemapCount.toLocaleString("fr-FR")}</span> pages trouvées dans le sitemap</>
-                          : "Lecture du sitemap…"
+                          ? <><span className="font-semibold text-ink tabular-nums">{detectResult.sitemapCount.toLocaleString("fr-FR")}</span> pages dans le sitemap</>
+                          : "Sitemap non détecté"
                         }
                       </span>
                     </div>
@@ -310,19 +307,21 @@ export default function OnboardingPage() {
                       )}
 
                       {/* Chiffre pages + stack */}
-                      <div className="flex items-end justify-between gap-4">
-                        {detectResult.sitemapCount > 0 && (
-                          <div>
-                            <p className="text-4xl font-bold text-ink tabular-nums">{detectResult.sitemapCount.toLocaleString("fr-FR")}</p>
-                            <p className="text-xs text-ink-soft mt-0.5">pages indexables</p>
-                          </div>
-                        )}
-                        {detectResult.techStack.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 justify-end">
-                            {detectResult.techStack.slice(0, 4).map(t => <TechBadge key={t.name} tech={t} />)}
-                          </div>
-                        )}
-                      </div>
+                      {(detectResult.sitemapCount > 0 || detectResult.techStack.length > 0) && (
+                        <div className="flex items-end justify-between gap-4">
+                          {detectResult.sitemapCount > 0 ? (
+                            <div>
+                              <p className="text-4xl font-bold text-ink tabular-nums">{detectResult.sitemapCount.toLocaleString("fr-FR")}</p>
+                              <p className="text-xs text-ink-soft mt-0.5">pages indexables</p>
+                            </div>
+                          ) : <div />}
+                          {detectResult.techStack.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 justify-end">
+                              {detectResult.techStack.slice(0, 4).map(t => <TechBadge key={t.name} tech={t} />)}
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       <button
                         onClick={() => setStep(1)}
