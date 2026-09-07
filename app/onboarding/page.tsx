@@ -92,34 +92,14 @@ export default function OnboardingPage() {
   const [loadingCompetitors, setLoadingCompetitors] = useState(false);
   const competitorInputRef = useRef<HTMLInputElement>(null);
 
-  // Progressive reveal + fetch competitor suggestions in background
+  // Progressive reveal after detection
   useEffect(() => {
     if (!detectResult) return;
     setRevealStep(1);
     const t1 = setTimeout(() => setRevealStep(2), 600);
     const t2 = setTimeout(() => setRevealStep(3), 1300);
-
-    // Fetch suggestions in background — won't block reveal
-    setSuggestedCompetitors([]);
-    setLoadingCompetitors(true);
-    const domain = (() => { try { return new URL(siteUrl.startsWith("http") ? siteUrl : `https://${siteUrl}`).hostname; } catch { return siteUrl; } })();
-    fetch("/api/onboarding/competitors", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        domain,
-        metaTitle: detectResult.pageData?.title,
-        metaDesc: detectResult.pageData?.metaDesc,
-        h1: detectResult.pageData?.h1,
-      }),
-    })
-      .then(r => r.json())
-      .then((d: { competitors: string[] }) => setSuggestedCompetitors(d.competitors ?? []))
-      .catch(() => {})
-      .finally(() => setLoadingCompetitors(false));
-
     return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [detectResult, siteUrl]);
+  }, [detectResult]);
 
   // ── Step 0: URL ──────────────────────────────────────────────────────────────
 
@@ -146,7 +126,25 @@ export default function OnboardingPage() {
       setSiteUrl(url);
       setDetectResult(data);
       if (data.positioning) setPositioning(data.positioning);
-      // step stays at 0 — user clicks "Continuer" after the reveal
+
+      // Fetch competitor suggestions in background immediately
+      setSuggestedCompetitors([]);
+      setLoadingCompetitors(true);
+      const domain = (() => { try { return new URL(url).hostname; } catch { return url; } })();
+      fetch("/api/onboarding/competitors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          domain,
+          metaTitle: data.pageData?.title,
+          metaDesc: data.pageData?.metaDesc,
+          h1: data.pageData?.h1,
+        }),
+      })
+        .then(r => r.json())
+        .then((d: { competitors: string[] }) => setSuggestedCompetitors(d.competitors ?? []))
+        .catch(() => {})
+        .finally(() => setLoadingCompetitors(false));
     } catch {
       setDetectError("Impossible d'analyser ce site. Vérifie l'URL et réessaie.");
     } finally {
