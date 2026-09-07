@@ -177,21 +177,25 @@ export default function OnboardingPage() {
   async function handleFinish() {
     setSaving(true);
     try {
-      await fetch("/api/onboarding/profile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          site_url: siteUrl,
-          competitors,
-          tech_stack: detectResult?.techStack ?? [],
-          positioning,
-          onboarding_completed: true,
+      await Promise.race([
+        fetch("/api/onboarding/profile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            site_url: siteUrl,
+            competitors,
+            tech_stack: detectResult?.techStack ?? [],
+            positioning,
+            onboarding_completed: true,
+          }),
         }),
-      });
-      router.push("/");
+        new Promise<Response>((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000)),
+      ]);
     } catch {
-      setSaving(false);
+      // Proceed anyway — profile may have saved partially
     }
+    // Full reload so middleware re-reads the new session cookie (onboarding_completed: true)
+    window.location.href = "/?welcome=1";
   }
 
   async function handleSkip() {
