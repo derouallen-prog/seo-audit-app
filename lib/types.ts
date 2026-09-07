@@ -56,6 +56,26 @@ export type Analysis = {
   };
   recommendations: string[];
   hasLlmsTxt?: boolean;
+  domainAnalysis?: {
+    pagesAnalyzed: number;
+    pagesTotal: number;
+    limit: number;
+    avgScore: number;
+    pages: {
+      url: string;
+      score: number;
+      grade: string;
+      title: string | null;
+      titleLen: number;
+      description: string | null;
+      descLen: number;
+      h1Count: number;
+      jsonLdDetected: boolean;
+      jsonLdTypes: string[];
+      robotsMeta: string | null;
+      imagesMissingAlt: number;
+    }[];
+  };
   openPageRank?: {
     pageRankInteger: number;
     pageRankDecimal: number;

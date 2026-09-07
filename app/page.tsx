@@ -151,6 +151,298 @@ const STATS = [
 
 // ── Page ────────────────────────────────────────────────────────────────────
 
+// ── Domain audit helpers ─────────────────────────────────────────────────────
+
+type DomainPage = NonNullable<Analysis["domainAnalysis"]>["pages"][number];
+
+function pageCritique(p: DomainPage): string {
+  const notes: string[] = [];
+  if (!p.title) notes.push("Pas de title");
+  else if (p.titleLen < 30) notes.push(`Title court (${p.titleLen}c)`);
+  else if (p.titleLen > 65) notes.push(`Title long (${p.titleLen}c)`);
+  if (!p.description) notes.push("Méta absente");
+  if (p.h1Count === 0) notes.push("Pas de H1");
+  else if (p.h1Count > 1) notes.push(`${p.h1Count} H1`);
+  if (p.robotsMeta?.toLowerCase().includes("noindex")) notes.push("🚨 Noindex");
+  if (p.imagesMissingAlt > 5) notes.push(`${p.imagesMissingAlt} img sans alt`);
+  return notes.length === 0 ? "✓ Conforme" : notes.join(" · ");
+}
+
+const DOMAIN_REPORT_TABS = [
+  { id: "overview" as const, label: "Vue d'ensemble" },
+  { id: "audit" as const, label: "Tableau d'audit" },
+  { id: "recommandations" as const, label: "Recommandations" },
+];
+type DomainTabId = typeof DOMAIN_REPORT_TABS[number]["id"];
+
+function DomainAuditReport({
+  da,
+  domainTab,
+  setDomainTab,
+  auditId,
+}: {
+  da: NonNullable<Analysis["domainAnalysis"]>;
+  domainTab: DomainTabId;
+  setDomainTab: (t: DomainTabId) => void;
+  auditId?: string;
+}) {
+  const n = da.pages.length;
+  if (n === 0) return null;
+
+  const grade = gradeFromScore(da.avgScore);
+  const gradeColor = grade === "A" ? "#22c55e" : grade === "B" ? "#f59e0b" : grade === "C" ? "#f97316" : "#ef4444";
+
+  const pctOf = (count: number) => Math.round((count / n) * 10);
+  const titleOkCount = da.pages.filter(p => !!p.title && p.titleLen >= 30 && p.titleLen <= 65).length;
+  const metaOkCount = da.pages.filter(p => !!p.description).length;
+  const h1OkCount = da.pages.filter(p => p.h1Count === 1).length;
+  const jsonLdCount = da.pages.filter(p => p.jsonLdDetected).length;
+  const noNoindexCount = da.pages.filter(p => !p.robotsMeta?.toLowerCase().includes("noindex")).length;
+  const structureScore = Math.round(((titleOkCount + h1OkCount) / (2 * n)) * 10);
+
+  const categories = [
+    { label: "Balises title", score: pctOf(titleOkCount), detail: `${titleOkCount}/${n} optimisées (30–65 car.)` },
+    { label: "Meta descriptions", score: pctOf(metaOkCount), detail: `${metaOkCount}/${n} présentes` },
+    { label: "Balises H1", score: pctOf(h1OkCount), detail: `${h1OkCount}/${n} avec exactement 1 H1` },
+    { label: "Structure & hiérarchie", score: structureScore, detail: "Cohérence title + H1" },
+    { label: "Données structurées", score: pctOf(jsonLdCount), detail: `${jsonLdCount}/${n} avec JSON-LD` },
+    { label: "Indexabilité", score: pctOf(noNoindexCount), detail: `${noNoindexCount}/${n} indexables` },
+  ];
+
+  const criticalPages = da.pages.filter(p => p.score < 50).slice(0, 5);
+
+  const recs: string[] = [];
+  const noMeta = n - metaOkCount;
+  if (noMeta > 0) recs.push(`Ajouter ${noMeta} meta description${noMeta > 1 ? "s" : ""} manquante${noMeta > 1 ? "s" : ""}`);
+  const noH1 = da.pages.filter(p => p.h1Count === 0).length;
+  if (noH1 > 0) recs.push(`Ajouter un H1 sur ${noH1} page${noH1 > 1 ? "s" : ""} qui n'en ont pas`);
+  const titleShort = da.pages.filter(p => !!p.title && p.titleLen < 30).length;
+  if (titleShort > 0) recs.push(`Allonger le title de ${titleShort} page${titleShort > 1 ? "s" : ""} (actuellement < 30 car.)`);
+  const titleLong = da.pages.filter(p => !!p.title && p.titleLen > 65).length;
+  if (titleLong > 0) recs.push(`Raccourcir le title de ${titleLong} page${titleLong > 1 ? "s" : ""} (actuellement > 65 car.)`);
+  const noJsonLd = n - jsonLdCount;
+  if (noJsonLd > 0) recs.push(`Implémenter JSON-LD sur ${noJsonLd} page${noJsonLd > 1 ? "s" : ""} sans données structurées`);
+  const noindexCount = n - noNoindexCount;
+  if (noindexCount > 0) recs.push(`Vérifier ${noindexCount} page${noindexCount > 1 ? "s" : ""} avec directive noindex — intentionnelles ?`);
+  const highAlt = da.pages.filter(p => p.imagesMissingAlt > 10).length;
+  if (highAlt > 0) recs.push(`Ajouter les attributs alt manquants sur ${highAlt} page${highAlt > 1 ? "s" : ""} (images sans alt)`);
+  if (recs.length === 0) recs.push("Le site est bien optimisé pour les balises on-page — continuez à monitorer régulièrement.");
+
+  return (
+    <div className="space-y-6">
+      {/* Domain tab navigation */}
+      <div className="overflow-x-auto">
+        <div className="flex gap-0.5 border-b border-hairline min-w-max">
+          {DOMAIN_REPORT_TABS.map(t => (
+            <button
+              key={t.id}
+              onClick={() => setDomainTab(t.id)}
+              className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors -mb-px ${
+                domainTab === t.id
+                  ? "border-brand text-brand"
+                  : "border-transparent text-ink-soft hover:text-ink"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Vue d'ensemble ── */}
+      {domainTab === "overview" && (
+        <div className="space-y-6">
+          {/* Summary KPIs */}
+          <div className="grid gap-4 sm:grid-cols-3">
+            {[
+              { label: "Pages analysées", value: String(da.pagesAnalyzed), sub: `sur ${da.pagesTotal} découvertes` },
+              { label: "Score moyen", value: `${da.avgScore}/100`, sub: `Grade ${grade}` },
+              { label: "Pages critiques", value: String(criticalPages.length), sub: "score < 50" },
+            ].map(({ label, value, sub }) => (
+              <div key={label} className="rounded-xl border border-hairline bg-white p-5 text-center shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-soft mb-1">{label}</p>
+                <p className="text-2xl font-bold text-ink">{value}</p>
+                <p className="text-xs text-ink-soft mt-0.5">{sub}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Category scores */}
+          <section className="rounded-xl border border-hairline bg-white p-6 shadow-sm">
+            <h3 className="text-lg font-bold text-ink mb-1">Scores par catégorie</h3>
+            <p className="text-xs text-ink-soft mb-5">{da.pagesAnalyzed} pages crawlées depuis le sitemap</p>
+            <div className="space-y-4">
+              {categories.map(({ label, score, detail }) => {
+                const barColor = score >= 8 ? "#22c55e" : score >= 5 ? "#f59e0b" : "#ef4444";
+                const scoreLabel = score >= 8 ? "Bon" : score >= 5 ? "À améliorer" : "Critique";
+                return (
+                  <div key={label}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-sm font-medium text-ink">{label}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-ink-soft">{detail}</span>
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: `${barColor}20`, color: barColor }}>{scoreLabel}</span>
+                        <span className="text-sm font-bold tabular-nums w-8 text-right" style={{ color: barColor }}>{score}/10</span>
+                      </div>
+                    </div>
+                    <div className="h-2 rounded-full bg-muted overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${score * 10}%`, background: barColor }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-5 pt-4 border-t border-hairline flex items-center gap-2">
+              <span className="text-sm text-ink-soft">Score global :</span>
+              <span className="text-lg font-bold" style={{ color: gradeColor }}>{da.avgScore}/100</span>
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: `${gradeColor}20`, color: gradeColor }}>Grade {grade}</span>
+            </div>
+          </section>
+
+          {/* Critical pages */}
+          {criticalPages.length > 0 && (
+            <section className="rounded-xl border border-red-200 bg-red-50/50 p-6 shadow-sm">
+              <h3 className="text-base font-bold text-red-800 mb-3">Pages critiques à corriger en priorité</h3>
+              <div className="space-y-2">
+                {criticalPages.map(p => (
+                  <div key={p.url} className="flex items-center justify-between gap-3 rounded-lg border border-red-100 bg-white px-4 py-2.5">
+                    <a href={p.url} target="_blank" rel="noopener noreferrer" className="text-xs font-mono text-ink-soft hover:text-ink transition truncate max-w-sm">{p.url}</a>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="text-xs text-orange-700">{pageCritique(da.pages.find(pp => pp.url === p.url) ?? p)}</span>
+                      <span className="text-sm font-bold text-red-700 shrink-0">{p.score}/100</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      )}
+
+      {/* ── Tableau d'audit ── */}
+      {domainTab === "audit" && (
+        <section className="rounded-xl border border-hairline bg-white shadow-sm overflow-hidden">
+          <div className="p-4 border-b border-hairline flex items-center justify-between">
+            <h3 className="text-base font-bold text-ink">Tableau d&apos;audit — {da.pagesAnalyzed} pages</h3>
+            <span className="text-xs text-ink-soft">Balises title · méta desc · H1 · données structurées</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" style={{ minWidth: "920px" }}>
+              <thead>
+                <tr className="bg-brand text-white text-xs">
+                  <th className="py-2 px-3 text-left font-semibold w-8">#</th>
+                  <th className="py-2 px-3 text-left font-semibold">URL</th>
+                  <th className="py-2 px-3 text-left font-semibold">Title (car.)</th>
+                  <th className="py-2 px-3 text-center font-semibold">Méta desc</th>
+                  <th className="py-2 px-3 text-center font-semibold">H1</th>
+                  <th className="py-2 px-3 text-center font-semibold">JSON-LD</th>
+                  <th className="py-2 px-3 text-center font-semibold">Score</th>
+                  <th className="py-2 px-3 text-left font-semibold">Note critique</th>
+                </tr>
+              </thead>
+              <tbody>
+                {da.pages.map((p, i) => {
+                  const critique = pageCritique(p);
+                  const isOk = critique === "✓ Conforme";
+                  const rowBg = p.score >= 70 ? "" : p.score >= 40 ? "bg-orange-50/40" : "bg-red-50/40";
+                  const titleOk = !!p.title && p.titleLen >= 30 && p.titleLen <= 65;
+                  const titleWarn = !!p.title && (p.titleLen < 30 || p.titleLen > 65);
+                  const scoreColor = p.score >= 70 ? "#22c55e" : p.score >= 40 ? "#f59e0b" : "#ef4444";
+                  const pathDisplay = (() => { try { return new URL(p.url).pathname || "/"; } catch { return p.url; } })();
+                  return (
+                    <tr key={p.url} className={`border-b border-hairline last:border-0 ${rowBg}`}>
+                      <td className="py-2 px-3 text-xs text-ink-soft font-mono">{i + 1}</td>
+                      <td className="py-2 px-3 max-w-[180px]">
+                        <a href={p.url} target="_blank" rel="noopener noreferrer" className="text-xs font-mono text-brand/80 hover:text-brand truncate block" title={p.url}>
+                          {pathDisplay}
+                        </a>
+                      </td>
+                      <td className="py-2 px-3 max-w-[200px]">
+                        {p.title ? (
+                          <div>
+                            <span className="block truncate text-xs text-ink" title={p.title}>{p.title}</span>
+                            <span className={`text-[10px] font-medium ${titleOk ? "text-green-600" : titleWarn ? "text-orange-500" : "text-red-500"}`}>
+                              {p.titleLen} car.
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-red-500 font-medium">✗ Absent</span>
+                        )}
+                      </td>
+                      <td className="py-2 px-3 text-center">
+                        {p.description ? (
+                          <span className="text-[10px] font-medium text-green-600">✓ {p.descLen}c</span>
+                        ) : (
+                          <span className="text-[10px] font-medium text-red-500">✗ Absente</span>
+                        )}
+                      </td>
+                      <td className="py-2 px-3 text-center">
+                        <span className={`text-sm font-bold ${p.h1Count === 1 ? "text-green-600" : p.h1Count === 0 ? "text-red-500" : "text-orange-500"}`}>
+                          {p.h1Count}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 text-center">
+                        {p.jsonLdDetected ? (
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className="text-[10px] text-green-600 font-medium">✓</span>
+                            <div className="flex flex-wrap gap-0.5 justify-center">
+                              {p.jsonLdTypes.slice(0, 2).map(t => (
+                                <span key={t} className="text-[9px] px-1 py-0.5 rounded bg-brand-soft text-brand font-medium leading-none">{t}</span>
+                              ))}
+                              {p.jsonLdTypes.length > 2 && <span className="text-[9px] text-ink-soft">+{p.jsonLdTypes.length - 2}</span>}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-red-500 font-medium">✗</span>
+                        )}
+                      </td>
+                      <td className="py-2 px-3 text-center">
+                        <span className="text-sm font-bold" style={{ color: scoreColor }}>{p.score}</span>
+                      </td>
+                      <td className="py-2 px-3 max-w-[200px]">
+                        <span className={`text-xs ${isOk ? "text-green-600 font-medium" : "text-orange-700"}`}>{critique}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {/* ── Recommandations ── */}
+      {domainTab === "recommandations" && (
+        <div className="space-y-6">
+          <section className="rounded-xl border border-hairline bg-white p-6 shadow-sm">
+            <h3 className="text-lg font-bold text-ink mb-4">Recommandations ({recs.length})</h3>
+            <ul className="space-y-2">
+              {recs.map((r, i) => (
+                <li key={i} className="flex gap-3 rounded-lg border border-hairline px-4 py-3 text-sm text-ink">
+                  <span className="mt-0.5 shrink-0 h-5 w-5 rounded-full bg-brand-soft text-brand text-xs font-bold flex items-center justify-center">{i + 1}</span>
+                  {r}
+                </li>
+              ))}
+            </ul>
+          </section>
+          <div className="rounded-xl bg-brand p-6 text-white shadow-sm">
+            <h4 className="text-lg font-bold mb-1">Analyser en profondeur avec l&apos;assistant IA</h4>
+            <p className="text-sm text-white/70 mb-4">Posez vos questions sur ces résultats — l&apos;assistant peut détailler page par page et proposer des correctifs.</p>
+            <Link href={auditId ? `/assistant?auditId=${auditId}` : "/assistant"}>
+              <button className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-medium text-brand transition hover:bg-white/90">
+                Ouvrir l&apos;assistant
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+                </svg>
+              </button>
+            </Link>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function WelcomeBanner() {
   const searchParams = useSearchParams();
   const [show, setShow] = useState(false);
@@ -204,6 +496,7 @@ export default function HomePage() {
   const [loadedFromDashboard, setLoadedFromDashboard] = useState(false);
   const [selectedKeyword, setSelectedKeyword] = useState<string | undefined>(undefined);
   const [activeTab, setActiveTab] = useState<TabId>("technique");
+  const [domainTab, setDomainTab] = useState<DomainTabId>("overview");
   const resultsRef = React.useRef<HTMLDivElement>(null);
 
   // Mode URL vs Domaine
@@ -668,7 +961,17 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                {/* ── Tab navigation ── */}
+                {/* ── Rapport domaine (mode domaine) ── */}
+                {data.domainAnalysis ? (
+                  <DomainAuditReport
+                    da={data.domainAnalysis}
+                    domainTab={domainTab}
+                    setDomainTab={setDomainTab}
+                    auditId={auditId ?? undefined}
+                  />
+                ) : (<>
+
+                {/* ── Tab navigation (mode URL) ── */}
                 <div className="overflow-x-auto">
                   <div className="flex gap-0.5 border-b border-hairline min-w-max">
                     {TABS.map((t) => (
@@ -1295,6 +1598,7 @@ export default function HomePage() {
                     <GscConnect />
                   </div>
                 )}
+                </>)}
 
               </div>
             );
