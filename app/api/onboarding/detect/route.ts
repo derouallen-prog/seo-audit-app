@@ -4,6 +4,10 @@ import { cookies } from "next/headers";
 import * as cheerio from "cheerio";
 import Anthropic from "@anthropic-ai/sdk";
 import { detectTechStack } from "@/lib/techDetect";
+import { gunzip } from "zlib";
+import { promisify } from "util";
+
+const gunzipAsync = promisify(gunzip);
 
 export const runtime = "nodejs";
 export const maxDuration = 45;
@@ -76,8 +80,22 @@ async function fetchXml(url: string, timeoutMs = 8000): Promise<string | null> {
     const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), headers: UA, redirect: "follow" });
     if (!res.ok) return null;
     const ct = res.headers.get("content-type") ?? "";
-    // Skip binary / non-XML responses (some sitemaps are gzipped — skip for now)
-    if (ct.includes("application/x-gzip") || ct.includes("application/gzip")) return null;
+    const isGzip =
+      ct.includes("application/x-gzip") ||
+      ct.includes("application/gzip") ||
+      ct.includes("application/octet-stream") ||
+      url.endsWith(".gz");
+
+    if (isGzip) {
+      const buf = Buffer.from(await res.arrayBuffer());
+      try {
+        const decompressed = await gunzipAsync(buf);
+        return decompressed.toString("utf-8");
+      } catch {
+        return null;
+      }
+    }
+
     return await res.text();
   } catch {
     return null;
