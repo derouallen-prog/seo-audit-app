@@ -5,6 +5,8 @@ import { useSearchParams, useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Components } from "react-markdown";
+import { WritingSetupModal, WritingChecklist, EditorToolbar, buildArticlePrompt } from "./WritingPanel";
+import type { WritingConfig } from "./WritingPanel";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -392,6 +394,11 @@ function AssistantPageInner() {
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
 
+  // Writing mode
+  const [writingMode, setWritingMode] = useState(false);
+  const [showWritingSetup, setShowWritingSetup] = useState(false);
+  const [writingConfig, setWritingConfig] = useState<WritingConfig | null>(null);
+
   // Session management
   const [sessionId, setSessionId] = useState<string | null>(sessionParam);
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
@@ -685,7 +692,27 @@ function AssistantPageInner() {
     }
   }
 
+  function handleToolClick(tool: Tool) {
+    if (tool.label === "Génération article") {
+      setShowWritingSetup(true);
+      return;
+    }
+    send(tool.prompt);
+  }
+
+  function handleWritingSubmit(config: WritingConfig) {
+    setWritingConfig(config);
+    setWritingMode(true);
+    setShowWritingSetup(false);
+    send(buildArticlePrompt(config));
+  }
+
   const showWelcome = messages.length === 0 && !loading;
+
+  // Article content for writing checklist
+  const lastAssistantMsg = [...messages].reverse().find(m => m.role === "assistant");
+  const articleContent = writingMode ? (streamingContent || lastAssistantMsg?.content || "") : "";
+  const articleWordCount = articleContent.trim().split(/\s+/).filter(Boolean).length;
 
   // Group sessions by date
   const today = new Date().toDateString();
@@ -702,10 +729,14 @@ function AssistantPageInner() {
   );
 
   return (
-    <div className="mx-auto grid w-full max-w-7xl flex-1 gap-0 px-0 sm:gap-6 sm:px-6 lg:grid-cols-[260px_1fr] lg:px-8 lg:py-8" style={{ minHeight: "calc(100dvh - 4rem)" }}>
+    <>
+    <div
+      className={`mx-auto grid w-full flex-1 gap-0 px-0 sm:gap-6 sm:px-6 lg:px-8 lg:py-8 ${writingMode ? "max-w-full lg:grid-cols-[1fr_300px]" : "max-w-7xl lg:grid-cols-[260px_1fr]"}`}
+      style={{ minHeight: "calc(100dvh - 4rem)" }}
+    >
 
-      {/* ── Sidebar ── */}
-      <aside className="hidden lg:flex flex-col gap-4">
+      {/* ── Sidebar (hidden in writing mode) ── */}
+      {!writingMode && <aside className="hidden lg:flex flex-col gap-4">
 
         {/* New conversation button */}
         <button
@@ -773,16 +804,16 @@ function AssistantPageInner() {
 
           {/* Top 3 featured */}
           <div className="grid grid-cols-3 gap-1 mb-3">
-            {TOOLS.filter(t => t.featured).map(({ label, icon, desc, prompt }) => (
+            {TOOLS.filter(t => t.featured).map((tool) => (
               <button
-                key={label}
-                onClick={() => send(prompt)}
+                key={tool.label}
+                onClick={() => handleToolClick(tool)}
                 disabled={loading}
-                title={desc}
+                title={tool.desc}
                 className="flex flex-col items-center gap-1 rounded-lg border border-brand/20 bg-brand/5 px-1 py-2 text-center text-brand hover:bg-brand/10 transition disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                <span className="text-brand">{icon}</span>
-                <span className="text-[10px] font-medium leading-tight">{label}</span>
+                <span className="text-brand">{tool.icon}</span>
+                <span className="text-[10px] font-medium leading-tight">{tool.label}</span>
               </button>
             ))}
           </div>
@@ -792,16 +823,16 @@ function AssistantPageInner() {
 
           {/* Rest of tools — scrollable */}
           <ul className="space-y-0.5 overflow-y-auto" style={{ maxHeight: "190px" }}>
-            {TOOLS.filter(t => !t.featured).map(({ label, icon, desc, prompt }) => (
-              <li key={label}>
+            {TOOLS.filter(t => !t.featured).map((tool) => (
+              <li key={tool.label}>
                 <button
-                  onClick={() => send(prompt)}
+                  onClick={() => handleToolClick(tool)}
                   disabled={loading}
-                  title={desc}
+                  title={tool.desc}
                   className="group w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-ink-soft transition-colors hover:bg-accent hover:text-ink disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 >
-                  <span className="shrink-0 text-brand">{icon}</span>
-                  <span className="flex-1 min-w-0 truncate">{label}</span>
+                  <span className="shrink-0 text-brand">{tool.icon}</span>
+                  <span className="flex-1 min-w-0 truncate">{tool.label}</span>
                   <span className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-brand text-xs">→</span>
                 </button>
               </li>
@@ -809,7 +840,7 @@ function AssistantPageInner() {
           </ul>
         </div>
 
-      </aside>
+      </aside>}
 
       {/* ── Main chat ── */}
       <main className="flex flex-col" style={{ minHeight: "calc(100dvh - 8rem)" }}>
@@ -831,7 +862,15 @@ function AssistantPageInner() {
               )}
             </div>
             <div className="flex items-center gap-2">
-              {sessionId && (
+              {writingMode && (
+                <button
+                  onClick={() => { setWritingMode(false); setWritingConfig(null); }}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-hairline px-2.5 py-1 text-xs text-ink-soft hover:bg-accent transition"
+                >
+                  ← Quitter la rédaction
+                </button>
+              )}
+              {sessionId && !writingMode && (
                 <button
                   onClick={startNewConversation}
                   className="lg:hidden inline-flex items-center gap-1.5 rounded-lg border border-hairline px-2.5 py-1 text-xs text-ink-soft hover:bg-accent transition"
@@ -840,9 +879,14 @@ function AssistantPageInner() {
                   Nouveau
                 </button>
               )}
-              <div className="text-xs text-ink-soft font-mono hidden sm:block">mind-agent · Claude</div>
+              <div className="text-xs text-ink-soft font-mono hidden sm:block">
+                {writingMode ? "Mode rédaction · Claude" : "mind-agent · Claude"}
+              </div>
             </div>
           </div>
+
+          {/* Editor toolbar (writing mode) */}
+          {writingMode && <EditorToolbar wordCount={articleWordCount} />}
 
           {/* Messages area */}
           <div
@@ -1076,7 +1120,26 @@ function AssistantPageInner() {
         </div>
       </main>
 
+      {/* ── Writing checklist panel ── */}
+      {writingMode && writingConfig && (
+        <aside className="hidden lg:flex flex-col gap-4 overflow-y-auto py-0 pl-0 pr-0">
+          <div className="sticky top-0 z-10 flex items-center justify-between bg-background/80 backdrop-blur-sm py-2 mb-1 border-b border-hairline">
+            <p className="text-xs font-bold uppercase tracking-widest text-ink-soft">Suivi rédaction</p>
+          </div>
+          <WritingChecklist content={articleContent} config={writingConfig} />
+        </aside>
+      )}
+
     </div>
+
+    {/* ── Writing setup modal ── */}
+    {showWritingSetup && (
+      <WritingSetupModal
+        onClose={() => setShowWritingSetup(false)}
+        onSubmit={handleWritingSubmit}
+      />
+    )}
+    </>
   );
 }
 
