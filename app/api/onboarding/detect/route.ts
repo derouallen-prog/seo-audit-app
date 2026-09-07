@@ -143,13 +143,13 @@ async function discoverSitemapUrls(base: string): Promise<string[]> {
       // <link rel="sitemap" type="application/xml" href="...">
       const linkMatches = html.matchAll(/<link[^>]+rel=["']sitemap["'][^>]*href=["']([^"']+)["']/gi);
       for (const m of linkMatches) {
-        const href = m[1];
-        candidates.push(href.startsWith("http") ? href : `${base}/${href.replace(/^\//, "")}`);
+        const href = m[1] ?? "";
+        if (href) candidates.push(href.startsWith("http") ? href : `${base}/${href.replace(/^\//, "")}`);
       }
       // also scan any <a> whose href contains "sitemap" (useful for some CMS)
       const aMatches = html.matchAll(/href=["']([^"']*sitemap[^"']*\.xml[^"']*?)["']/gi);
       for (const m of aMatches) {
-        const href = m[1];
+        const href = m[1] ?? "";
         if (href.length < 200) {
           candidates.push(href.startsWith("http") ? href : `${base}/${href.replace(/^\//, "")}`);
         }
