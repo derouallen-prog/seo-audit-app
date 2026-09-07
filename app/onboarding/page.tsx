@@ -88,16 +88,38 @@ export default function OnboardingPage() {
   const [positioning, setPositioning] = useState("");
   const [saving, setSaving] = useState(false);
   const [revealStep, setRevealStep] = useState(0); // 0=idle 1=domain 2=sitemap 3=serp
+  const [suggestedCompetitors, setSuggestedCompetitors] = useState<string[]>([]);
+  const [loadingCompetitors, setLoadingCompetitors] = useState(false);
   const competitorInputRef = useRef<HTMLInputElement>(null);
 
-  // Progressive reveal after detection
+  // Progressive reveal + fetch competitor suggestions in background
   useEffect(() => {
     if (!detectResult) return;
     setRevealStep(1);
     const t1 = setTimeout(() => setRevealStep(2), 600);
     const t2 = setTimeout(() => setRevealStep(3), 1300);
+
+    // Fetch suggestions in background — won't block reveal
+    setSuggestedCompetitors([]);
+    setLoadingCompetitors(true);
+    const domain = (() => { try { return new URL(siteUrl.startsWith("http") ? siteUrl : `https://${siteUrl}`).hostname; } catch { return siteUrl; } })();
+    fetch("/api/onboarding/competitors", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        domain,
+        metaTitle: detectResult.pageData?.title,
+        metaDesc: detectResult.pageData?.metaDesc,
+        h1: detectResult.pageData?.h1,
+      }),
+    })
+      .then(r => r.json())
+      .then((d: { competitors: string[] }) => setSuggestedCompetitors(d.competitors ?? []))
+      .catch(() => {})
+      .finally(() => setLoadingCompetitors(false));
+
     return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [detectResult]);
+  }, [detectResult, siteUrl]);
 
   // ── Step 0: URL ──────────────────────────────────────────────────────────────
 
@@ -352,10 +374,52 @@ export default function OnboardingPage() {
                 </div>
               )}
 
-              {/* Competitor chips */}
-              {competitors.length > 0 && (
+              {/* Suggestions IA */}
+              {(loadingCompetitors || suggestedCompetitors.length > 0) && (
+                <div className="space-y-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-ink-soft/60 flex items-center gap-1.5">
+                    Suggestions
+                    {loadingCompetitors && <Spinner />}
+                  </p>
+                  {suggestedCompetitors.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {suggestedCompetitors.map(c => {
+                        const added = competitors.includes(c);
+                        const full = !added && competitors.length >= 5;
+                        return (
+                          <button
+                            key={c}
+                            disabled={full}
+                            onClick={() => {
+                              if (added) { removeCompetitor(c); }
+                              else if (!full) { setCompetitors(prev => [...prev, c]); }
+                            }}
+                            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
+                              added
+                                ? "border-brand bg-brand/8 text-brand"
+                                : full
+                                ? "border-hairline bg-background text-ink-soft/40 cursor-not-allowed"
+                                : "border-hairline bg-background text-ink-soft hover:border-brand/40 hover:text-ink"
+                            }`}
+                          >
+                            {added && (
+                              <svg viewBox="0 0 16 16" className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="3 8 6.5 11.5 13 4.5" />
+                              </svg>
+                            )}
+                            {c}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Competitor chips — manually added ones not in suggestions */}
+              {competitors.filter(c => !suggestedCompetitors.includes(c)).length > 0 && (
                 <div className="flex flex-wrap gap-2">
-                  {competitors.map(c => (
+                  {competitors.filter(c => !suggestedCompetitors.includes(c)).map(c => (
                     <span key={c} className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-background px-3 py-1.5 text-xs font-medium text-ink">
                       {c}
                       <button onClick={() => removeCompetitor(c)} className="text-ink-soft hover:text-ink transition-colors" aria-label="Supprimer">
