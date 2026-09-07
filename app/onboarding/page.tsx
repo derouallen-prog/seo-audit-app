@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, KeyboardEvent } from "react";
+import { useState, useRef, useEffect, KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { DetectedTech } from "@/lib/techDetect";
 
@@ -87,7 +87,17 @@ export default function OnboardingPage() {
   const [competitorInput, setCompetitorInput] = useState("");
   const [positioning, setPositioning] = useState("");
   const [saving, setSaving] = useState(false);
+  const [revealStep, setRevealStep] = useState(0); // 0=idle 1=domain 2=sitemap 3=serp
   const competitorInputRef = useRef<HTMLInputElement>(null);
+
+  // Progressive reveal after detection
+  useEffect(() => {
+    if (!detectResult) return;
+    setRevealStep(1);
+    const t1 = setTimeout(() => setRevealStep(2), 600);
+    const t2 = setTimeout(() => setRevealStep(3), 1300);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [detectResult]);
 
   // ── Step 0: URL ──────────────────────────────────────────────────────────────
 
@@ -98,6 +108,8 @@ export default function OnboardingPage() {
 
     setDetecting(true);
     setDetectError("");
+    setDetectResult(null);
+    setRevealStep(0);
 
     try {
       const res = await fetch("/api/onboarding/detect", {
@@ -112,7 +124,7 @@ export default function OnboardingPage() {
       setSiteUrl(url);
       setDetectResult(data);
       if (data.positioning) setPositioning(data.positioning);
-      setStep(1);
+      // step stays at 0 — user clicks "Continuer" after the reveal
     } catch {
       setDetectError("Impossible d'analyser ce site. Vérifie l'URL et réessaie.");
     } finally {
@@ -200,12 +212,14 @@ export default function OnboardingPage() {
         )}
 
         <h1 className="font-display text-2xl font-semibold text-ink mb-1">
-          {step === 0 && "Parlons de ton site"}
+          {step === 0 && !detectResult && "Parlons de ton site"}
+          {step === 0 && detectResult && "C'est bon."}
           {step === 1 && "Tes concurrents"}
           {step === 2 && "Ton positionnement"}
         </h1>
         <p className="mb-6 text-sm text-ink-soft">
-          {step === 0 && "Search Mind analyse ton site pour personnaliser ton expérience."}
+          {step === 0 && !detectResult && "Search Mind analyse ton site pour personnaliser ton expérience."}
+          {step === 0 && detectResult && "Voici ce que j'ai trouvé sur ton site."}
           {step === 1 && "Ajoute jusqu'à 5 concurrents. Tu pourras les modifier plus tard."}
           {step === 2 && "On a détecté ce positionnement. Confirme ou modifie-le."}
         </p>
@@ -217,41 +231,107 @@ export default function OnboardingPage() {
           {/* ─── Step 0: URL ─────────────────────────────────────────────────── */}
           {step === 0 && (
             <div className="space-y-4">
-              <div className="flex overflow-hidden rounded-xl border border-hairline bg-background shadow-sm focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20 transition-all">
-                <span className="flex items-center border-r border-hairline bg-muted px-3 text-xs font-mono text-ink-soft select-none">
-                  https://
-                </span>
-                <input
-                  type="text"
-                  value={urlInput}
-                  onChange={e => {
-                    // Strip protocol and normalize on the fly
-                    const v = e.target.value.replace(/^https?:\/\//, "").replace(/^\/\//, "");
-                    setUrlInput(v);
-                  }}
-                  onKeyDown={e => e.key === "Enter" && handleDetect()}
-                  placeholder="www.monsite.fr"
-                  className="flex-1 bg-transparent px-3 py-3.5 text-sm text-ink outline-none placeholder:text-ink-soft/50"
-                  autoFocus
-                />
-              </div>
-
-              {detectError && (
-                <p className="text-xs text-warning">{detectError}</p>
+              {/* Input — masqué une fois la détection terminée */}
+              {!detectResult && (
+                <>
+                  <div className="flex overflow-hidden rounded-xl border border-hairline bg-background shadow-sm focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20 transition-all">
+                    <span className="flex items-center border-r border-hairline bg-muted px-3 text-xs font-mono text-ink-soft select-none">
+                      https://
+                    </span>
+                    <input
+                      type="text"
+                      value={urlInput}
+                      onChange={e => {
+                        const v = e.target.value.replace(/^https?:\/\//, "").replace(/^\/\//, "");
+                        setUrlInput(v);
+                      }}
+                      onKeyDown={e => e.key === "Enter" && handleDetect()}
+                      placeholder="www.monsite.fr"
+                      className="flex-1 bg-transparent px-3 py-3.5 text-sm text-ink outline-none placeholder:text-ink-soft/50"
+                      autoFocus
+                    />
+                  </div>
+                  {detectError && <p className="text-xs text-warning">{detectError}</p>}
+                  <button
+                    onClick={handleDetect}
+                    disabled={detecting || !urlInput.trim()}
+                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-brand/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {detecting ? <><Spinner /> Analyse en cours…</> : "Analyser mon site →"}
+                  </button>
+                </>
               )}
 
-              <button
-                onClick={handleDetect}
-                disabled={detecting || !urlInput.trim()}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-brand/90 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {detecting ? <><Spinner /> Analyse en cours…</> : "Analyser mon site →"}
-              </button>
+              {/* Révélation progressive pendant / après détection */}
+              {(detecting || detectResult) && (
+                <div className="space-y-3 pt-1">
 
-              {detecting && (
-                <div className="rounded-xl border border-hairline bg-muted/40 px-4 py-4 text-xs text-ink-soft space-y-1.5">
-                  <p className="flex items-center gap-2"><Spinner /> Détection de la stack technique…</p>
-                  <p className="text-ink-soft/60 pl-6">Lecture du sitemap et de la homepage…</p>
+                  {/* Ligne 1 — domaine */}
+                  <div className="flex items-center gap-2.5 text-sm">
+                    {detecting && !detectResult
+                      ? <Spinner />
+                      : <span className="flex h-5 w-5 items-center justify-center rounded-full bg-brand text-white shrink-0">
+                          <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 8 6.5 11.5 13 4.5" /></svg>
+                        </span>
+                    }
+                    <span className="font-medium text-ink">{(() => { try { return new URL(detecting ? `https://${urlInput}` : siteUrl).hostname; } catch { return urlInput; } })()}</span>
+                  </div>
+
+                  {/* Ligne 2 — sitemap */}
+                  {(revealStep >= 2 || detectResult) && (
+                    <div className="flex items-center gap-2.5 text-sm animate-fade-in">
+                      {revealStep < 2
+                        ? <Spinner />
+                        : <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white shrink-0">
+                            <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 8 6.5 11.5 13 4.5" /></svg>
+                          </span>
+                      }
+                      <span className="text-ink-soft">
+                        {detectResult?.sitemapCount
+                          ? <><span className="font-semibold text-ink tabular-nums">{detectResult.sitemapCount.toLocaleString("fr-FR")}</span> pages trouvées dans le sitemap</>
+                          : "Lecture du sitemap…"
+                        }
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Aperçu SERP + chiffre + stack */}
+                  {revealStep >= 3 && detectResult && (
+                    <div className="space-y-3 pt-1">
+                      {/* Carte SERP */}
+                      {detectResult.pageData?.title && (
+                        <div className="rounded-xl border border-hairline bg-background px-4 py-3 space-y-0.5 shadow-sm">
+                          <p className="text-[11px] text-ink-soft truncate">{(() => { try { return new URL(siteUrl).hostname; } catch { return siteUrl; } })()}</p>
+                          <p className="text-sm font-medium text-[#1a0dab] dark:text-[#8ab4f8] leading-snug line-clamp-1">{detectResult.pageData.title}</p>
+                          {detectResult.pageData.metaDesc && (
+                            <p className="text-xs text-ink-soft/80 leading-relaxed line-clamp-2">{detectResult.pageData.metaDesc}</p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Chiffre pages + stack */}
+                      <div className="flex items-end justify-between gap-4">
+                        {detectResult.sitemapCount > 0 && (
+                          <div>
+                            <p className="text-4xl font-bold text-ink tabular-nums">{detectResult.sitemapCount.toLocaleString("fr-FR")}</p>
+                            <p className="text-xs text-ink-soft mt-0.5">pages indexables</p>
+                          </div>
+                        )}
+                        {detectResult.techStack.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 justify-end">
+                            {detectResult.techStack.slice(0, 4).map(t => <TechBadge key={t.name} tech={t} />)}
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={() => setStep(1)}
+                        className="w-full flex items-center justify-center gap-2 rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-brand/90"
+                      >
+                        Continuer →
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
