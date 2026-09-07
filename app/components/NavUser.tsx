@@ -15,9 +15,11 @@ export default async function NavUser() {
           </button>
         </Link>
         <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-full bg-brand flex items-center justify-center text-white text-xs font-bold shrink-0">
-            {initials}
-          </div>
+          <Link href="/account" title="Paramètres du compte">
+            <div className="h-8 w-8 rounded-full bg-brand flex items-center justify-center text-white text-xs font-bold shrink-0 hover:opacity-80 transition-opacity cursor-pointer">
+              {initials}
+            </div>
+          </Link>
           <SignOutButton />
         </div>
       </div>
