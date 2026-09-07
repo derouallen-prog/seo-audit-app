@@ -122,21 +122,68 @@ async function discoverSitemapUrls(base: string): Promise<string[]> {
   const candidates: string[] = [];
 
   // 1. Check robots.txt for Sitemap: directives
-  const robotsXml = await fetchXml(`${base}/robots.txt`, 5000);
-  if (robotsXml) {
-    const sitelines = robotsXml.match(/^Sitemap:\s*(.+)$/gim) ?? [];
+  const robotsTxt = await fetchXml(`${base}/robots.txt`, 5000);
+  if (robotsTxt) {
+    const sitelines = robotsTxt.match(/^Sitemap:\s*(.+)$/gim) ?? [];
     for (const line of sitelines) {
       const url = line.replace(/^Sitemap:\s*/i, "").trim();
       if (url) candidates.push(url);
     }
   }
 
-  // 2. Common sitemap paths as fallback
-  if (candidates.length === 0) {
-    candidates.push(`${base}/sitemap.xml`, `${base}/sitemap_index.xml`, `${base}/sitemap-index.xml`);
+  // 2. Parse homepage <link rel="sitemap"> and <a href="*sitemap*"> hints
+  try {
+    const homepageRes = await fetch(base, {
+      signal: AbortSignal.timeout(8000),
+      headers: UA,
+      redirect: "follow",
+    });
+    if (homepageRes.ok) {
+      const html = await homepageRes.text();
+      // <link rel="sitemap" type="application/xml" href="...">
+      const linkMatches = html.matchAll(/<link[^>]+rel=["']sitemap["'][^>]*href=["']([^"']+)["']/gi);
+      for (const m of linkMatches) {
+        const href = m[1];
+        candidates.push(href.startsWith("http") ? href : `${base}/${href.replace(/^\//, "")}`);
+      }
+      // also scan any <a> whose href contains "sitemap" (useful for some CMS)
+      const aMatches = html.matchAll(/href=["']([^"']*sitemap[^"']*\.xml[^"']*?)["']/gi);
+      for (const m of aMatches) {
+        const href = m[1];
+        if (href.length < 200) {
+          candidates.push(href.startsWith("http") ? href : `${base}/${href.replace(/^\//, "")}`);
+        }
+      }
+    }
+  } catch { /* ignore */ }
+
+  // 3. Common standard + CMS-specific paths (tried only if nothing found yet)
+  const COMMON_PATHS = [
+    "/sitemap.xml",
+    "/sitemap_index.xml",
+    "/sitemap-index.xml",
+    "/sitemap/sitemap.xml",
+    // PrestaShop — index lists subs like 1_fr_0_sitemap.xml
+    "/index.php?controller=SitemapAjax",
+    // WordPress + Yoast
+    "/wp-sitemap.xml",
+    "/sitemap_index.xml",
+    // Shopify
+    "/sitemap.xml",
+    // Magento
+    "/sitemap/",
+  ];
+  for (const p of COMMON_PATHS) {
+    candidates.push(`${base}${p}`);
   }
 
   return [...new Set(candidates)];
+}
+
+function resolveUrl(href: string, base: string): string {
+  if (href.startsWith("http")) return href;
+  if (href.startsWith("/")) return base + href;
+  return base + "/" + href;
 }
 
 async function countSitemapUrls(siteUrl: string): Promise<number> {
@@ -156,7 +203,7 @@ async function countSitemapUrls(siteUrl: string): Promise<number> {
     if (!xml) continue;
 
     if (isSitemapIndex(xml)) {
-      const children = extractSitemapLocs(xml);
+      const children = extractSitemapLocs(xml).map(loc => resolveUrl(loc, base));
       for (const child of children) {
         if (!visited.has(child)) queue.push(child);
       }
