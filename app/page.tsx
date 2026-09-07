@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
@@ -151,9 +151,51 @@ const STATS = [
 
 // ── Page ────────────────────────────────────────────────────────────────────
 
-export default function HomePage() {
+function WelcomeBanner() {
   const searchParams = useSearchParams();
-  const [showWelcomeBanner, setShowWelcomeBanner] = useState(false);
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get("welcome") === "1") {
+      setShow(true);
+      window.history.replaceState({}, "", "/");
+    }
+  }, [searchParams]);
+
+  if (!show) return null;
+
+  return (
+    <div className="relative z-50 bg-brand px-4 py-3">
+      <div className="mx-auto max-w-6xl flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3">
+          <span className="text-lg">🎉</span>
+          <p className="text-sm font-medium text-white">
+            Bienvenue sur Search Mind ! Connecte ta Search Console pour enrichir tes analyses avec tes vraies données de positionnement.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Link
+            href="/account/integrations"
+            className="rounded-lg bg-white px-4 py-1.5 text-xs font-semibold text-brand hover:bg-white/90 transition-colors"
+          >
+            Connecter GSC →
+          </Link>
+          <button
+            onClick={() => setShow(false)}
+            className="text-white/70 hover:text-white transition-colors"
+            aria-label="Fermer"
+          >
+            <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M4 4l8 8M12 4l-8 8" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function HomePage() {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<Analysis | null>(null);
@@ -163,15 +205,6 @@ export default function HomePage() {
   const [selectedKeyword, setSelectedKeyword] = useState<string | undefined>(undefined);
   const [activeTab, setActiveTab] = useState<TabId>("technique");
   const resultsRef = React.useRef<HTMLDivElement>(null);
-
-  // Show welcome banner after onboarding
-  useEffect(() => {
-    if (searchParams.get("welcome") === "1") {
-      setShowWelcomeBanner(true);
-      // Clean URL without reload
-      window.history.replaceState({}, "", "/");
-    }
-  }, [searchParams]);
 
   // Autosuggest domaine via Clearbit (sans clé API)
   const [urlSuggestions, setUrlSuggestions] = useState<{ name: string; domain: string; logo: string }[]>([]);
@@ -268,35 +301,9 @@ export default function HomePage() {
   return (
     <>
       {/* ── Welcome banner post-onboarding ── */}
-      {showWelcomeBanner && (
-        <div className="relative z-50 bg-brand px-4 py-3">
-          <div className="mx-auto max-w-6xl flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-3">
-              <span className="text-lg">🎉</span>
-              <p className="text-sm font-medium text-white">
-                Bienvenue sur Search Mind ! Connecte ta Search Console pour enrichir tes analyses avec tes vraies données de positionnement.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Link
-                href="/account/integrations"
-                className="rounded-lg bg-white px-4 py-1.5 text-xs font-semibold text-brand hover:bg-white/90 transition-colors"
-              >
-                Connecter GSC →
-              </Link>
-              <button
-                onClick={() => setShowWelcomeBanner(false)}
-                className="text-white/70 hover:text-white transition-colors"
-                aria-label="Fermer"
-              >
-                <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M4 4l8 8M12 4l-8 8" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Suspense fallback={null}>
+        <WelcomeBanner />
+      </Suspense>
 
       {/* ── Hero ── */}
       <section className="relative overflow-hidden">
