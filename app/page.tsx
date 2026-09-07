@@ -206,6 +206,11 @@ export default function HomePage() {
   const [activeTab, setActiveTab] = useState<TabId>("technique");
   const resultsRef = React.useRef<HTMLDivElement>(null);
 
+  // Mode URL vs Domaine
+  const [analysisMode, setAnalysisMode] = useState<"url" | "domain">("url");
+  const [batchSize, setBatchSize] = useState<50 | 200 | 500>(50);
+  const [domainProgress, setDomainProgress] = useState<{ done: number; total: number } | null>(null);
+
   // Autosuggest domaine via Clearbit (sans clé API)
   const [urlSuggestions, setUrlSuggestions] = useState<{ name: string; domain: string; logo: string }[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -263,6 +268,61 @@ export default function HomePage() {
   const normalized = ensureProtocol(url.trim());
   const isValidUrl = schema.safeParse(normalized).success;
 
+  async function onAnalyzeDomain(target: string) {
+    setLoading(true);
+    setData(null);
+    setAuditId(null);
+    setDomainProgress(null);
+    setActiveTab("technique");
+    try {
+      const res = await fetch("/api/analyze/domain", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: target, limit: batchSize }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({})) as { error?: string };
+        setError(j.error ?? `Erreur ${res.status}`);
+        return;
+      }
+
+      // Stream SSE progress
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let lastData: Analysis | null = null;
+
+      while (reader) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const msg = JSON.parse(line.slice(6)) as { type: string; done?: number; total?: number; result?: Analysis };
+            if (msg.type === "progress" && msg.done != null && msg.total != null) {
+              setDomainProgress({ done: msg.done, total: msg.total });
+            } else if (msg.type === "result" && msg.result) {
+              lastData = msg.result;
+            }
+          } catch { /* ignore */ }
+        }
+      }
+
+      if (lastData) {
+        setData(lastData);
+        setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+      }
+    } catch {
+      setError("Impossible d'analyser ce domaine.");
+    } finally {
+      setLoading(false);
+      setDomainProgress(null);
+    }
+  }
+
   async function onAnalyze(overrideUrl?: string) {
     const target = overrideUrl ? ensureProtocol(overrideUrl.trim()) : normalized;
     setError(null);
@@ -271,6 +331,13 @@ export default function HomePage() {
       setError("Merci d'entrer une URL valide (https://…).");
       return;
     }
+
+    // Domain mode: delegate to domain analysis
+    if (analysisMode === "domain" && !overrideUrl) {
+      await onAnalyzeDomain(target);
+      return;
+    }
+
     setLoading(true);
     setData(null);
     setAuditId(null);
@@ -365,7 +432,7 @@ export default function HomePage() {
                       </>
                     ) : (
                       <>
-                        Lancer l&apos;audit
+                        {analysisMode === "domain" ? `Analyser ${batchSize} pages` : "Lancer l’audit"}
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
                         </svg>
@@ -403,14 +470,67 @@ export default function HomePage() {
                 )}
               </div>
 
+              {/* Mode toggle + batch size */}
+              <div className="mt-3 flex flex-col items-center gap-2">
+                <div className="inline-flex items-center gap-0.5 rounded-full border border-hairline bg-muted/40 p-0.5 text-xs">
+                  {(["url", "domain"] as const).map(mode => (
+                    <button
+                      key={mode}
+                      onClick={() => setAnalysisMode(mode)}
+                      className={`rounded-full px-3.5 py-1.5 font-medium transition-all ${
+                        analysisMode === mode
+                          ? "bg-background shadow-sm text-ink"
+                          : "text-ink-soft hover:text-ink"
+                      }`}
+                    >
+                      {mode === "url" ? "Page unique" : "Domaine complet"}
+                    </button>
+                  ))}
+                </div>
+
+                {analysisMode === "domain" && (
+                  <div className="flex items-center gap-1.5">
+                    {([
+                      { size: 50, label: "50 pages", tier: "Free" },
+                      { size: 200, label: "200 pages", tier: "Pro" },
+                      { size: 500, label: "500 pages", tier: "Business" },
+                    ] as const).map(({ size, label, tier }) => (
+                      <button
+                        key={size}
+                        onClick={() => setBatchSize(size)}
+                        className={`inline-flex flex-col items-center rounded-xl border px-3.5 py-2 transition-all ${
+                          batchSize === size
+                            ? "border-brand bg-brand/5 text-brand"
+                            : "border-hairline bg-background text-ink-soft hover:border-ink/20 hover:text-ink"
+                        }`}
+                      >
+                        <span className="text-xs font-semibold">{label}</span>
+                        <span className={`text-[10px] font-medium ${batchSize === size ? "text-brand/70" : "text-ink-soft/60"}`}>{tier}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
 
-              {loading && (
+              {(loading || domainProgress) && (
                 <div className="mt-4 flex flex-col items-center gap-2">
                   <div className="w-full max-w-xs overflow-hidden rounded-full bg-hairline h-1">
-                    <div className="h-full w-1/2 rounded-full bg-brand animate-pulse" style={{ animation: "pulse 1.5s ease-in-out infinite" }} />
+                    {domainProgress ? (
+                      <div
+                        className="h-full rounded-full bg-brand transition-all duration-500"
+                        style={{ width: `${Math.round((domainProgress.done / domainProgress.total) * 100)}%` }}
+                      />
+                    ) : (
+                      <div className="h-full w-1/2 rounded-full bg-brand animate-pulse" />
+                    )}
                   </div>
-                  <p className="text-xs text-ink-soft">Analyse en cours — environ 30 secondes…</p>
+                  <p className="text-xs text-ink-soft">
+                    {domainProgress
+                      ? `${domainProgress.done} / ${domainProgress.total} pages analysées…`
+                      : "Analyse en cours — environ 30 secondes…"}
+                  </p>
                 </div>
               )}
 
