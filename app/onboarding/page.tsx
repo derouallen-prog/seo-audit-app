@@ -224,9 +224,13 @@ export default function OnboardingPage() {
                 <input
                   type="text"
                   value={urlInput}
-                  onChange={e => setUrlInput(e.target.value)}
+                  onChange={e => {
+                    // Strip protocol and normalize on the fly
+                    const v = e.target.value.replace(/^https?:\/\//, "").replace(/^\/\//, "");
+                    setUrlInput(v);
+                  }}
                   onKeyDown={e => e.key === "Enter" && handleDetect()}
-                  placeholder="monsite.fr"
+                  placeholder="www.monsite.fr"
                   className="flex-1 bg-transparent px-3 py-3.5 text-sm text-ink outline-none placeholder:text-ink-soft/50"
                   autoFocus
                 />
