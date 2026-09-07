@@ -73,7 +73,7 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
         <div className="mt-auto px-2">
           <Link href="/" className="flex items-center gap-1.5 text-xs text-ink-soft hover:text-ink transition-colors">
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 5l-7 7 7 7" /></svg>
-            Retour à l'app
+            Retour à l&apos;app
           </Link>
         </div>
       </aside>
