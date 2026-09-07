@@ -6,7 +6,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { detectTechStack } from "@/lib/techDetect";
 
 export const runtime = "nodejs";
-export const maxDuration = 30;
+export const maxDuration = 45;
 
 async function extractHomepageData(url: string) {
   try {
@@ -67,20 +67,87 @@ Premier paragraphe: ${pageData.firstP}`,
   }
 }
 
-async function countSitemapUrls(siteUrl: string): Promise<number> {
+const UA = { "User-Agent": "Mozilla/5.0 (compatible; SearchMind/1.0)" };
+const MAX_SITEMAPS = 20;   // max sub-sitemaps to follow
+const MAX_PAGES   = 50_000; // stop counting above this
+
+async function fetchXml(url: string, timeoutMs = 8000): Promise<string | null> {
   try {
-    const base = siteUrl.replace(/\/$/, "");
-    const res = await fetch(`${base}/sitemap.xml`, {
-      signal: AbortSignal.timeout(8000),
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; SearchMind/1.0)" },
-    });
-    if (!res.ok) return 0;
-    const xml = await res.text();
-    const count = (xml.match(/<loc>/g) ?? []).length;
-    return count;
+    const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), headers: UA, redirect: "follow" });
+    if (!res.ok) return null;
+    const ct = res.headers.get("content-type") ?? "";
+    // Skip binary / non-XML responses (some sitemaps are gzipped — skip for now)
+    if (ct.includes("application/x-gzip") || ct.includes("application/gzip")) return null;
+    return await res.text();
   } catch {
-    return 0;
+    return null;
   }
+}
+
+function isSitemapIndex(xml: string): boolean {
+  return /<sitemapindex[\s>]/i.test(xml);
+}
+
+function extractSitemapLocs(xml: string): string[] {
+  const matches = xml.match(/<sitemap>[\s\S]*?<\/sitemap>/gi) ?? [];
+  return matches.map(block => {
+    const m = block.match(/<loc>\s*([\s\S]*?)\s*<\/loc>/i);
+    return m?.[1] ?? "";
+  }).filter(Boolean);
+}
+
+function countUrlLocs(xml: string): number {
+  return (xml.match(/<url>[\s\S]*?<\/url>/gi) ?? []).length;
+}
+
+async function discoverSitemapUrls(base: string): Promise<string[]> {
+  const candidates: string[] = [];
+
+  // 1. Check robots.txt for Sitemap: directives
+  const robotsXml = await fetchXml(`${base}/robots.txt`, 5000);
+  if (robotsXml) {
+    const sitelines = robotsXml.match(/^Sitemap:\s*(.+)$/gim) ?? [];
+    for (const line of sitelines) {
+      const url = line.replace(/^Sitemap:\s*/i, "").trim();
+      if (url) candidates.push(url);
+    }
+  }
+
+  // 2. Common sitemap paths as fallback
+  if (candidates.length === 0) {
+    candidates.push(`${base}/sitemap.xml`, `${base}/sitemap_index.xml`, `${base}/sitemap-index.xml`);
+  }
+
+  return [...new Set(candidates)];
+}
+
+async function countSitemapUrls(siteUrl: string): Promise<number> {
+  const base = siteUrl.replace(/\/$/, "");
+  const roots = await discoverSitemapUrls(base);
+
+  const visited = new Set<string>();
+  const queue: string[] = [...roots];
+  let total = 0;
+
+  while (queue.length > 0 && visited.size < MAX_SITEMAPS && total < MAX_PAGES) {
+    const url = queue.shift()!;
+    if (visited.has(url)) continue;
+    visited.add(url);
+
+    const xml = await fetchXml(url);
+    if (!xml) continue;
+
+    if (isSitemapIndex(xml)) {
+      const children = extractSitemapLocs(xml);
+      for (const child of children) {
+        if (!visited.has(child)) queue.push(child);
+      }
+    } else {
+      total += countUrlLocs(xml);
+    }
+  }
+
+  return Math.min(total, MAX_PAGES);
 }
 
 export async function POST(req: NextRequest) {
