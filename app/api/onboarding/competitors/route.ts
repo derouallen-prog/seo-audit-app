@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
   try {
     const msg = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 300,
+      max_tokens: 400,
       messages: [
         {
           role: "user",
@@ -42,12 +42,31 @@ Exemple de réponse : ["concurrent1.fr", "concurrent2.com", "concurrent3.fr"]`,
     });
 
     const raw = msg.content[0]?.type === "text" ? msg.content[0].text.trim() : "[]";
-    const jsonMatch = raw.match(/\[[\s\S]*?\]/);
-    const competitors: string[] = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
+    console.log("[competitors] raw response:", raw.slice(0, 300));
 
-    return NextResponse.json({ competitors: competitors.slice(0, 8) });
+    // Try multiple JSON extraction strategies
+    let competitors: string[] = [];
+    try {
+      // Direct parse first
+      competitors = JSON.parse(raw);
+    } catch {
+      // Extract first [...] block
+      const jsonMatch = raw.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        try { competitors = JSON.parse(jsonMatch[0]); } catch { /* ignore */ }
+      }
+    }
+
+    // Filter: keep only valid-looking domains, strip protocol/www
+    const cleaned = (Array.isArray(competitors) ? competitors : [])
+      .map((c: unknown) => String(c).trim().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/$/, ""))
+      .filter(c => c.length > 3 && c.includes(".") && c !== domain)
+      .slice(0, 8);
+
+    console.log("[competitors] cleaned:", cleaned);
+    return NextResponse.json({ competitors: cleaned });
   } catch (e) {
-    console.error("competitors error:", e);
+    console.error("[competitors] error:", e);
     return NextResponse.json({ competitors: [] });
   }
 }
