@@ -90,6 +90,7 @@ export default function OnboardingPage() {
   const [revealStep, setRevealStep] = useState(0); // 0=idle 1=domain 2=sitemap 3=serp
   const [suggestedCompetitors, setSuggestedCompetitors] = useState<string[]>([]);
   const [loadingCompetitors, setLoadingCompetitors] = useState(false);
+  const [competitorsFetched, setCompetitorsFetched] = useState(false);
   const competitorInputRef = useRef<HTMLInputElement>(null);
 
   // Progressive reveal after detection
@@ -129,6 +130,7 @@ export default function OnboardingPage() {
 
       // Fetch competitor suggestions in background immediately
       setSuggestedCompetitors([]);
+      setCompetitorsFetched(false);
       setLoadingCompetitors(true);
       const domain = (() => { try { return new URL(url).hostname; } catch { return url; } })();
       fetch("/api/onboarding/competitors", {
@@ -144,7 +146,7 @@ export default function OnboardingPage() {
         .then(r => r.json())
         .then((d: { competitors: string[] }) => setSuggestedCompetitors(d.competitors ?? []))
         .catch(() => {})
-        .finally(() => setLoadingCompetitors(false));
+        .finally(() => { setLoadingCompetitors(false); setCompetitorsFetched(true); });
     } catch {
       setDetectError("Impossible d'analyser ce site. Vérifie l'URL et réessaie.");
     } finally {
@@ -373,13 +375,16 @@ export default function OnboardingPage() {
               )}
 
               {/* Suggestions IA */}
-              {(loadingCompetitors || suggestedCompetitors.length > 0) && (
+              {(loadingCompetitors || competitorsFetched) && (
                 <div className="space-y-2">
                   <p className="text-[11px] font-semibold uppercase tracking-widest text-ink-soft/60 flex items-center gap-1.5">
                     Suggestions
                     {loadingCompetitors && <Spinner />}
                   </p>
-                  {suggestedCompetitors.length > 0 && (
+                  {loadingCompetitors && (
+                    <p className="text-xs text-ink-soft/50">Analyse du marché en cours…</p>
+                  )}
+                  {competitorsFetched && suggestedCompetitors.length > 0 && (
                     <div className="flex flex-wrap gap-2">
                       {suggestedCompetitors.map(c => {
                         const added = competitors.includes(c);
@@ -410,6 +415,9 @@ export default function OnboardingPage() {
                         );
                       })}
                     </div>
+                  )}
+                  {competitorsFetched && suggestedCompetitors.length === 0 && (
+                    <p className="text-xs text-ink-soft/50">Aucune suggestion disponible pour ce marché.</p>
                   )}
                 </div>
               )}
