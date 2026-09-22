@@ -17,6 +17,7 @@ import { findPostByUrl, updateYoastMeta, parseCsv } from "@/lib/wpSeo";
 import { getSemrushDomainKeywords, getSemrushDomainTopPages, getSemrushBacklinks, getSemrushKeywordIdeas } from "@/lib/semrush";
 import { getKeKeywordData, getKeKeywordTrends } from "@/lib/keywordsEverywhere";
 import { getDataForSeoSerp, getDataForSeoKeywordOverview, getDataForSeoBacklinks, getDataForSeoDomainOverview, getDataForSeoPageAnalysis } from "@/lib/dataforseo";
+import { getGoogleAdsKeywordIdeas } from "@/lib/googleads";
 import { getKpuPeopleAlsoAsk, getKpuSuggestions, formatPaaForAssistant, formatSuggestionsForAssistant } from "@/lib/keywordspeopleuse";
 import { getSerpResults, getLongTailKeywords, getDomainRanking, getBacklinks } from "@/lib/fetchserp";
 import { marked } from "marked";
@@ -153,6 +154,8 @@ Pour dataforseo_keyword_overview : utilise cet outil dès que l'utilisateur veut
 Pour dataforseo_domain_overview : utilise cet outil quand l'utilisateur demande une "analyse de site", l'autorité d'un domaine, les backlinks d'un site, ou la visibilité organique estimée. Combine les données DataForSEO Labs (mots-clés organiques) et Backlinks API (domaines référents, spam score). Complémentaire à get_semrush_data (mode domain) — utilise les deux quand les données sont importantes.
 
 Pour dataforseo_page_analysis : utilise cet outil dès que l'utilisateur fournit une URL et demande une analyse on-page, un audit de page, ou veut vérifier les éléments techniques d'une page spécifique (title, meta, H1, canonical, liens, images, temps de chargement). C'est le seul outil qui fait une analyse on-page réelle d'une URL — utilise-le en priorité sur les autres pour ce cas d'usage.
+
+Pour google_ads_keyword_ideas : utilise cet outil quand l'utilisateur veut des données Google Ads officielles sur des mots-clés : volume exact, CPC (enchères Top Of Page bas/haut), niveau de concurrence publicitaire. C'est la source la plus fiable pour les CPC réels car c'est directement l'API Google. Complémentaire à dataforseo_keyword_overview (qui donne la difficulté SEO et l'intention) et get_semrush_data (qui donne le positionnement organique). Idéal pour du cross-data : appelle dataforseo_keyword_overview ET google_ads_keyword_ideas en parallèle quand l'utilisateur veut une analyse complète d'un mot-clé.
 
 Règle générale impérative pour tous les outils : quand tu décides d'appeler un outil, appelle-le immédiatement dans le même tour de réponse. N'écris jamais de message d'annonce du type "je lance la génération" ou "un instant, je récupère les données" sans appeler l'outil dans la même réponse — ce serait une réponse vide qui n'aboutit à rien. Soit tu appelles l'outil tout de suite, soit tu réponds directement en texte.
 
@@ -657,6 +660,22 @@ const tools: Anthropic.Tool[] = [
         url: { type: "string", description: "URL complète de la page à analyser (avec https://)" },
       },
       required: ["url"],
+    },
+  },
+  {
+    name: "google_ads_keyword_ideas",
+    description: "Récupère les idées de mots-clés et métriques Google Ads via l'API officielle Google : volume de recherche mensuel exact, niveau de concurrence (LOW/MEDIUM/HIGH), indice de concurrence (0-100), enchères estimées Top Of Page (bas et haut). Complémentaire à dataforseo_keyword_overview (DataForSEO) et get_semrush_data (Semrush) — Google Ads est la source la plus fiable pour les CPC et la concurrence publicitaire réelle. Utilise cet outil quand l'utilisateur veut croiser les données de volume/CPC avec d'autres sources, évaluer le potentiel publicitaire d'un mot-clé, ou obtenir des suggestions de mots-clés avec métriques Google officielles.",
+    input_schema: {
+      type: "object",
+      properties: {
+        keywords: {
+          type: "array",
+          items: { type: "string" },
+          description: "Liste de mots-clés seeds (max 20) pour générer des idées et métriques. Passe-les dans la langue du marché cible.",
+        },
+        country: { type: "string", description: "Code pays : 'fr', 'us', 'uk', 'de'. Défaut : 'fr'" },
+      },
+      required: ["keywords"],
     },
   },
   {
@@ -2108,6 +2127,41 @@ async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: stri
       }
     }
 
+    case "google_ads_keyword_ideas": {
+      const p = toolUse.input as { keywords: string[]; country?: string };
+      if (!process.env.GOOGLE_ADS_CLIENT_ID) {
+        return { terminal: false, result: "❌ Les credentials Google Ads ne sont pas configurés dans l'environnement (GOOGLE_ADS_*)." };
+      }
+      try {
+        const ideas = await getGoogleAdsKeywordIdeas(p.keywords, p.country ?? "fr");
+        if (!ideas.length) return { terminal: false, result: `Aucun résultat Google Ads pour : ${p.keywords.join(", ")}` };
+
+        const country = (p.country ?? "fr").toUpperCase();
+        const lines: string[] = [
+          `## Google Ads — Keyword Ideas (${country})`,
+          `Seeds : ${p.keywords.join(", ")} — **${ideas.length} mots-clés** retournés`,
+          "",
+          "| Mot-clé | Volume/mois | Concurrence | Idx | CPC bas | CPC haut |",
+          "|---------|------------|-------------|-----|---------|----------|",
+        ];
+
+        for (const idea of ideas.slice(0, 30)) {
+          const compEmoji = idea.competition === "LOW" ? "🟢" : idea.competition === "MEDIUM" ? "🟡" : idea.competition === "HIGH" ? "🔴" : "⚪";
+          lines.push(
+            `| ${idea.keyword} | ${idea.avgMonthlySearches.toLocaleString("fr")} | ${compEmoji} ${idea.competition} | ${idea.competitionIndex} | ${idea.lowCpc.toFixed(2)}€ | ${idea.highCpc.toFixed(2)}€ |`
+          );
+        }
+
+        if (ideas.length > 30) {
+          lines.push(`\n_${ideas.length - 30} mots-clés supplémentaires non affichés._`);
+        }
+
+        return { terminal: false, result: lines.join("\n") };
+      } catch (e) {
+        return { terminal: false, result: `❌ Erreur Google Ads API : ${e instanceof Error ? e.message : "erreur inconnue"}` };
+      }
+    }
+
     case "fetch_google_sheet": {
       const { url, sheet_name } = toolUse.input as { url: string; sheet_name?: string };
       // Security: only allow Google Sheets URLs
@@ -2278,6 +2332,7 @@ const TOOL_LABELS: Record<string, string> = {
   dataforseo_keyword_overview: "Récupération métriques mots-clés DataForSEO…",
   dataforseo_domain_overview: "Analyse domaine DataForSEO (Labs + Backlinks)…",
   dataforseo_page_analysis: "Analyse on-page DataForSEO…",
+  google_ads_keyword_ideas: "Récupération métriques Google Ads…",
 };
 
 export async function POST(req: NextRequest) {
