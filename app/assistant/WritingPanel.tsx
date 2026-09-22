@@ -98,6 +98,101 @@ export function buildArticlePrompt(c: WritingConfig): string {
   return p;
 }
 
+// ── KeywordField ──────────────────────────────────────────────────────────────
+
+function KeywordField({
+  value,
+  onChange,
+  onGenerate,
+  generating,
+  suggestions,
+  onPickSuggestion,
+  error,
+  disabled,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onGenerate: () => void;
+  generating: boolean;
+  suggestions: string[];
+  onPickSuggestion: (v: string) => void;
+  error: string | null;
+  disabled: boolean;
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <label className="text-xs font-semibold uppercase tracking-wide text-ink-soft">Mot-clé principal</label>
+        <button
+          type="button"
+          onClick={onGenerate}
+          disabled={disabled || generating}
+          title={disabled ? "Renseignez le sujet d'abord" : "Générer des suggestions avec l'IA"}
+          className="inline-flex items-center gap-1 rounded-lg border border-brand/30 bg-brand-soft px-2.5 py-1 text-xs font-medium text-brand hover:bg-brand/15 disabled:opacity-40 disabled:cursor-not-allowed transition"
+        >
+          {generating ? (
+            <>
+              <svg className="h-3 w-3 animate-spin" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+              Génération…
+            </>
+          ) : (
+            <>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>
+              Générer avec l&apos;IA
+            </>
+          )}
+        </button>
+      </div>
+
+      <div className={`relative flex items-center rounded-xl border bg-white transition ${value ? "border-brand/40" : "border-hairline"}`}>
+        <input
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder="ex. : canapé modulable appartement"
+          className="flex-1 bg-transparent px-4 py-2.5 text-sm text-ink placeholder:text-ink-soft/60 focus:outline-none"
+        />
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            className="mr-2 h-5 w-5 rounded-full bg-ink/10 text-ink-soft hover:bg-ink/20 hover:text-ink transition grid place-items-center shrink-0"
+            title="Effacer"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        )}
+      </div>
+
+      {/* Suggestions */}
+      {suggestions.length > 0 && (
+        <div className="mt-2 space-y-1">
+          <p className="text-[10px] font-medium text-ink-soft uppercase tracking-wide">Suggestions — cliquez pour sélectionner :</p>
+          <div className="flex flex-wrap gap-1.5">
+            {suggestions.map((kw) => {
+              const selected = value === kw;
+              return (
+                <button
+                  key={kw}
+                  type="button"
+                  onClick={() => onPickSuggestion(kw)}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition ${selected ? "border-brand bg-brand text-white shadow-sm" : "border-brand/30 bg-brand-soft text-brand hover:border-brand hover:bg-brand/10"}`}
+                >
+                  {selected && (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m9 12 2 2 4-4"/></svg>
+                  )}
+                  {kw}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {error && <p className="mt-1.5 text-xs text-red-500">{error}</p>}
+    </div>
+  );
+}
+
 // ── WritingSetupModal ─────────────────────────────────────────────────────────
 
 export function WritingSetupModal({
@@ -120,6 +215,35 @@ export function WritingSetupModal({
   });
 
   const set = (patch: Partial<WritingConfig>) => setConfig(c => ({ ...c, ...patch }));
+
+  // Keyword suggestion state
+  const [generatingKw, setGeneratingKw] = useState(false);
+  const [suggestedKws, setSuggestedKws] = useState<string[]>([]);
+  const [kwError, setKwError] = useState<string | null>(null);
+
+  async function generateKeyword() {
+    if (!config.subject.trim()) return;
+    setGeneratingKw(true);
+    setSuggestedKws([]);
+    setKwError(null);
+    try {
+      const res = await fetch("/api/suggest-keyword", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ subject: config.subject, language: config.language }),
+      });
+      const data = await res.json() as { keywords?: string[]; error?: string };
+      if (data.keywords?.length) {
+        setSuggestedKws(data.keywords);
+      } else {
+        setKwError("Impossible de générer des suggestions.");
+      }
+    } catch {
+      setKwError("Erreur réseau.");
+    } finally {
+      setGeneratingKw(false);
+    }
+  }
 
   const contentTypes: { id: WritingConfig["contentType"]; label: string }[] = [
     { id: "blog", label: "Article de blog" },
@@ -223,20 +347,21 @@ export function WritingSetupModal({
                 <input
                   autoFocus
                   value={config.subject}
-                  onChange={e => set({ subject: e.target.value })}
+                  onChange={e => { set({ subject: e.target.value }); setSuggestedKws([]); }}
                   placeholder="ex. : Comment choisir un canapé modulable pour petit appartement"
                   className="w-full rounded-xl border border-hairline bg-white px-4 py-2.5 text-sm text-ink placeholder:text-ink-soft/60 focus:outline-none focus:border-brand/40"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wide text-ink-soft mb-1.5">Mot-clé principal</label>
-                <input
-                  value={config.keyword}
-                  onChange={e => set({ keyword: e.target.value })}
-                  placeholder="ex. : canapé modulable appartement"
-                  className="w-full rounded-xl border border-hairline bg-white px-4 py-2.5 text-sm text-ink placeholder:text-ink-soft/60 focus:outline-none focus:border-brand/40"
-                />
-              </div>
+              <KeywordField
+                value={config.keyword}
+                onChange={kw => set({ keyword: kw })}
+                onGenerate={generateKeyword}
+                generating={generatingKw}
+                suggestions={suggestedKws}
+                onPickSuggestion={kw => { set({ keyword: kw }); setSuggestedKws([]); }}
+                error={kwError}
+                disabled={!config.subject.trim()}
+              />
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wide text-ink-soft mb-1.5">Public cible</label>
                 <input
@@ -273,16 +398,20 @@ export function WritingSetupModal({
             <div className="space-y-5">
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wide text-ink-soft mb-1.5">Sujet / Requête cible *</label>
-                <input autoFocus value={config.subject} onChange={e => set({ subject: e.target.value })}
+                <input autoFocus value={config.subject} onChange={e => { set({ subject: e.target.value }); setSuggestedKws([]); }}
                   placeholder="ex. : Modular furniture buying guide 2026"
                   className="w-full rounded-xl border border-hairline bg-white px-4 py-2.5 text-sm text-ink placeholder:text-ink-soft/60 focus:outline-none focus:border-brand/40" />
               </div>
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wide text-ink-soft mb-1.5">Mot-clé principal</label>
-                <input value={config.keyword} onChange={e => set({ keyword: e.target.value })}
-                  placeholder="ex. : modular sofa buying guide"
-                  className="w-full rounded-xl border border-hairline bg-white px-4 py-2.5 text-sm text-ink placeholder:text-ink-soft/60 focus:outline-none focus:border-brand/40" />
-              </div>
+              <KeywordField
+                value={config.keyword}
+                onChange={kw => set({ keyword: kw })}
+                onGenerate={generateKeyword}
+                generating={generatingKw}
+                suggestions={suggestedKws}
+                onPickSuggestion={kw => { set({ keyword: kw }); setSuggestedKws([]); }}
+                error={kwError}
+                disabled={!config.subject.trim()}
+              />
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wide text-ink-soft mb-2">Type de contenu</label>
                 <RadioList name="contentType" options={contentTypes} value={config.contentType} onChange={v => set({ contentType: v })} />
