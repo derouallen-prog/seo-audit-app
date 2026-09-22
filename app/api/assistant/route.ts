@@ -16,6 +16,7 @@ import { listGbpLocations, getGbpInsightsForLocation } from "@/lib/gbp";
 import { findPostByUrl, updateYoastMeta, parseCsv } from "@/lib/wpSeo";
 import { getSemrushDomainKeywords, getSemrushDomainTopPages, getSemrushBacklinks, getSemrushKeywordIdeas } from "@/lib/semrush";
 import { getKeKeywordData, getKeKeywordTrends } from "@/lib/keywordsEverywhere";
+import { getDataForSeoSerp, getDataForSeoKeywordOverview, getDataForSeoBacklinks, getDataForSeoDomainOverview, getDataForSeoPageAnalysis } from "@/lib/dataforseo";
 import { getKpuPeopleAlsoAsk, getKpuSuggestions, formatPaaForAssistant, formatSuggestionsForAssistant } from "@/lib/keywordspeopleuse";
 import { getSerpResults, getLongTailKeywords, getDomainRanking, getBacklinks } from "@/lib/fetchserp";
 import { marked } from "marked";
@@ -144,6 +145,14 @@ Pour get_kpu_suggestions : utilise cet outil dès que l'utilisateur demande des 
 Pour check_geo_visibility : utilise cet outil dès que l'utilisateur demande si un site (le sien ou un concurrent) est cité ou mentionné sur Perplexity, ChatGPT, Gemini, les IA, ou les moteurs génératifs pour un mot-clé donné. L'outil interroge RÉELLEMENT Perplexity et Gemini avec la requête, vérifie si le domaine cible apparaît dans leurs citations ou dans le texte de la réponse, et retourne la réponse brute + les sources citées + une synthèse de visibilité GEO. Exemples de déclencheurs : "est-ce que mon site est cité sur Perplexity quand on cherche X ?", "est-ce que laboratoire-roles.fr apparaît sur ChatGPT ou Perplexity pour cette requête ?", "analyse ma visibilité IA sur ce mot-clé". Toujours extraire le keyword exact et le site_url depuis la demande de l'utilisateur avant d'appeler.
 
 Pour analyze_competitor_backlinks : utilise cet outil dès que l'utilisateur veut analyser les backlinks d'un concurrent, identifier des sources de liens à dupliquer, ou auditer le profil de netlinking d'un domaine tiers. Transmets le domaine cible sans www. Complémentaire à get_semrush_data mode domain qui donne aussi un aperçu des backlinks — FetchSERP fournit une liste détaillée avec ancres.
+
+Pour dataforseo_serp_analysis : utilise cet outil quand l'utilisateur demande une analyse SERP approfondie pour un mot-clé, veut identifier les features SERP présentes (AI Overview, featured snippet, shopping, local pack, vidéos…), ou veut voir les People Also Ask directement depuis DataForSEO. Complémentaire à analyze_serp (FetchSERP) : DataForSEO est plus précis sur les features SERP et les PAA, FetchSERP est plus rapide pour un aperçu rapide du top 10. En cas de doute, préfère DataForSEO si les credentials sont disponibles.
+
+Pour dataforseo_keyword_overview : utilise cet outil dès que l'utilisateur veut des métriques précises sur des mots-clés (volume, difficulté SEO, CPC, intention de recherche). Peut traiter jusqu'à 10 mots-clés en une seule requête. Complémentaire à get_semrush_data (mode keyword) : DataForSEO est idéal pour valider/comparer des mots-clés cibles avec volume + difficulté + intention en un seul appel.
+
+Pour dataforseo_domain_overview : utilise cet outil quand l'utilisateur demande une "analyse de site", l'autorité d'un domaine, les backlinks d'un site, ou la visibilité organique estimée. Combine les données DataForSEO Labs (mots-clés organiques) et Backlinks API (domaines référents, spam score). Complémentaire à get_semrush_data (mode domain) — utilise les deux quand les données sont importantes.
+
+Pour dataforseo_page_analysis : utilise cet outil dès que l'utilisateur fournit une URL et demande une analyse on-page, un audit de page, ou veut vérifier les éléments techniques d'une page spécifique (title, meta, H1, canonical, liens, images, temps de chargement). C'est le seul outil qui fait une analyse on-page réelle d'une URL — utilise-le en priorité sur les autres pour ce cas d'usage.
 
 Règle générale impérative pour tous les outils : quand tu décides d'appeler un outil, appelle-le immédiatement dans le même tour de réponse. N'écris jamais de message d'annonce du type "je lance la génération" ou "un instant, je récupère les données" sans appeler l'outil dans la même réponse — ce serait une réponse vide qui n'aboutit à rien. Soit tu appelles l'outil tout de suite, soit tu réponds directement en texte.
 
@@ -597,6 +606,57 @@ const tools: Anthropic.Tool[] = [
         },
       },
       required: ["items"],
+    },
+  },
+  {
+    name: "dataforseo_serp_analysis",
+    description: "Analyse la SERP Google via DataForSEO : top 10 organique avec titres/descriptions, featured snippet, People Also Ask, requêtes associées, et types de features SERP détectés (AI Overview, images, vidéos, shopping, local pack…). Plus complet que analyze_serp (FetchSERP) car inclut les features SERP enrichies et les PAA directement. Utilise cet outil quand l'utilisateur demande une analyse SERP approfondie, souhaite identifier les features qui dominent sur un mot-clé, ou veut comprendre l'environnement concurrentiel complet d'une requête.",
+    input_schema: {
+      type: "object",
+      properties: {
+        keyword: { type: "string", description: "Requête à analyser (dans la langue du marché cible)" },
+        country: { type: "string", description: "Code pays : 'fr' (France), 'us' (USA), 'uk' (UK), 'de' (Allemagne). Défaut : 'fr'" },
+      },
+      required: ["keyword"],
+    },
+  },
+  {
+    name: "dataforseo_keyword_overview",
+    description: "Récupère les métriques SEO complètes pour 1 à 10 mots-clés via DataForSEO : volume de recherche mensuel, difficulté (0-100), CPC, niveau de concurrence, intention de recherche principale (informational/commercial/transactional/navigational), tendance mensuelle sur 12 mois, et features SERP présentes. Utilise cet outil quand l'utilisateur veut des données chiffrées précises sur des mots-clés (volume, difficulté, CPC, intention), valider un mot-clé cible, ou comparer plusieurs mots-clés entre eux. Complémentaire à get_semrush_data et get_keyword_trends (Keywords Everywhere).",
+    input_schema: {
+      type: "object",
+      properties: {
+        keywords: {
+          type: "array",
+          items: { type: "string" },
+          description: "Liste de mots-clés à analyser (max 10). Passe-les dans la langue du marché cible.",
+        },
+        country: { type: "string", description: "Code pays : 'fr', 'us', 'uk', 'de'. Défaut : 'fr'" },
+      },
+      required: ["keywords"],
+    },
+  },
+  {
+    name: "dataforseo_domain_overview",
+    description: "Analyse complète d'un domaine via DataForSEO : volume de mots-clés organiques positionnés, trafic estimé, nombre de backlinks, domaines référents, score de spam, distribution des TLDs référents. Combine les données DataForSEO Labs (organic keywords, ETV) et Backlinks API. Utilise cet outil quand l'utilisateur demande une analyse de site/domaine, veut évaluer l'autorité d'un concurrent, ou a besoin d'un aperçu de la santé SEO globale d'un domaine.",
+    input_schema: {
+      type: "object",
+      properties: {
+        domain: { type: "string", description: "Domaine à analyser, sans www ni https (ex: exemple.com)" },
+        country: { type: "string", description: "Code pays pour le contexte organique : 'fr', 'us', 'uk'. Défaut : 'fr'" },
+      },
+      required: ["domain"],
+    },
+  },
+  {
+    name: "dataforseo_page_analysis",
+    description: "Analyse on-page complète d'une URL via DataForSEO : title tag, meta description, balises H1/H2, canonical, balise robots, nombre de mots, liens internes/externes, images sans alt, temps de chargement, et une liste de checks SEO (title présent, description présente, H1 unique, HTTPS, etc.). Utilise cet outil quand l'utilisateur fournit une URL spécifique et demande un audit on-page, une analyse de la page, ou veut vérifier les éléments techniques d'une page précise.",
+    input_schema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "URL complète de la page à analyser (avec https://)" },
+      },
+      required: ["url"],
     },
   },
   {
@@ -1841,6 +1901,213 @@ async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: stri
     case "analyze_competitor_backlinks":
       return { terminal: false, result: await analyzeBacklinksForAssistant(toolUse.input as AnalyzeBacklinksParams) };
 
+    case "dataforseo_serp_analysis": {
+      const p = toolUse.input as { keyword: string; country?: string };
+      if (!process.env.DATAFORSEO_LOGIN) {
+        return { terminal: false, result: "❌ Les credentials DataForSEO (DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD) ne sont pas configurés dans l'environnement." };
+      }
+      try {
+        const data = await getDataForSeoSerp(p.keyword, p.country ?? "fr");
+        if (!data) return { terminal: false, result: `Aucun résultat DataForSEO SERP pour "${p.keyword}".` };
+        const lines: string[] = [
+          `## SERP DataForSEO — "${p.keyword}" (${(p.country ?? "fr").toUpperCase()})`,
+          `Résultats totaux estimés : **${data.totalResults.toLocaleString("fr")}**`,
+          `Features SERP détectées : ${data.itemTypes.join(", ") || "—"}`,
+          "",
+        ];
+        if (data.featuredSnippet) {
+          lines.push("### Featured Snippet");
+          lines.push(`**${data.featuredSnippet.title}**`);
+          lines.push(data.featuredSnippet.description);
+          lines.push(`Source : ${data.featuredSnippet.url}`);
+          lines.push("");
+        }
+        lines.push("### Top 10 résultats organiques");
+        lines.push("| Pos. | Domaine | Titre | URL |");
+        lines.push("|------|---------|-------|-----|");
+        for (const r of data.organic.slice(0, 10)) {
+          const title = r.title.slice(0, 55) + (r.title.length > 55 ? "…" : "");
+          const url = r.url.slice(0, 55) + (r.url.length > 55 ? "…" : "");
+          lines.push(`| ${r.position} | ${r.domain} | ${title} | ${url} |`);
+        }
+        if (data.peopleAlsoAsk.length) {
+          lines.push("", "### People Also Ask (Google)");
+          lines.push(data.peopleAlsoAsk.slice(0, 8).map(q => `- ${q}`).join("\n"));
+        }
+        if (data.relatedSearches.length) {
+          lines.push("", "### Requêtes associées");
+          lines.push(data.relatedSearches.slice(0, 8).map(q => `- ${q}`).join("\n"));
+        }
+        // Dominant domains analysis
+        const domainCounts = data.organic.reduce<Record<string, number>>((acc, r) => {
+          acc[r.domain] = (acc[r.domain] ?? 0) + 1;
+          return acc;
+        }, {});
+        const dominant = Object.entries(domainCounts).filter(([, c]) => c > 1);
+        if (dominant.length) {
+          lines.push("", "### Domaines multi-positionnés");
+          lines.push(dominant.map(([d, c]) => `- **${d}** : ${c} résultats dans le top 10`).join("\n"));
+        }
+        return { terminal: false, result: lines.join("\n") };
+      } catch (e) {
+        return { terminal: false, result: `❌ Erreur DataForSEO SERP : ${e instanceof Error ? e.message : "erreur inconnue"}` };
+      }
+    }
+
+    case "dataforseo_keyword_overview": {
+      const p = toolUse.input as { keywords: string[]; country?: string };
+      if (!process.env.DATAFORSEO_LOGIN) {
+        return { terminal: false, result: "❌ Les credentials DataForSEO (DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD) ne sont pas configurés." };
+      }
+      try {
+        const metrics = await getDataForSeoKeywordOverview(p.keywords, p.country ?? "fr");
+        if (!metrics.length) return { terminal: false, result: `Aucune donnée DataForSEO pour ces mots-clés (base ${p.country ?? "fr"}).` };
+        const lines: string[] = [
+          `## DataForSEO — Métriques mots-clés (${(p.country ?? "fr").toUpperCase()})`,
+          "",
+          "| Mot-clé | Volume/mois | Difficulté | CPC (€) | Concurrence | Intention |",
+          "|---------|------------|-----------|---------|------------|-----------|",
+        ];
+        for (const m of metrics) {
+          const trend12 = m.monthlySearches.slice(-3).map(s => s.volume);
+          const trendArrow = trend12.length >= 2
+            ? (trend12[trend12.length - 1]! > trend12[0]! ? "↑" : trend12[trend12.length - 1]! < trend12[0]! ? "↓" : "→")
+            : "—";
+          lines.push(
+            `| **${m.keyword}** | ${m.searchVolume.toLocaleString("fr")} ${trendArrow} | ${m.difficulty}/100 | ${m.cpc.toFixed(2)} | ${m.competitionLevel} | ${m.mainIntent} |`
+          );
+        }
+        lines.push("");
+        for (const m of metrics) {
+          if (m.serpFeatures.length) {
+            lines.push(`**${m.keyword}** — Features SERP : ${m.serpFeatures.slice(0, 8).join(", ")}`);
+          }
+          if (m.foreignIntents.length) {
+            lines.push(`**${m.keyword}** — Intentions secondaires : ${m.foreignIntents.join(", ")}`);
+          }
+        }
+        return { terminal: false, result: lines.join("\n") };
+      } catch (e) {
+        return { terminal: false, result: `❌ Erreur DataForSEO Keywords : ${e instanceof Error ? e.message : "erreur inconnue"}` };
+      }
+    }
+
+    case "dataforseo_domain_overview": {
+      const p = toolUse.input as { domain: string; country?: string };
+      if (!process.env.DATAFORSEO_LOGIN) {
+        return { terminal: false, result: "❌ Les credentials DataForSEO (DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD) ne sont pas configurés." };
+      }
+      try {
+        const [overview, backlinks] = await Promise.allSettled([
+          getDataForSeoDomainOverview(p.domain, p.country ?? "fr"),
+          getDataForSeoBacklinks(p.domain),
+        ]);
+        const lines: string[] = [`## DataForSEO — Analyse domaine : ${p.domain} (${(p.country ?? "fr").toUpperCase()})`, ""];
+
+        if (overview.status === "fulfilled" && overview.value) {
+          const o = overview.value;
+          lines.push("### Visibilité organique (DataForSEO Labs)");
+          lines.push(`- Mots-clés organiques positionnés : **${o.organicKeywords.toLocaleString("fr")}**`);
+          if (o.organicEtv > 0) lines.push(`- Trafic organique estimé (ETV) : **${o.organicEtv.toLocaleString("fr")}** visites/mois`);
+          if (o.paidKeywords > 0) lines.push(`- Mots-clés en SEA : **${o.paidKeywords.toLocaleString("fr")}**`);
+          lines.push("");
+        } else {
+          lines.push("### Visibilité organique : données indisponibles pour ce domaine");
+          lines.push("");
+        }
+
+        if (backlinks.status === "fulfilled" && backlinks.value) {
+          const b = backlinks.value;
+          lines.push("### Profil de liens (DataForSEO Backlinks)");
+          lines.push(`- Backlinks totaux : **${b.backlinks.toLocaleString("fr")}**`);
+          lines.push(`- Domaines référents : **${b.referringDomains.toLocaleString("fr")}**`);
+          lines.push(`- Domaines référents principaux : **${b.referringMainDomains.toLocaleString("fr")}**`);
+          lines.push(`- Spam score : ${b.spamScore} | Spam score cible : ${b.targetSpamScore}`);
+          if (b.brokenBacklinks > 0) lines.push(`- Backlinks cassés : ${b.brokenBacklinks}`);
+          if (b.cms) lines.push(`- CMS détecté : ${b.cms}`);
+          if (b.country) lines.push(`- Pays hébergement : ${b.country}`);
+          const topTlds = Object.entries(b.tldDistribution).sort(([, a], [, c]) => c - a).slice(0, 5);
+          if (topTlds.length) {
+            lines.push(`- TLDs référents : ${topTlds.map(([t, n]) => `${t} (${n})`).join(", ")}`);
+          }
+          const topPlatforms = Object.entries(b.platformTypes).sort(([, a], [, c]) => c - a).slice(0, 5);
+          if (topPlatforms.length) {
+            lines.push(`- Types de plateformes référentes : ${topPlatforms.map(([t, n]) => `${t} (${n})`).join(", ")}`);
+          }
+        }
+
+        return { terminal: false, result: lines.join("\n") };
+      } catch (e) {
+        return { terminal: false, result: `❌ Erreur DataForSEO Domain Overview : ${e instanceof Error ? e.message : "erreur inconnue"}` };
+      }
+    }
+
+    case "dataforseo_page_analysis": {
+      const p = toolUse.input as { url: string };
+      if (!process.env.DATAFORSEO_LOGIN) {
+        return { terminal: false, result: "❌ Les credentials DataForSEO (DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD) ne sont pas configurés." };
+      }
+      try {
+        const data = await getDataForSeoPageAnalysis(p.url);
+        if (!data) return { terminal: false, result: `Impossible d'analyser la page : ${p.url}. Vérifiez que l'URL est accessible.` };
+
+        const statusIcon = data.statusCode && data.statusCode < 400 ? "✅" : "❌";
+        const lines: string[] = [
+          `## DataForSEO — Analyse on-page : ${p.url}`,
+          `Statut HTTP : ${statusIcon} **${data.statusCode ?? "inconnu"}**`,
+          "",
+          "### Balises essentielles",
+        ];
+
+        lines.push(`**Title :** ${data.title || "⚠️ Absent"} (${data.title.length} car.)`);
+        lines.push(`**Meta description :** ${data.description || "⚠️ Absent"} (${data.description.length} car.)`);
+        lines.push(`**Canonical :** ${data.canonical || "Non défini"}`);
+        lines.push(`**Robots meta :** ${data.robotsMeta || "Non défini (index, follow par défaut)"}`);
+
+        if (data.h1Tags.length) {
+          lines.push("", "### Balises Hn");
+          lines.push(`**H1 (${data.h1Tags.length}) :** ${data.h1Tags.slice(0, 3).map(h => `"${h}"`).join(" | ")}`);
+          if (data.h2Tags.length) {
+            lines.push(`**H2 (${data.h2Tags.length}) :** ${data.h2Tags.slice(0, 5).map(h => `"${h}"`).join(" | ")}${data.h2Tags.length > 5 ? "…" : ""}`);
+          }
+        }
+
+        lines.push("", "### Contenu & liens");
+        lines.push(`- Nombre de mots : **${data.contentWordCount.toLocaleString("fr")}**`);
+        lines.push(`- Liens internes : **${data.linksInternal}** | Liens externes : **${data.linksExternal}**`);
+        lines.push(`- Images : **${data.imageCount}** dont **${data.imagesWithoutAlt}** sans attribut alt`);
+
+        if (data.loadTimeMs != null || data.ttfbMs != null) {
+          lines.push("", "### Performance");
+          if (data.ttfbMs != null) lines.push(`- TTFB : **${data.ttfbMs}ms**`);
+          if (data.loadTimeMs != null) lines.push(`- Temps chargement DOM : **${data.loadTimeMs}ms**`);
+        }
+
+        const checkMap: Record<string, string> = {
+          title: "Title présent et optimisé",
+          description: "Meta description présente",
+          h1: "Balise H1 présente",
+          canonical: "Canonical configuré",
+          https: "HTTPS actif",
+          robotsMeta: "Page indexable (pas de noindex)",
+          largePageSize: "Taille de page acceptable",
+        };
+        const checkEntries = Object.entries(data.checks).filter(([, v]) => v !== null);
+        if (checkEntries.length) {
+          lines.push("", "### Checks SEO");
+          for (const [key, val] of checkEntries) {
+            const label = checkMap[key] ?? key;
+            const isPositive = key === "largePageSize" ? val === false : val === true;
+            lines.push(`- ${isPositive ? "✅" : "❌"} ${label}`);
+          }
+        }
+
+        return { terminal: false, result: lines.join("\n") };
+      } catch (e) {
+        return { terminal: false, result: `❌ Erreur DataForSEO Page Analysis : ${e instanceof Error ? e.message : "erreur inconnue"}` };
+      }
+    }
+
     case "fetch_google_sheet": {
       const { url, sheet_name } = toolUse.input as { url: string; sheet_name?: string };
       // Security: only allow Google Sheets URLs
@@ -2007,6 +2274,10 @@ const TOOL_LABELS: Record<string, string> = {
   fetch_google_sheet: "Import du Google Sheet…",
   update_yoast_seo_bulk: "Mise à jour des balises Yoast sur WordPress…",
   generate_seo_report: "Génération du rapport SEO…",
+  dataforseo_serp_analysis: "Analyse SERP DataForSEO en cours…",
+  dataforseo_keyword_overview: "Récupération métriques mots-clés DataForSEO…",
+  dataforseo_domain_overview: "Analyse domaine DataForSEO (Labs + Backlinks)…",
+  dataforseo_page_analysis: "Analyse on-page DataForSEO…",
 };
 
 export async function POST(req: NextRequest) {
