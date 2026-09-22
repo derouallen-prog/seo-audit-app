@@ -132,7 +132,7 @@ Pour get_gbp_insights : utilise cet outil dès que l'utilisateur demande une ana
 
 Pour reddit_research : utilise cet outil dès que l'utilisateur demande d'analyser des discussions Reddit, trouver des opportunités de ninja linking, identifier des mentions de marque sur Reddit, ou découvrir des sujets/mots-clés depuis les forums. Choisis le mode approprié — semantic_research pour enrichir la sémantique et les intentions de recherche, ninja_linking pour les opportunités de liens/mentions de marque, topic_discovery pour les idées de contenu depuis les discussions. IMPORTANT : traduis toujours le sujet en anglais avant de passer le paramètre sujet (Reddit est quasi exclusivement en anglais). Si l'utilisateur ne précise pas de subreddits, effectue une recherche globale — mais pour les thématiques de niche, suggère aussi des subreddits pertinents dans ta réponse finale.
 
-Pour analyze_serp : utilise cet outil dès que l'utilisateur demande d'analyser le top 10 d'un mot-clé, de voir quels sites dominent une SERP, de comprendre les formats de contenu qui rankent, ou d'extraire les intentions de recherche depuis les résultats réels. Passe la requête dans la langue du marché cible (français pour country=fr). L'outil retourne les 10 premiers résultats organiques — analyse les domaines positionnés, les formats, les featured snippets et les requêtes associées pour formuler des recommandations concrètes sur l'angle éditorial et la structure de la page cible.
+Pour analyze_serp : N'UTILISE PAS cet outil pour les analyses SERP — utilise TOUJOURS dataforseo_serp_analysis à la place, qui est plus complet et plus fiable. analyze_serp (FetchSERP) est désactivé pour les analyses SERP.
 
 Pour find_longtail_keywords : utilise cet outil dès que l'utilisateur demande des mots-clés longue traîne, des variations autour d'un sujet, des idées de requêtes peu concurrentielles, ou des opportunités de contenu depuis les données SERP réelles. Passe le mot-clé seed court (1-3 mots). Complémentaire à get_semrush_data : FetchSERP génère des suggestions à partir des recherches réelles sur la SERP, Semrush donne les volumes et la difficulté — utilise les deux quand disponibles.
 
@@ -146,7 +146,7 @@ Pour check_geo_visibility : utilise cet outil dès que l'utilisateur demande si 
 
 Pour analyze_competitor_backlinks : utilise cet outil dès que l'utilisateur veut analyser les backlinks d'un concurrent, identifier des sources de liens à dupliquer, ou auditer le profil de netlinking d'un domaine tiers. Transmets le domaine cible sans www. Complémentaire à get_semrush_data mode domain qui donne aussi un aperçu des backlinks — FetchSERP fournit une liste détaillée avec ancres.
 
-Pour dataforseo_serp_analysis : utilise cet outil quand l'utilisateur demande une analyse SERP approfondie pour un mot-clé, veut identifier les features SERP présentes (AI Overview, featured snippet, shopping, local pack, vidéos…), ou veut voir les People Also Ask directement depuis DataForSEO. Complémentaire à analyze_serp (FetchSERP) : DataForSEO est plus précis sur les features SERP et les PAA, FetchSERP est plus rapide pour un aperçu rapide du top 10. En cas de doute, préfère DataForSEO si les credentials sont disponibles.
+Pour dataforseo_serp_analysis : c'est l'outil principal pour toute analyse SERP. Utilise-le dès que l'utilisateur demande d'analyser la SERP, le top 10, les concurrents sur un mot-clé, les features SERP (AI Overview, featured snippet, shopping, local pack, vidéos, PAA…). N'utilise JAMAIS analyze_serp (FetchSERP) pour une analyse SERP — dataforseo_serp_analysis est systématiquement préférable car il retourne les features SERP enrichies, les People Also Ask, et les requêtes associées en un seul appel.
 
 Pour dataforseo_keyword_overview : utilise cet outil dès que l'utilisateur veut des métriques précises sur des mots-clés (volume, difficulté SEO, CPC, intention de recherche). Peut traiter jusqu'à 10 mots-clés en une seule requête. Complémentaire à get_semrush_data (mode keyword) : DataForSEO est idéal pour valider/comparer des mots-clés cibles avec volume + difficulté + intention en un seul appel.
 
@@ -491,7 +491,7 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: "analyze_serp",
-    description: "Analyse la SERP Google pour une requête donnée : top 10 résultats organiques, domaines positionnés, featured snippet, requêtes associées. Utilise cet outil pour analyser le top 10 d'un mot-clé cible, identifier les concurrents directs sur une SERP, comprendre les formats qui dominent (articles, e-commerce, forums...), ou extraire des insights pour optimiser/créer une page.",
+    description: "DÉPRÉCIÉ — N'utilise PAS cet outil. Utilise dataforseo_serp_analysis à la place, qui est plus complet et fiable. Cet outil est désactivé.",
     input_schema: {
       type: "object",
       properties: {
