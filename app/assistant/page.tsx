@@ -235,11 +235,43 @@ const TOOLS: Tool[] = [
   },
 ];
 
-const SUGGESTIONS: { label: string; icon: React.ReactNode; prompt: string }[] = [
-  { label: "Analyser la SERP de \"veste imperméable homme\"", icon: <IconFileSearch className="h-4 w-4" />, prompt: "Analyse la SERP pour le mot-clé \"veste imperméable homme\"" },
-  { label: "Backlinks concurrents de patagonia.com", icon: <IconChartColumn className="h-4 w-4" />, prompt: "Analyse les backlinks concurrents de patagonia.com" },
-  { label: "Générer un plan de contenu autour de \"randonnée légère\"", icon: <IconWandSparkles className="h-4 w-4" />, prompt: "Génère un plan de contenu autour du sujet \"randonnée légère\"" },
-  { label: "Longue traîne pour ma boutique outdoor", icon: <IconGlobe className="h-4 w-4" />, prompt: "Trouve des mots-clés de longue traîne pour une boutique outdoor" },
+interface AnimatedSuggestion {
+  prefix: string;
+  suffix: string;
+  variants: string[];
+  icon: React.ReactNode;
+  promptTemplate: (kw: string) => string;
+}
+
+const ANIMATED_SUGGESTIONS: AnimatedSuggestion[] = [
+  {
+    prefix: 'Analyser la SERP de "',
+    suffix: '"',
+    variants: ["veste imperméable homme", "guide d'achat poêle inox", "crème visage vegan", "chaussures trail running"],
+    icon: <IconFileSearch className="h-4 w-4" />,
+    promptTemplate: (kw) => `Analyse la SERP pour le mot-clé "${kw}"`,
+  },
+  {
+    prefix: "Comparer mon domaine à ",
+    suffix: "",
+    variants: ["decathlon.fr", "sephora.fr", "maison-du-monde.fr", "cdiscount.com"],
+    icon: <IconChartColumn className="h-4 w-4" />,
+    promptTemplate: (kw) => `Compare mon domaine à ${kw} : trafic organique, mots-clés positionnés, et profil de backlinks`,
+  },
+  {
+    prefix: 'Questions PAA sur "',
+    suffix: '"',
+    variants: ["nutrition sportive", "décoration scandinave", "randonnée légère", "vin naturel"],
+    icon: <IconWandSparkles className="h-4 w-4" />,
+    promptTemplate: (kw) => `Trouve les questions People Also Ask et la sémantique autour de "${kw}"`,
+  },
+  {
+    prefix: "Mots-clés Google Ads pour ",
+    suffix: "",
+    variants: ["ma boutique de sport", "mon cabinet dentaire", "mon agence immo", "mon blog cuisine"],
+    icon: <IconGlobe className="h-4 w-4" />,
+    promptTemplate: (kw) => `Récupère les métriques Google Ads (volume, CPC, concurrence) pour les mots-clés de ${kw}`,
+  },
 ];
 
 // ── Markdown components ───────────────────────────────────────────────────────
@@ -375,6 +407,100 @@ function ExportBar({ content }: { content: string }) {
       </button>
     </div>
   );
+}
+
+// ── Animated suggestion card ─────────────────────────────────────────────────
+
+function AnimatedSuggestionCard({
+  suggestion,
+  onSelect,
+  initialVariantIdx = 0,
+}: {
+  suggestion: AnimatedSuggestion;
+  onSelect: (text: string) => void;
+  initialVariantIdx?: number;
+}) {
+  const [variantIdx, setVariantIdx] = useState(initialVariantIdx % suggestion.variants.length);
+  const [charCount, setCharCount] = useState(0);
+  const [phase, setPhase] = useState<"typing" | "hold" | "erasing">("typing");
+
+  const currentVariant = suggestion.variants[variantIdx] ?? suggestion.variants[0] ?? "";
+
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout>;
+    if (phase === "typing") {
+      if (charCount < currentVariant.length) {
+        t = setTimeout(() => setCharCount(c => c + 1), 55);
+      } else {
+        t = setTimeout(() => setPhase("hold"), 2200);
+      }
+    } else if (phase === "hold") {
+      t = setTimeout(() => setPhase("erasing"), 400);
+    } else {
+      if (charCount > 0) {
+        t = setTimeout(() => setCharCount(c => c - 1), 28);
+      } else {
+        setVariantIdx(i => (i + 1) % suggestion.variants.length);
+        setPhase("typing");
+      }
+    }
+    return () => clearTimeout(t);
+  }, [phase, charCount, currentVariant]);
+
+  function handleClick() {
+    onSelect(suggestion.promptTemplate(currentVariant));
+  }
+
+  return (
+    <button
+      onClick={handleClick}
+      className="group flex items-center gap-3 rounded-xl border border-hairline bg-background px-4 py-3 text-left text-sm text-ink transition-all hover:border-brand/40 hover:bg-brand-soft/40 cursor-pointer"
+    >
+      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand transition-transform group-hover:scale-105">
+        {suggestion.icon}
+      </div>
+      <span className="flex-1 min-w-0 truncate">
+        {suggestion.prefix}
+        <span className="text-brand">{currentVariant.slice(0, charCount)}</span>
+        <span className="inline-block w-0.5 h-3.5 bg-brand/70 animate-pulse align-middle mx-px" />
+        {suggestion.suffix}
+      </span>
+    </button>
+  );
+}
+
+// ── Tool tooltip ──────────────────────────────────────────────────────────────
+
+function ToolTip({ text }: { text: string }) {
+  return (
+    <span className="relative group/tip ml-auto shrink-0">
+      <span className="flex h-4 w-4 items-center justify-center rounded-full border border-hairline text-[10px] font-medium text-ink-soft cursor-help hover:border-brand/50 hover:text-brand transition-colors leading-none select-none">
+        ?
+      </span>
+      <span className="pointer-events-none absolute right-0 top-5 z-50 hidden w-44 rounded-xl bg-ink px-3 py-2 text-[11px] leading-relaxed text-white shadow-xl group-hover/tip:block">
+        {text}
+      </span>
+    </span>
+  );
+}
+
+// ── Source chips for tool status ──────────────────────────────────────────────
+
+const SOURCE_CHIPS: { match: string; label: string; cls: string }[] = [
+  { match: "DataForSEO", label: "DataForSEO", cls: "bg-orange-100 text-orange-700" },
+  { match: "Google Ads", label: "Google Ads", cls: "bg-blue-100 text-blue-700" },
+  { match: "Search Console", label: "GSC", cls: "bg-green-100 text-green-700" },
+  { match: "Semrush", label: "Semrush", cls: "bg-red-100 text-red-700" },
+  { match: "Reddit", label: "Reddit", cls: "bg-orange-100 text-orange-600" },
+  { match: "Business Profile", label: "GBP", cls: "bg-yellow-100 text-yellow-700" },
+  { match: "LLMs", label: "Perplexity / Gemini", cls: "bg-purple-100 text-purple-700" },
+  { match: "KPU", label: "KPU", cls: "bg-teal-100 text-teal-700" },
+  { match: "WordPress", label: "WordPress", cls: "bg-sky-100 text-sky-700" },
+  { match: "WooCommerce", label: "WooCommerce", cls: "bg-violet-100 text-violet-700" },
+];
+
+function getSourceChips(status: string) {
+  return SOURCE_CHIPS.filter(c => status.includes(c.match));
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -731,7 +857,7 @@ function AssistantPageInner() {
   return (
     <>
     <div
-      className={`mx-auto grid w-full flex-1 gap-0 px-0 sm:gap-6 sm:px-6 lg:px-8 lg:py-8 ${writingMode ? "max-w-full lg:grid-cols-[1fr_300px]" : "max-w-7xl lg:grid-cols-[260px_1fr]"}`}
+      className={`mx-auto grid w-full flex-1 gap-0 px-0 sm:gap-6 sm:px-6 lg:px-8 lg:py-8 ${writingMode ? "max-w-full lg:grid-cols-[1fr_300px]" : "max-w-7xl lg:grid-cols-[290px_1fr]"}`}
       style={{ minHeight: "calc(100dvh - 4rem)" }}
     >
 
@@ -748,7 +874,7 @@ function AssistantPageInner() {
         </button>
 
         {/* Sessions history */}
-        <div className="card-elevated flex-1 overflow-y-auto p-3" style={{ maxHeight: "calc(100dvh - 14rem)" }}>
+        <div className="card-elevated flex-1 overflow-y-auto p-3" style={{ maxHeight: "calc(100dvh - 22rem)" }}>
           {!sessionsLoaded ? (
             <p className="text-xs text-ink-soft text-center py-4">Chargement…</p>
           ) : sessions.length === 0 ? (
@@ -798,42 +924,49 @@ function AssistantPageInner() {
 
         {/* Tools section */}
         <div className="card-elevated p-4">
-          <div className="text-xs font-medium uppercase tracking-wider text-ink-soft mb-2">
+          <div className="text-xs font-medium uppercase tracking-wider text-ink-soft mb-3">
             Outils
           </div>
 
           {/* Top 3 featured */}
-          <div className="grid grid-cols-3 gap-1 mb-3">
-            {TOOLS.filter(t => t.featured).map((tool) => (
-              <button
-                key={tool.label}
-                onClick={() => handleToolClick(tool)}
-                disabled={loading}
-                title={tool.desc}
-                className="flex flex-col items-center gap-1 rounded-lg border border-brand/20 bg-brand/5 px-1 py-2 text-center text-brand hover:bg-brand/10 transition disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <span className="text-brand">{tool.icon}</span>
-                <span className="text-[10px] font-medium leading-tight">{tool.label}</span>
-              </button>
-            ))}
+          <div className="mb-1.5">
+            <div className="flex items-center gap-1 mb-2">
+              <span className="text-amber-400 text-[11px]">★</span>
+              <span className="text-[10px] font-medium uppercase tracking-wide text-ink-soft/80">Les plus populaires</span>
+            </div>
+            <div className="grid grid-cols-3 gap-1 mb-3">
+              {TOOLS.filter(t => t.featured).map((tool) => (
+                <button
+                  key={tool.label}
+                  onClick={() => handleToolClick(tool)}
+                  disabled={loading}
+                  className="group/feat relative flex flex-col items-center gap-1 rounded-lg border border-brand/20 bg-brand/5 px-1 py-2 text-center text-brand hover:bg-brand/10 transition disabled:opacity-40 disabled:cursor-not-allowed overflow-visible"
+                >
+                  <span className="text-brand">{tool.icon}</span>
+                  <span className="text-[10px] font-medium leading-tight">{tool.label}</span>
+                  <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-full mt-1 z-50 hidden group-hover/feat:block w-36 rounded-xl bg-ink px-2.5 py-2 text-[11px] leading-relaxed text-white shadow-xl text-center">
+                    {tool.desc}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Divider */}
           <div className="border-t border-hairline mb-2" />
 
           {/* Rest of tools — scrollable */}
-          <ul className="space-y-0.5 overflow-y-auto" style={{ maxHeight: "190px" }}>
+          <ul className="space-y-0.5 overflow-y-auto" style={{ maxHeight: "240px" }}>
             {TOOLS.filter(t => !t.featured).map((tool) => (
               <li key={tool.label}>
                 <button
                   onClick={() => handleToolClick(tool)}
                   disabled={loading}
-                  title={tool.desc}
                   className="group w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-ink-soft transition-colors hover:bg-accent hover:text-ink disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 >
                   <span className="shrink-0 text-brand">{tool.icon}</span>
                   <span className="flex-1 min-w-0 truncate">{tool.label}</span>
-                  <span className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-brand text-xs">→</span>
+                  <ToolTip text={tool.desc} />
                 </button>
               </li>
             ))}
@@ -919,17 +1052,16 @@ function AssistantPageInner() {
                 <div>
                   <div className="text-xs font-medium uppercase tracking-wider text-ink-soft">Suggestions</div>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    {SUGGESTIONS.map(({ label, icon, prompt }) => (
-                      <button
-                        key={label}
-                        onClick={() => send(prompt)}
-                        className="group flex items-center gap-3 rounded-xl border border-hairline bg-background px-4 py-3 text-left text-sm text-ink transition-all hover:border-brand/40 hover:bg-brand-soft/40"
-                      >
-                        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand transition-transform group-hover:scale-105">
-                          {icon}
-                        </div>
-                        {label}
-                      </button>
+                    {ANIMATED_SUGGESTIONS.map((suggestion, i) => (
+                      <AnimatedSuggestionCard
+                        key={i}
+                        suggestion={suggestion}
+                        initialVariantIdx={i}
+                        onSelect={(text) => {
+                          setInput(text);
+                          setTimeout(() => textareaRef.current?.focus(), 0);
+                        }}
+                      />
                     ))}
                   </div>
                 </div>
@@ -1000,10 +1132,17 @@ function AssistantPageInner() {
                 </div>
                 <div className="rounded-2xl px-4 py-3 bg-accent">
                   {toolStatus ? (
-                    <p className="text-xs text-brand flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse" />
-                      {toolStatus}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-xs text-brand flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse shrink-0" />
+                        {toolStatus}
+                      </p>
+                      {getSourceChips(toolStatus).map(chip => (
+                        <span key={chip.label} className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${chip.cls}`}>
+                          {chip.label}
+                        </span>
+                      ))}
+                    </div>
                   ) : (
                     <div className="flex items-center gap-1.5 py-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-brand animate-bounce [animation-delay:-0.3s]" />
@@ -1017,10 +1156,17 @@ function AssistantPageInner() {
 
             {loading && streamingContent && toolStatus && (
               <div className="flex justify-start pl-11">
-                <p className="text-xs text-brand flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse" />
-                  {toolStatus}
-                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-xs text-brand flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse shrink-0" />
+                    {toolStatus}
+                  </p>
+                  {getSourceChips(toolStatus).map(chip => (
+                    <span key={chip.label} className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${chip.cls}`}>
+                      {chip.label}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
 
