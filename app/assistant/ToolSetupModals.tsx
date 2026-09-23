@@ -378,9 +378,8 @@ export function WpConnectModal({ onClose }: { onClose: () => void }) {
         {/* Logo + nom */}
         <div className="flex items-center gap-3">
           <div className="h-12 w-12 rounded-xl bg-[#21759B]/10 flex items-center justify-center shrink-0">
-            <svg viewBox="0 0 24 24" className="h-7 w-7" fill="#21759B">
-              <path d="M12 2C6.486 2 2 6.486 2 12s4.486 10 10 10 10-4.486 10-10S17.514 2 12 2zm-1.592 14.964l-3.73-10.218a6.153 6.153 0 0 1 1.265-.218c.132 0 .25.017.364.017.119 0 .23-.017.334-.017-.398 1.316-1.268 3.956-2.233 10.436zm9.295-1.7a6.17 6.17 0 0 1-6.17 1.562l2.098-6.082 1.978-5.444a6.17 6.17 0 0 1 2.094 9.964z"/>
-            </svg>
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src="/logos/wordpress.png" alt="WordPress" className="h-7 w-7 rounded object-contain" />
           </div>
           <div>
             <p className="text-sm font-semibold text-ink">WordPress / WooCommerce</p>
@@ -447,9 +446,8 @@ const CMS_OPTIONS = [
     desc: "Publie articles, pages et fiches produit via le plugin Search Mind.",
     href: "/api/wp/auth",
     logo: (
-      <svg viewBox="0 0 24 24" className="h-6 w-6" fill="#21759B">
-        <path d="M12 2C6.486 2 2 6.486 2 12s4.486 10 10 10 10-4.486 10-10S17.514 2 12 2zm-1.592 14.964l-3.73-10.218a6.153 6.153 0 0 1 1.265-.218c.132 0 .25.017.364.017.119 0 .23-.017.334-.017-.398 1.316-1.268 3.956-2.233 10.436zm9.295-1.7a6.17 6.17 0 0 1-6.17 1.562l2.098-6.082 1.978-5.444a6.17 6.17 0 0 1 2.094 9.964z"/>
-      </svg>
+      /* eslint-disable-next-line @next/next/no-img-element */
+      <img src="/logos/wordpress.png" alt="WordPress" className="h-6 w-6 rounded object-contain" />
     ),
   },
   {
@@ -458,9 +456,8 @@ const CMS_OPTIONS = [
     desc: "Synchronise les métadonnées SEO et publie via l'API Webflow.",
     href: "/api/webflow/auth",
     logo: (
-      <svg viewBox="0 0 24 24" className="h-6 w-6" fill="#4353FF">
-        <path d="M17.805 6.14c-1.98 0-3.636 1.265-4.247 3.033-.582-1.77-2.143-3.033-4.04-3.033-2.349 0-4.253 1.9-4.253 4.243 0 .617.135 1.204.373 1.733L12 17.86l6.362-5.744c.238-.53.373-1.117.373-1.733 0-2.343-1.904-4.243-4.253-4.243h-.677z"/>
-      </svg>
+      /* eslint-disable-next-line @next/next/no-img-element */
+      <img src="/logos/webflow.png" alt="Webflow" className="h-6 w-6 rounded object-contain" />
     ),
   },
 ];
