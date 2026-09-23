@@ -485,14 +485,42 @@ function AnimatedSuggestionCard({
 // ── Tool tooltip ──────────────────────────────────────────────────────────────
 
 function ToolTip({ text }: { text: string }) {
+  const [pos, setPos] = useState<{ x: number; y: number; above: boolean } | null>(null);
+  const btnRef = useRef<HTMLSpanElement>(null);
+
+  function show() {
+    if (!btnRef.current) return;
+    const r = btnRef.current.getBoundingClientRect();
+    const tooltipH = 80; // estimated height
+    const above = r.bottom + tooltipH + 8 > window.innerHeight;
+    setPos({
+      x: r.right,
+      y: above ? r.top : r.bottom,
+      above,
+    });
+  }
+
   return (
-    <span className="relative group/tip ml-auto shrink-0">
-      <span className="flex h-4 w-4 items-center justify-center rounded-full border border-hairline text-[10px] font-medium text-ink-soft cursor-help hover:border-brand/50 hover:text-brand transition-colors leading-none select-none">
+    <span className="ml-auto shrink-0" onMouseEnter={show} onMouseLeave={() => setPos(null)}>
+      <span
+        ref={btnRef}
+        className="flex h-4 w-4 items-center justify-center rounded-full border border-hairline text-[10px] font-medium text-ink-soft cursor-help hover:border-brand/50 hover:text-brand transition-colors leading-none select-none"
+      >
         ?
       </span>
-      <span className="pointer-events-none absolute right-0 bottom-full mb-1.5 z-50 hidden w-44 rounded-xl bg-ink px-3 py-2 text-[11px] leading-relaxed text-white shadow-xl group-hover/tip:block">
-        {text}
-      </span>
+      {pos && (
+        <span
+          className="pointer-events-none fixed z-[9999] w-44 rounded-xl bg-ink px-3 py-2 text-[11px] leading-relaxed text-white shadow-xl"
+          style={{
+            right: window.innerWidth - pos.x,
+            ...(pos.above
+              ? { bottom: window.innerHeight - pos.y + 6 }
+              : { top: pos.y + 6 }),
+          }}
+        >
+          {text}
+        </span>
+      )}
     </span>
   );
 }
