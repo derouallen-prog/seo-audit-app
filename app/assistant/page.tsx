@@ -485,19 +485,20 @@ function AnimatedSuggestionCard({
 // ── Tool tooltip ──────────────────────────────────────────────────────────────
 
 function ToolTip({ text }: { text: string }) {
-  const [pos, setPos] = useState<{ x: number; y: number; above: boolean } | null>(null);
+  const [pos, setPos] = useState<{ top: number; left?: number; right?: number } | null>(null);
   const btnRef = useRef<HTMLSpanElement>(null);
+  const TIP_W = 176; // w-44
 
   function show() {
     if (!btnRef.current) return;
     const r = btnRef.current.getBoundingClientRect();
-    const tooltipH = 80; // estimated height
-    const above = r.bottom + tooltipH + 8 > window.innerHeight;
-    setPos({
-      x: r.right,
-      y: above ? r.top : r.bottom,
-      above,
-    });
+    const cy = r.top + r.height / 2;
+    const spaceRight = window.innerWidth - r.right - 8;
+    if (spaceRight >= TIP_W) {
+      setPos({ top: cy, left: r.right + 8 });
+    } else {
+      setPos({ top: cy, right: window.innerWidth - r.left + 8 });
+    }
   }
 
   return (
@@ -510,13 +511,8 @@ function ToolTip({ text }: { text: string }) {
       </span>
       {pos && (
         <span
-          className="pointer-events-none fixed z-[9999] w-44 rounded-xl bg-ink px-3 py-2 text-[11px] leading-relaxed text-white shadow-xl"
-          style={{
-            right: window.innerWidth - pos.x,
-            ...(pos.above
-              ? { bottom: window.innerHeight - pos.y + 6 }
-              : { top: pos.y + 6 }),
-          }}
+          className="pointer-events-none fixed z-[9999] w-44 -translate-y-1/2 rounded-xl bg-ink px-3 py-2 text-[11px] leading-relaxed text-white shadow-xl"
+          style={{ top: pos.top, left: pos.left, right: pos.right }}
         >
           {text}
         </span>

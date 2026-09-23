@@ -352,6 +352,92 @@ export function ContentPlanSetupModal({ onClose, onSubmit }: { onClose: () => vo
   );
 }
 
+// ── WordPress Connect Modal ───────────────────────────────────────────────────
+
+export function WpConnectModal({ onClose }: { onClose: () => void }) {
+  const [url, setUrl] = useState("");
+  const [error, setError] = useState("");
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const raw = url.trim();
+    if (!raw) { setError("Entrez l'URL de votre site."); return; }
+    const normalized = raw.startsWith("http") ? raw : `https://${raw}`;
+    try { new URL(normalized); } catch { setError("URL invalide — ex : mon-site.fr"); return; }
+    window.location.href = `/api/wp/auth?site_url=${encodeURIComponent(normalized)}`;
+  }
+
+  return (
+    <Overlay onClose={onClose}>
+      <ModalHeader
+        title="Connecter WordPress"
+        subtitle="Flux Application Passwords natif — aucune clé API à copier"
+        onClose={onClose}
+      />
+      <div className="p-6 space-y-5">
+        {/* Logo + nom */}
+        <div className="flex items-center gap-3">
+          <div className="h-12 w-12 rounded-xl bg-[#21759B]/10 flex items-center justify-center shrink-0">
+            <svg viewBox="0 0 24 24" className="h-7 w-7" fill="#21759B">
+              <path d="M12 2C6.486 2 2 6.486 2 12s4.486 10 10 10 10-4.486 10-10S17.514 2 12 2zm-1.592 14.964l-3.73-10.218a6.153 6.153 0 0 1 1.265-.218c.132 0 .25.017.364.017.119 0 .23-.017.334-.017-.398 1.316-1.268 3.956-2.233 10.436zm9.295-1.7a6.17 6.17 0 0 1-6.17 1.562l2.098-6.082 1.978-5.444a6.17 6.17 0 0 1 2.094 9.964z"/>
+            </svg>
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-ink">WordPress / WooCommerce</p>
+            <p className="text-xs text-ink-soft">Publie articles, pages et fiches produits WooCommerce directement depuis l&apos;assistant.</p>
+          </div>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-ink mb-1.5 block">URL du site WordPress</label>
+            <div className="flex gap-2">
+              <input
+                autoFocus
+                value={url}
+                onChange={e => { setUrl(e.target.value); setError(""); }}
+                placeholder="https://votresite.com"
+                className="flex-1 rounded-lg border border-hairline bg-background px-3 py-2.5 text-sm text-ink placeholder:text-ink-soft/50 focus:outline-none focus:border-brand/50 transition"
+              />
+              <button
+                type="submit"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand/90 transition-colors whitespace-nowrap"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                Connecter
+              </button>
+            </div>
+            {error && <p className="mt-1.5 text-xs text-red-500">{error}</p>}
+            <p className="mt-1.5 text-[11px] text-ink-soft">Vous serez redirigé vers votre admin WordPress pour approuver l&apos;accès.</p>
+          </div>
+        </form>
+
+        {/* Steps */}
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { n: "1", icon: "🌐", title: "Entrez votre URL", desc: "L'adresse de votre site WordPress (ex. monsite.fr)." },
+            { n: "2", icon: "🔒", title: "Autorisez en un clic", desc: "WordPress affiche un écran de confirmation — approuvez." },
+            { n: "3", icon: "✅", title: "Test SEO automatique", desc: "Search Mind détecte votre plugin SEO et vérifie l'accès." },
+          ].map(s => (
+            <div key={s.n} className="rounded-xl bg-muted/50 px-3 py-3 space-y-1">
+              <div className="flex items-center gap-1.5">
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-brand text-white text-[10px] font-bold shrink-0">{s.n}</span>
+                <span className="text-[10px] font-semibold text-ink">{s.title}</span>
+              </div>
+              <p className="text-[10px] text-ink-soft leading-relaxed">{s.desc}</p>
+            </div>
+          ))}
+        </div>
+
+        <p className="text-[11px] text-ink-soft/70 leading-relaxed border-t border-hairline pt-3">
+          <strong className="text-ink-soft">À propos de Yoast :</strong> une balise mise à jour via Search Mind est immédiatement active. L&apos;indicateur visuel dans l&apos;éditeur WP peut rester grisé tant que la page n&apos;a pas été rouverte manuellement — comportement normal.
+        </p>
+      </div>
+    </Overlay>
+  );
+}
+
 // ── Publication CMS Modal ─────────────────────────────────────────────────────
 
 const CMS_OPTIONS = [
@@ -382,6 +468,11 @@ const CMS_OPTIONS = [
 export function PublicationCMSModal({ onClose, onSubmit, cmsEnabled }: { onClose: () => void; onSubmit: (prompt: string) => void; cmsEnabled: boolean }) {
   const [type, setType] = useState("article");
   const [content, setContent] = useState("");
+  const [showWpModal, setShowWpModal] = useState(false);
+
+  if (showWpModal) {
+    return <WpConnectModal onClose={() => setShowWpModal(false)} />;
+  }
 
   if (!cmsEnabled) {
     return (
@@ -393,20 +484,34 @@ export function PublicationCMSModal({ onClose, onSubmit, cmsEnabled }: { onClose
         />
         <div className="p-6 space-y-3">
           {CMS_OPTIONS.map(cms => (
-            <a
-              key={cms.id}
-              href={cms.id === "wordpress" ? "/integrations" : cms.href}
-              className="flex items-center gap-4 rounded-xl border border-hairline px-4 py-3.5 hover:border-brand/40 hover:bg-brand/5 transition group"
-            >
-              <div className="h-10 w-10 rounded-xl bg-muted flex items-center justify-center shrink-0">
-                {cms.logo}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-ink group-hover:text-brand transition">{cms.name}</div>
-                <div className="text-xs text-ink-soft mt-0.5 leading-relaxed">{cms.desc}</div>
-              </div>
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-ink-soft group-hover:text-brand transition shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-            </a>
+            cms.id === "wordpress" ? (
+              <button
+                key={cms.id}
+                type="button"
+                onClick={() => setShowWpModal(true)}
+                className="flex w-full items-center gap-4 rounded-xl border border-hairline px-4 py-3.5 hover:border-brand/40 hover:bg-brand/5 transition group text-left"
+              >
+                <div className="h-10 w-10 rounded-xl bg-muted flex items-center justify-center shrink-0">{cms.logo}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-ink group-hover:text-brand transition">{cms.name}</div>
+                  <div className="text-xs text-ink-soft mt-0.5 leading-relaxed">{cms.desc}</div>
+                </div>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-ink-soft group-hover:text-brand transition shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+              </button>
+            ) : (
+              <a
+                key={cms.id}
+                href={cms.href}
+                className="flex items-center gap-4 rounded-xl border border-hairline px-4 py-3.5 hover:border-brand/40 hover:bg-brand/5 transition group"
+              >
+                <div className="h-10 w-10 rounded-xl bg-muted flex items-center justify-center shrink-0">{cms.logo}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-ink group-hover:text-brand transition">{cms.name}</div>
+                  <div className="text-xs text-ink-soft mt-0.5 leading-relaxed">{cms.desc}</div>
+                </div>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-ink-soft group-hover:text-brand transition shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+              </a>
+            )
           ))}
           <p className="text-[11px] text-ink-soft text-center pt-1">
             D&apos;autres CMS arrivent bientôt.{" "}

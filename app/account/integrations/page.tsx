@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { WpConnectModal } from "@/app/assistant/ToolSetupModals";
 
 const INTEGRATIONS = [
   {
@@ -69,8 +70,11 @@ const INTEGRATIONS = [
 type Integration = typeof INTEGRATIONS[number];
 
 function IntegrationCard({ integration }: { integration: Integration }) {
+  const [showWpModal, setShowWpModal] = useState(false);
 
   return (
+    <>
+    {showWpModal && <WpConnectModal onClose={() => setShowWpModal(false)} />}
     <div className="rounded-xl border border-hairline bg-background px-5 py-4 flex flex-col gap-0">
       <div className="flex items-start gap-4">
         <div
@@ -111,12 +115,12 @@ function IntegrationCard({ integration }: { integration: Integration }) {
               Gérer
             </button>
           ) : integration.requiresSiteUrl ? (
-            <a
-              href="/integrations"
+            <button
+              onClick={() => setShowWpModal(true)}
               className="inline-flex items-center rounded-lg bg-ink px-3 py-1.5 text-xs font-semibold text-background hover:bg-ink/80 transition-colors"
             >
               Connecter
-            </a>
+            </button>
           ) : (
             <a
               href={integration.href}
@@ -127,8 +131,8 @@ function IntegrationCard({ integration }: { integration: Integration }) {
           )}
         </div>
       </div>
-
     </div>
+    </>
   );
 }
 
