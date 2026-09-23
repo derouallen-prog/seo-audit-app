@@ -529,6 +529,16 @@ function AssistantPageInner() {
   const [showContentPlanSetup, setShowContentPlanSetup] = useState(false);
   const [writingConfig, setWritingConfig] = useState<WritingConfig | null>(null);
 
+  // Sidebar resize
+  const [sidebarWidth, setSidebarWidth] = useState(260);
+  const isResizingRef = useRef(false);
+
+  // Attach panel (+ button)
+  const [showAttachPanel, setShowAttachPanel] = useState(false);
+  const [cmsEnabled, setCmsEnabled] = useState(false);
+  const [gscEnabled, setGscEnabled] = useState(false);
+  const [showCmsModal, setShowCmsModal] = useState(false);
+
   // Session management
   const [sessionId, setSessionId] = useState<string | null>(sessionParam);
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
@@ -830,6 +840,25 @@ function AssistantPageInner() {
     send(tool.prompt);
   }
 
+  function startResize(e: React.MouseEvent) {
+    e.preventDefault();
+    isResizingRef.current = true;
+    const startX = e.clientX;
+    const startW = sidebarWidth;
+    function onMove(ev: MouseEvent) {
+      if (!isResizingRef.current) return;
+      const maxW = window.innerWidth * 0.4;
+      setSidebarWidth(Math.max(200, Math.min(maxW, startW + ev.clientX - startX)));
+    }
+    function onUp() {
+      isResizingRef.current = false;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
   function handleWritingSubmit(config: WritingConfig) {
     setWritingConfig(config);
     setWritingMode(true);
@@ -860,13 +889,14 @@ function AssistantPageInner() {
 
   return (
     <>
-    <div
-      className={`grid w-full flex-1 gap-0 ${writingMode ? "lg:grid-cols-[1fr_300px]" : "lg:grid-cols-[260px_1fr]"}`}
-      style={{ minHeight: "calc(100dvh - 4rem)" }}
-    >
+    <div className="flex w-full flex-1" style={{ minHeight: "calc(100dvh - 4rem)" }}>
 
       {/* ── Sidebar (hidden in writing mode) ── */}
-      {!writingMode && <aside className="hidden lg:flex flex-col gap-3 border-r border-hairline bg-background px-3 py-4">
+      {!writingMode && <>
+      <aside
+        className="hidden lg:flex flex-col gap-3 bg-background px-3 py-4"
+        style={{ width: sidebarWidth, flexShrink: 0, minWidth: 200 }}
+      >
 
         {/* New conversation button */}
         <button
@@ -906,7 +936,12 @@ function AssistantPageInner() {
                             }`}
                           >
                             <IconMessage className="h-3 w-3 shrink-0 opacity-60" />
-                            <span className="flex-1 min-w-0 truncate">{s.title}</span>
+                            <span className="group/stip flex-1 min-w-0 truncate relative">
+                              {s.title}
+                              <span className="pointer-events-none absolute left-0 top-full mt-1 z-50 hidden group-hover/stip:block max-w-[220px] rounded-lg bg-ink px-2.5 py-1.5 text-[11px] leading-snug text-white shadow-xl whitespace-normal break-words">
+                                {s.title}
+                              </span>
+                            </span>
                           </button>
                           <button
                             onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }}
@@ -969,7 +1004,12 @@ function AssistantPageInner() {
                   className="group w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-ink-soft transition-colors hover:bg-accent hover:text-ink disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 >
                   <span className="shrink-0 text-brand">{tool.icon}</span>
-                  <span className="flex-1 min-w-0 truncate">{tool.label}</span>
+                  <span className="group/tlabel flex-1 min-w-0 relative">
+                    <span className="block whitespace-normal leading-snug">{tool.label}</span>
+                    <span className="pointer-events-none absolute left-0 top-full mt-1 z-50 hidden group-hover/tlabel:block max-w-[220px] rounded-lg bg-ink px-2.5 py-1.5 text-[11px] leading-snug text-white shadow-xl whitespace-normal break-words">
+                      {tool.label}
+                    </span>
+                  </span>
                   <ToolTip text={tool.desc} />
                 </button>
               </li>
@@ -977,10 +1017,16 @@ function AssistantPageInner() {
           </ul>
         </div>
 
-      </aside>}
+      </aside>
+      {/* Drag-to-resize handle */}
+      <div
+        onMouseDown={startResize}
+        className="hidden lg:block w-[3px] shrink-0 cursor-col-resize border-r border-hairline hover:border-brand/40 hover:bg-brand/10 transition-colors select-none"
+      />
+      </>}
 
       {/* ── Main chat ── */}
-      <main className="flex flex-col bg-background" style={{ minHeight: "calc(100dvh - 4rem)" }}>
+      <main className="flex flex-col flex-1 bg-background min-w-0" style={{ minHeight: "calc(100dvh - 4rem)" }}>
         <div className="card-elevated flex flex-1 flex-col overflow-hidden p-0">
 
           {/* Session header */}
@@ -1190,7 +1236,7 @@ function AssistantPageInner() {
 
           {/* Input form */}
           <form
-            className="border-t border-hairline p-4"
+            className="border-t border-hairline p-4 relative"
             onSubmit={(e) => { e.preventDefault(); send(); }}
           >
             {/* Hidden file input */}
@@ -1202,6 +1248,74 @@ function AssistantPageInner() {
               className="hidden"
               onChange={(e) => { if (e.target.files?.length) { processFiles(e.target.files); e.target.value = ""; } }}
             />
+
+            {/* Overlay to close attach panel on outside click */}
+            {showAttachPanel && (
+              <div className="fixed inset-0 z-20" onClick={() => setShowAttachPanel(false)} />
+            )}
+
+            {/* Attach panel */}
+            {showAttachPanel && (
+              <div className="absolute bottom-full left-4 mb-2 w-80 rounded-2xl border border-hairline bg-background shadow-2xl z-30">
+                <div className="p-4 space-y-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">Joindre</p>
+
+                  <button
+                    type="button"
+                    onClick={() => { fileInputRef.current?.click(); setShowAttachPanel(false); }}
+                    className="w-full flex items-center gap-3 rounded-xl border border-hairline p-3 text-left hover:bg-accent transition"
+                  >
+                    <div className="h-9 w-9 rounded-lg bg-brand/10 grid place-items-center shrink-0">
+                      <IconUploadCloud className="h-4 w-4 text-brand" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-ink">Importer des fichiers ou des images</div>
+                      <div className="text-xs text-ink-soft mt-0.5">PDF, images, CSV, JSON, Markdown…</div>
+                    </div>
+                  </button>
+
+                  <div className="border-t border-hairline pt-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft mb-2.5">Connecteurs</p>
+                    <div className="space-y-2">
+                      {/* CMS */}
+                      <div className="flex items-center justify-between rounded-xl border border-hairline px-3 py-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-lg leading-none">🗂️</span>
+                          <div>
+                            <div className="text-sm font-medium text-ink">CMS</div>
+                            <div className="text-[11px] text-ink-soft">WordPress, Webflow, Contentful…</div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => { if (!cmsEnabled) { setShowCmsModal(true); } else { setCmsEnabled(false); } }}
+                          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${cmsEnabled ? "bg-brand" : "bg-hairline"}`}
+                        >
+                          <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${cmsEnabled ? "translate-x-[18px]" : "translate-x-0.5"}`} />
+                        </button>
+                      </div>
+                      {/* GSC */}
+                      <div className="flex items-center justify-between rounded-xl border border-hairline px-3 py-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-lg leading-none">🔍</span>
+                          <div>
+                            <div className="text-sm font-medium text-ink">Search Console</div>
+                            <div className="text-[11px] text-ink-soft">Connecter votre GSC</div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setGscEnabled(v => !v)}
+                          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${gscEnabled ? "bg-brand" : "bg-hairline"}`}
+                        >
+                          <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${gscEnabled ? "translate-x-[18px]" : "translate-x-0.5"}`} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* File chips */}
             {pendingFiles.length > 0 && (
@@ -1230,10 +1344,10 @@ function AssistantPageInner() {
               {/* + button */}
               <button
                 type="button"
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => setShowAttachPanel(v => !v)}
                 disabled={loading}
-                title="Joindre un fichier ou une image"
-                className="h-9 w-9 shrink-0 rounded-lg border border-hairline bg-accent text-ink-soft hover:text-brand hover:border-brand/40 hover:bg-brand/5 disabled:opacity-40 disabled:cursor-not-allowed grid place-items-center transition-colors"
+                title="Joindre ou connecter"
+                className={`h-9 w-9 shrink-0 rounded-lg border bg-accent text-ink-soft hover:text-brand hover:border-brand/40 hover:bg-brand/5 disabled:opacity-40 disabled:cursor-not-allowed grid place-items-center transition-colors ${showAttachPanel ? "border-brand/40 text-brand bg-brand/5" : "border-hairline"}`}
               >
                 <IconPlus className="h-4 w-4" />
               </button>
@@ -1272,7 +1386,7 @@ function AssistantPageInner() {
 
       {/* ── Writing checklist panel ── */}
       {writingMode && writingConfig && (
-        <aside className="hidden lg:flex flex-col gap-4 overflow-y-auto py-0 pl-0 pr-0">
+        <aside className="hidden lg:flex flex-col gap-4 overflow-y-auto py-0 pl-0 pr-0" style={{ width: 300, flexShrink: 0 }}>
           <div className="sticky top-0 z-10 flex items-center justify-between bg-background/80 backdrop-blur-sm py-2 mb-1 border-b border-hairline">
             <p className="text-xs font-bold uppercase tracking-widest text-ink-soft">Suivi rédaction</p>
           </div>
@@ -1286,6 +1400,44 @@ function AssistantPageInner() {
     {showRedditSetup && <RedditSetupModal onClose={() => setShowRedditSetup(false)} onSubmit={(p) => { setShowRedditSetup(false); send(p); }} />}
     {showProductSetup && <ProductSetupModal onClose={() => setShowProductSetup(false)} onSubmit={(p) => { setShowProductSetup(false); send(p); }} />}
     {showContentPlanSetup && <ContentPlanSetupModal onClose={() => setShowContentPlanSetup(false)} onSubmit={(p) => { setShowContentPlanSetup(false); send(p); }} />}
+
+    {/* ── CMS connection modal ── */}
+    {showCmsModal && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/30 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) setShowCmsModal(false); }}>
+        <div className="relative w-full max-w-md rounded-2xl border border-hairline bg-background shadow-2xl">
+          <div className="flex items-start justify-between gap-4 border-b border-hairline px-6 py-5">
+            <div>
+              <h2 className="text-sm font-semibold text-ink">Connecter un CMS</h2>
+              <p className="mt-0.5 text-xs text-ink-soft">Choisissez votre plateforme et entrez vos identifiants</p>
+            </div>
+            <button onClick={() => setShowCmsModal(false)} className="shrink-0 rounded-lg p-1 text-ink-soft hover:bg-accent hover:text-ink transition">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div className="p-6 space-y-4">
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { name: "WordPress", icon: "🌐" },
+                { name: "Webflow", icon: "⚡" },
+                { name: "Contentful", icon: "📦" },
+              ].map(cms => (
+                <button key={cms.name} className="flex flex-col items-center gap-2 rounded-xl border border-hairline p-3 text-center hover:border-brand/40 hover:bg-brand/5 transition">
+                  <span className="text-2xl">{cms.icon}</span>
+                  <span className="text-xs font-medium text-ink">{cms.name}</span>
+                </button>
+              ))}
+            </div>
+            <div className="space-y-2">
+              <input placeholder="URL de votre site (ex. : mon-site.com)" className="w-full rounded-xl border border-hairline bg-background px-3 py-2 text-sm text-ink placeholder:text-ink-soft/50 focus:outline-none focus:border-brand/50 focus:ring-1 focus:ring-brand/20 transition" />
+              <input placeholder="Clé API ou token d'accès" type="password" className="w-full rounded-xl border border-hairline bg-background px-3 py-2 text-sm text-ink placeholder:text-ink-soft/50 focus:outline-none focus:border-brand/50 focus:ring-1 focus:ring-brand/20 transition" />
+            </div>
+            <button onClick={() => { setCmsEnabled(true); setShowCmsModal(false); setShowAttachPanel(false); }} className="w-full rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark transition">
+              Connecter le CMS
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
 
     {/* ── Writing setup modal ── */}
     {showWritingSetup && (
