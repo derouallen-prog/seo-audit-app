@@ -1031,14 +1031,7 @@ function AssistantPageInner() {
                             </button>
                           )}
 
-                          {/* Tooltip title — au niveau <li> en dehors du overflow-hidden */}
-                          {renamingId !== s.id && (
-                            <span className="pointer-events-none absolute left-8 top-full mt-1 z-50 hidden group-hover/sess:block max-w-[200px] rounded-lg bg-ink px-2.5 py-1.5 text-[11px] leading-snug text-white shadow-xl whitespace-normal break-words">
-                              {s.title}
-                            </span>
-                          )}
-
-                          {/* 3-dot button — triggers fixed-position dropdown */}
+                          {/* 3-dot button — avant le tooltip dans le DOM pour activer peer-hover */}
                           {renamingId !== s.id && (
                             <button
                               onClick={(e) => {
@@ -1051,10 +1044,17 @@ function AssistantPageInner() {
                                   setOpenMenuId(s.id);
                                 }
                               }}
-                              className="absolute right-1 hidden group-hover/sess:flex items-center justify-center h-5 w-5 rounded text-ink-soft hover:bg-accent hover:text-ink transition text-sm leading-none shrink-0"
+                              className="peer/dot absolute right-1 hidden group-hover/sess:flex items-center justify-center h-5 w-5 rounded text-ink-soft hover:bg-accent hover:text-ink transition text-sm leading-none shrink-0"
                             >
                               ···
                             </button>
+                          )}
+
+                          {/* Tooltip title — masqué quand le bouton ··· est survolé */}
+                          {renamingId !== s.id && (
+                            <span className="pointer-events-none absolute left-8 top-full mt-1 z-50 hidden group-hover/sess:block peer-hover/dot:!hidden max-w-[200px] rounded-lg bg-ink px-2.5 py-1.5 text-[11px] leading-snug text-white shadow-xl whitespace-normal break-words">
+                              {s.title.replace(/…$/, "")}
+                            </span>
                           )}
                         </li>
                       ))}
