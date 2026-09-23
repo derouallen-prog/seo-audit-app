@@ -490,7 +490,7 @@ function ToolTip({ text }: { text: string }) {
       <span className="flex h-4 w-4 items-center justify-center rounded-full border border-hairline text-[10px] font-medium text-ink-soft cursor-help hover:border-brand/50 hover:text-brand transition-colors leading-none select-none">
         ?
       </span>
-      <span className="pointer-events-none absolute right-0 top-5 z-50 hidden w-44 rounded-xl bg-ink px-3 py-2 text-[11px] leading-relaxed text-white shadow-xl group-hover/tip:block">
+      <span className="pointer-events-none absolute right-0 bottom-full mb-1.5 z-50 hidden w-44 rounded-xl bg-ink px-3 py-2 text-[11px] leading-relaxed text-white shadow-xl group-hover/tip:block">
         {text}
       </span>
     </span>
