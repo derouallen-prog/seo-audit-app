@@ -1,28 +1,22 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Playfair_Display, Plus_Jakarta_Sans } from "next/font/google";
+import { Plus_Jakarta_Sans } from "next/font/google";
 import NavUser from "@/app/components/NavUser";
 import MobileMenu from "@/app/components/MobileMenu";
 
-const playfair = Playfair_Display({
-  subsets: ["latin"],
-  style: ["normal", "italic"],
-  variable: "--font-display",
-});
-
 const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "500", "600", "700", "800"],
   variable: "--font-sans",
 });
 
 export const metadata: Metadata = {
-  title: "Search Mind — Audit SEO all-in-one",
+  title: "Search Mind : Audit SEO all-in-one",
   description: "Analysez votre site en 30 secondes : technique, Core Web Vitals, mots-clés, backlinks et recommandations IA priorisées.",
   authors: [{ name: "Search Mind" }],
   openGraph: {
-    title: "Search Mind — Audit SEO all-in-one",
+    title: "Search Mind : Audit SEO all-in-one",
     description: "Analysez votre site en 30 secondes : technique, Core Web Vitals, mots-clés, backlinks et recommandations IA priorisées.",
     type: "website",
   },
@@ -39,8 +33,8 @@ function Logo() {
         </svg>
       </span>
       <span className="flex items-baseline gap-1 leading-none">
-        <span className="font-display text-xl text-ink">Search</span>
-        <span className="font-display text-xl italic text-brand">Mind</span>
+        <span className="font-sans font-bold text-xl text-ink">Search</span>
+        <span className="font-sans font-bold text-xl italic text-brand">Mind</span>
       </span>
     </span>
   );
@@ -48,7 +42,7 @@ function Logo() {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="fr" suppressHydrationWarning className={`${playfair.variable} ${jakarta.variable}`}>
+    <html lang="fr" suppressHydrationWarning className={jakarta.variable}>
       <body>
         <div className="min-h-dvh bg-background text-ink">
 
@@ -105,7 +99,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <div className="max-w-sm">
                   <Logo />
                   <p className="mt-4 text-sm leading-relaxed text-ink-soft">
-                    L&apos;observatoire SEO qui traduit vos données en actions. Audit, Core Web Vitals, mots-clés, backlinks et un assistant IA — dans une seule interface.
+                    L&apos;observatoire SEO qui traduit vos données en actions. Audit, Core Web Vitals, mots-clés, backlinks et un assistant IA dans une seule interface.
                   </p>
                   <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-hairline bg-background px-3 py-1.5 text-xs text-ink-soft">
                     <span className="h-1.5 w-1.5 rounded-full bg-good" />

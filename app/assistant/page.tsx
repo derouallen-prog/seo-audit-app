@@ -144,6 +144,14 @@ function IconSearch({ className = "h-3.5 w-3.5" }: { className?: string }) {
   );
 }
 
+function IconPanelLeft({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/>
+    </svg>
+  );
+}
+
 function IconReddit({ className = "h-3.5 w-3.5" }: { className?: string }) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -278,8 +286,8 @@ const ANIMATED_SUGGESTIONS: AnimatedSuggestion[] = [
 // ── Markdown components ───────────────────────────────────────────────────────
 
 const markdownComponents: Components = {
-  h1: ({ children }) => <h1 className="font-display text-xl text-ink mt-4 mb-2 first:mt-0">{children}</h1>,
-  h2: ({ children }) => <h2 className="font-display text-lg text-ink mt-4 mb-2 first:mt-0">{children}</h2>,
+  h1: ({ children }) => <h1 className="font-sans font-semibold text-xl text-ink mt-4 mb-2 first:mt-0">{children}</h1>,
+  h2: ({ children }) => <h2 className="font-sans font-semibold text-lg text-ink mt-4 mb-2 first:mt-0">{children}</h2>,
   h3: ({ children }) => <h3 className="font-semibold text-sm text-ink mt-3 mb-1.5 first:mt-0">{children}</h3>,
   h4: ({ children }) => <h4 className="font-semibold text-xs text-ink mt-2 mb-1 first:mt-0 uppercase tracking-wide">{children}</h4>,
   p: ({ children }) => <p className="text-sm leading-relaxed mb-4 last:mb-0">{children}</p>,
@@ -529,9 +537,17 @@ function AssistantPageInner() {
   const [showContentPlanSetup, setShowContentPlanSetup] = useState(false);
   const [writingConfig, setWritingConfig] = useState<WritingConfig | null>(null);
 
-  // Sidebar resize
+  // Sidebar resize + visibility
   const [sidebarWidth, setSidebarWidth] = useState(260);
+  const [sidebarVisible, setSidebarVisible] = useState(true);
   const isResizingRef = useRef(false);
+
+  // Session context menu
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
+  // Session search
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Attach panel (+ button)
   const [showAttachPanel, setShowAttachPanel] = useState(false);
@@ -847,8 +863,13 @@ function AssistantPageInner() {
     const startW = sidebarWidth;
     function onMove(ev: MouseEvent) {
       if (!isResizingRef.current) return;
-      const maxW = window.innerWidth * 0.4;
-      setSidebarWidth(Math.max(200, Math.min(maxW, startW + ev.clientX - startX)));
+      const newW = startW + ev.clientX - startX;
+      const maxW = window.innerWidth * 0.3;
+      if (newW < 180) {
+        setSidebarVisible(false);
+      } else {
+        setSidebarWidth(Math.max(200, Math.min(maxW, newW)));
+      }
     }
     function onUp() {
       isResizingRef.current = false;
@@ -873,10 +894,14 @@ function AssistantPageInner() {
   const articleContent = writingMode ? (streamingContent || lastAssistantMsg?.content || "") : "";
   const articleWordCount = articleContent.trim().split(/\s+/).filter(Boolean).length;
 
-  // Group sessions by date
+  // Filter + group sessions
+  const filteredSessions = searchQuery.trim()
+    ? sessions.filter(s => s.title.toLowerCase().includes(searchQuery.toLowerCase()))
+    : sessions;
+
   const today = new Date().toDateString();
   const yesterday = new Date(Date.now() - 86400000).toDateString();
-  const grouped = sessions.reduce<{ today: SessionMeta[]; yesterday: SessionMeta[]; older: SessionMeta[] }>(
+  const grouped = filteredSessions.reduce<{ today: SessionMeta[]; yesterday: SessionMeta[]; older: SessionMeta[] }>(
     (acc, s) => {
       const d = new Date(s.updated_at).toDateString();
       if (d === today) acc.today.push(s);
@@ -891,21 +916,54 @@ function AssistantPageInner() {
     <>
     <div className="flex w-full flex-1" style={{ minHeight: "calc(100dvh - 4rem)" }}>
 
-      {/* ── Sidebar (hidden in writing mode) ── */}
-      {!writingMode && <>
+      {/* ── Sidebar (hidden in writing mode or toggled off) ── */}
+      {!writingMode && sidebarVisible && <>
       <aside
         className="hidden lg:flex flex-col gap-3 bg-background px-3 py-4"
         style={{ width: sidebarWidth, flexShrink: 0, minWidth: 200 }}
       >
 
-        {/* New conversation button */}
-        <button
-          onClick={startNewConversation}
-          className="flex items-center gap-2 rounded-xl border border-hairline bg-white px-4 py-2.5 text-sm font-medium text-ink hover:bg-accent transition w-full"
-        >
-          <IconPlus className="h-4 w-4 text-brand" />
-          Nouvelle conversation
-        </button>
+        {/* Sidebar header: new conv + search + hide */}
+        <div className="flex items-center gap-1">
+          <button
+            onClick={startNewConversation}
+            className="flex flex-1 items-center gap-2 rounded-xl border border-hairline bg-white px-3 py-2 text-xs font-medium text-ink hover:bg-accent transition"
+          >
+            <IconPlus className="h-3.5 w-3.5 text-brand shrink-0" />
+            Nouvelle conversation
+          </button>
+          <button
+            onClick={() => { setShowSearch(v => !v); setSearchQuery(""); }}
+            title="Rechercher dans l'historique"
+            className={`h-8 w-8 shrink-0 rounded-lg border grid place-items-center transition-colors ${showSearch ? "border-brand/40 text-brand bg-brand/5" : "border-hairline text-ink-soft hover:border-brand/40 hover:text-brand hover:bg-brand/5"}`}
+          >
+            <IconSearch className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => setSidebarVisible(false)}
+            title="Masquer la barre latérale"
+            className="h-8 w-8 shrink-0 rounded-lg border border-hairline text-ink-soft hover:border-brand/40 hover:text-brand hover:bg-brand/5 grid place-items-center transition-colors"
+          >
+            <IconPanelLeft className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        {/* Search input */}
+        {showSearch && (
+          <div className="relative -mt-1">
+            <IconSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-ink-soft/60 pointer-events-none" />
+            <input
+              autoFocus
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Rechercher dans l'historique…"
+              className="w-full rounded-lg border border-brand/30 bg-background pl-7 pr-7 py-1.5 text-xs text-ink placeholder:text-ink-soft/50 focus:outline-none focus:border-brand/50 transition"
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-soft hover:text-ink text-xs leading-none">✕</button>
+            )}
+          </div>
+        )}
 
         {/* Sessions history */}
         <div className="card-elevated flex-1 overflow-y-auto p-3" style={{ maxHeight: "calc(100dvh - 22rem)" }}>
@@ -928,7 +986,7 @@ function AssistantPageInner() {
                       {items.map(s => (
                         <li key={s.id} className="group relative flex items-center">
                           <button
-                            onClick={() => loadSession(s.id)}
+                            onClick={() => { loadSession(s.id); setOpenMenuId(null); }}
                             className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors ${
                               s.id === sessionId
                                 ? "bg-brand/10 text-brand font-medium"
@@ -936,21 +994,46 @@ function AssistantPageInner() {
                             }`}
                           >
                             <IconMessage className="h-3 w-3 shrink-0 opacity-60" />
-                            <span className="group/stip flex-1 min-w-0 truncate relative">
-                              {s.title}
-                              <span className="pointer-events-none absolute left-0 top-full mt-1 z-50 hidden group-hover/stip:block max-w-[220px] rounded-lg bg-ink px-2.5 py-1.5 text-[11px] leading-snug text-white shadow-xl whitespace-normal break-words">
+                            {/* Fade truncation */}
+                            <span className="group/stip relative flex-1 min-w-0 overflow-hidden">
+                              <span className="block whitespace-nowrap">{s.title}</span>
+                              <span
+                                className="pointer-events-none absolute inset-y-0 right-0 w-10 to-transparent"
+                                style={{ background: `linear-gradient(to left, ${s.id === sessionId ? "hsl(var(--brand) / 0.1)" : "hsl(var(--background))"}, transparent)` }}
+                              />
+                              {/* Hover tooltip */}
+                              <span className="pointer-events-none absolute left-0 top-full mt-1 z-50 hidden group-hover/stip:block max-w-[200px] rounded-lg bg-ink px-2.5 py-1.5 text-[11px] leading-snug text-white shadow-xl whitespace-normal break-words">
                                 {s.title}
                               </span>
                             </span>
                           </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }}
-                            disabled={deletingId === s.id}
-                            className="absolute right-1 hidden group-hover:flex items-center justify-center h-5 w-5 rounded text-ink-soft hover:text-warn hover:bg-warn/10 transition"
-                            title="Supprimer"
-                          >
-                            <IconTrash className="h-3 w-3" />
-                          </button>
+
+                          {/* 3-dot context menu */}
+                          <div className="absolute right-1 shrink-0">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === s.id ? null : s.id); }}
+                              className="hidden group-hover:flex items-center justify-center h-5 w-5 rounded text-ink-soft hover:bg-accent hover:text-ink transition text-sm leading-none"
+                            >
+                              ···
+                            </button>
+                            {openMenuId === s.id && (
+                              <>
+                                <div className="fixed inset-0 z-40" onClick={() => setOpenMenuId(null)} />
+                                <div className="absolute right-0 top-5 z-50 min-w-[160px] rounded-xl border border-hairline bg-background shadow-xl py-1">
+                                  <button onClick={() => setOpenMenuId(null)} className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-accent">Épingler</button>
+                                  <button onClick={() => setOpenMenuId(null)} className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-accent">Partager</button>
+                                  <button onClick={() => setOpenMenuId(null)} className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-accent">Renommer</button>
+                                  <button onClick={() => setOpenMenuId(null)} className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-accent">Exporter en PDF</button>
+                                  <div className="border-t border-hairline my-1" />
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setOpenMenuId(null); deleteSession(s.id); }}
+                                    disabled={deletingId === s.id}
+                                    className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50"
+                                  >Supprimer</button>
+                                </div>
+                              </>
+                            )}
+                          </div>
                         </li>
                       ))}
                     </ul>
@@ -973,13 +1056,13 @@ function AssistantPageInner() {
               <span className="text-amber-400 text-[11px]">★</span>
               <span className="text-[10px] font-medium uppercase tracking-wide text-ink-soft/80">Les plus populaires</span>
             </div>
-            <div className="grid grid-cols-3 gap-1 mb-3">
+            <div className="grid grid-cols-3 gap-1 mb-3" style={{ minWidth: 0 }}>
               {TOOLS.filter(t => t.featured).map((tool) => (
                 <button
                   key={tool.label}
                   onClick={() => handleToolClick(tool)}
                   disabled={loading}
-                  className="group/feat relative flex flex-col items-center gap-1 rounded-lg border border-brand/20 bg-brand/5 px-1 py-2 text-center text-brand hover:bg-brand/10 transition disabled:opacity-40 disabled:cursor-not-allowed overflow-visible"
+                  className="group/feat relative flex flex-col items-center gap-1 rounded-lg border border-brand/20 bg-brand/5 px-1 py-2 text-center text-brand hover:bg-brand/10 transition disabled:opacity-40 disabled:cursor-not-allowed overflow-visible min-w-0"
                 >
                   <span className="text-brand">{tool.icon}</span>
                   <span className="text-[10px] font-medium leading-tight">{tool.label}</span>
@@ -1032,6 +1115,15 @@ function AssistantPageInner() {
           {/* Session header */}
           <div className="flex items-center justify-between border-b border-hairline bg-gradient-to-r from-brand-soft/60 to-transparent px-5 py-4">
             <div className="flex items-center gap-2">
+              {!sidebarVisible && !writingMode && (
+                <button
+                  onClick={() => setSidebarVisible(true)}
+                  title="Afficher la barre latérale"
+                  className="hidden lg:grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-hairline text-ink-soft hover:border-brand/40 hover:text-brand hover:bg-brand/5 transition-colors"
+                >
+                  <IconPanelLeft className="h-3.5 w-3.5" />
+                </button>
+              )}
               <div className="h-2 w-2 animate-pulse rounded-full bg-good" />
               <div className="text-sm font-medium text-ink">
                 {sessionId
@@ -1227,7 +1319,7 @@ function AssistantPageInner() {
           {/* Anonymous session banner */}
           {isAnonymous && (
             <div className="mx-4 mb-0 mt-2 flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
-              <span>Conversation non sauvegardée — connectez-vous pour conserver votre historique.</span>
+              <span>Conversation non sauvegardée. Connectez-vous pour conserver votre historique.</span>
               <a href="/auth" className="shrink-0 font-medium text-amber-900 underline hover:text-amber-700">
                 Se connecter
               </a>
@@ -1236,9 +1328,10 @@ function AssistantPageInner() {
 
           {/* Input form */}
           <form
-            className="border-t border-hairline p-4 relative"
+            className="border-t border-hairline px-4 pt-3 pb-4 relative"
             onSubmit={(e) => { e.preventDefault(); send(); }}
           >
+          <div className="max-w-[720px] mx-auto">
             {/* Hidden file input */}
             <input
               ref={fileInputRef}
@@ -1380,6 +1473,7 @@ function AssistantPageInner() {
               <span className="sm:hidden">Maj+Entrée pour un retour à la ligne</span>
               <span className="font-mono hidden sm:block">mind-agent · Claude</span>
             </div>
+          </div>{/* end centered wrapper */}
           </form>
         </div>
       </main>
