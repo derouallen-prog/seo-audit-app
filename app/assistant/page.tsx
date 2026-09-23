@@ -170,7 +170,7 @@ const TOOLS: Tool[] = [
     label: "Génération article",
     icon: <IconPenLine />,
     desc: "Article SEO & GEO complet",
-    prompt: "Génère un article de blog complet et optimisé SEO pour ce site. Demande-moi le sujet, le mot-clé principal et le public cible si tu ne les connais pas encore.",
+    prompt: "Génère un article de blog complet et optimisé SEO pour mon site. Demande-moi le sujet, le mot-clé principal et le public cible si tu ne les connais pas encore.",
     featured: true,
   },
   {
@@ -192,37 +192,37 @@ const TOOLS: Tool[] = [
     label: "Analyse de SERP",
     icon: <IconChartColumn />,
     desc: "Analyse le top 10 Google sur un mot-clé : intentions de recherche, featured snippets, PAA, structure des résultats et opportunités de positionnement.",
-    prompt: "Lance une analyse SERP sur les mots-clés principaux de ce site. Pour chaque mot-clé : identifie l'intention de recherche, décris la structure des résultats (featured snippets, PAA, ads, local pack) et note les opportunités de positionnement.",
+    prompt: "Lance une analyse SERP sur les mots-clés principaux de mon site. Pour chaque mot-clé : identifie l'intention de recherche, décris la structure des résultats (featured snippets, PAA, ads, local pack) et note les opportunités de positionnement.",
   },
   {
     label: "Suggestion de mots-clés longue traîne",
     icon: <IconFileSearch />,
     desc: "Identifie des mots-clés à faible concurrence et fort potentiel, regroupés par thématique, avec volume et intention.",
-    prompt: "Identifie des mots-clés de longue traîne à fort potentiel pour ce site. Priorise les requêtes à faible concurrence avec une intention commerciale ou informationnelle claire, et regroupe-les par thématique.",
+    prompt: "Identifie des mots-clés de longue traîne à fort potentiel pour mon site. Priorise les requêtes à faible concurrence avec une intention commerciale ou informationnelle claire, et regroupe-les par thématique.",
   },
   {
     label: "Ranking domaine",
     icon: <IconSearch />,
     desc: "Vérifie les positions actuelles du domaine sur ses mots-clés : position Google, URL rankée, volume estimé et variations récentes.",
-    prompt: "Vérifie les positions actuelles de ce domaine sur ses mots-clés principaux. Indique pour chaque mot-clé : la position, l'URL rankée, le volume estimé et les variations récentes si disponibles.",
+    prompt: "Vérifie les positions actuelles de mon site sur ses mots-clés principaux. Indique pour chaque mot-clé : la position, l'URL rankée, le volume estimé et les variations récentes si disponibles.",
   },
   {
     label: "Trouver des opportunités de backlinks",
     icon: <IconGlobe />,
     desc: "Analyse les profils de liens des concurrents et identifie les sources les plus pertinentes à cibler pour une stratégie de netlinking.",
-    prompt: "Analyse les backlinks des principaux concurrents de ce domaine. Identifie les sources de liens les plus intéressantes à cibler pour une stratégie de netlinking.",
+    prompt: "Analyse les backlinks des principaux concurrents de mon domaine. Identifie les sources de liens les plus intéressantes à cibler pour une stratégie de netlinking.",
   },
   {
     label: "Obtenir des données organic de la GSC",
     icon: <IconChartColumn />,
     desc: "Récupère depuis Google Search Console les top requêtes, clics, impressions et positions moyennes du site connecté.",
-    prompt: "Récupère les données Google Search Console de ce site : top requêtes, pages associées, clics, impressions et positions moyennes. Donne-moi le domaine si je ne le connais pas encore.",
+    prompt: "Récupère les données Google Search Console de mon site : top requêtes, pages associées, clics, impressions et positions moyennes. Donne-moi le domaine si je ne le connais pas encore.",
   },
   {
     label: "Données Semrush",
     icon: <IconChartColumn />,
     desc: "Extrait depuis Semrush les mots-clés organiques du domaine, ses top pages et son profil de backlinks pour identifier forces et faiblesses.",
-    prompt: "Analyse les données Semrush pour ce domaine : mots-clés positionnés, top pages organiques et profil de backlinks. Donne-moi le domaine si je ne le connais pas encore.",
+    prompt: "Analyse les données Semrush pour mon domaine : mots-clés positionnés, top pages organiques et profil de backlinks. Donne-moi le domaine si je ne le connais pas encore.",
   },
   {
     label: "Popularité mots-clés et marque sur Reddit",
@@ -240,7 +240,7 @@ const TOOLS: Tool[] = [
     label: "Stratégie SEO",
     icon: <IconSparkles className="h-3.5 w-3.5" />,
     desc: "Génère un plan d'action SEO global et priorisé : technique, contenu, netlinking, maillage interne, SEO local et GEO. Chaque recommandation est classée par impact et urgence.",
-    prompt: "Génère un plan stratégique SEO complet et priorisé pour ce site. Couvre les axes : SEO technique, contenu, netlinking, maillage interne, SEO local et GEO. Pour chaque axe : actions concrètes, impact estimé et ordre de priorité.",
+    prompt: "Génère un plan stratégique SEO complet et priorisé pour mon site. Couvre les axes : SEO technique, contenu, netlinking, maillage interne, SEO local et GEO. Pour chaque axe : actions concrètes, impact estimé et ordre de priorité.",
   },
 ];
 
@@ -324,7 +324,7 @@ const markdownComponents: Components = {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function titleFromMessage(text: string): string {
-  const maxLen = 50;
+  const maxLen = 60;
   if (text.length <= maxLen) return text.trim();
   const truncated = text.slice(0, maxLen);
   const lastSpace = truncated.lastIndexOf(" ");
@@ -1310,7 +1310,7 @@ function AssistantPageInner() {
           {!showWelcome && (
             <div
               ref={scrollAreaRef}
-              className="relative flex-1 space-y-4 overflow-y-auto px-3 py-4 sm:space-y-6 sm:px-6 sm:py-6"
+              className="relative flex-1 overflow-y-auto py-4 sm:py-6"
               style={{ animation: "fadeUp 0.25s ease forwards" }}
               onDragOver={onDragOver}
               onDragLeave={onDragLeave}
@@ -1323,6 +1323,7 @@ function AssistantPageInner() {
                 </div>
               )}
 
+              <div className="max-w-[720px] mx-auto w-full px-4 sm:px-6 space-y-4 sm:space-y-6">
               {messages.map((m, i) => (
                 <div key={i} className={`flex gap-3 group ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                   {m.role === "assistant" && (
@@ -1427,6 +1428,7 @@ function AssistantPageInner() {
 
               {error && <p className="text-sm text-red-600 pl-11">{error}</p>}
               <div ref={bottomRef} />
+              </div>{/* end max-w-[720px] wrapper */}
             </div>
           )}
 
