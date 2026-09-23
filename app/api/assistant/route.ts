@@ -1469,7 +1469,7 @@ ${opportunities.map((o, i) =>
     }
 
     const corpus = extractSemanticCorpus(posts);
-    dataBlock = buildCorpusDataBlock(p.sujet, corpus);
+    dataBlock = buildCorpusDataBlock(p.sujet, corpus, p.marque);
 
   } else {
     // semantic_research or topic_discovery without specific subreddits → global search
@@ -1485,7 +1485,7 @@ ${opportunities.map((o, i) =>
     }
 
     const corpus = extractSemanticCorpus(posts);
-    dataBlock = buildCorpusDataBlock(p.sujet, corpus);
+    dataBlock = buildCorpusDataBlock(p.sujet, corpus, p.marque);
   }
 
   const response = await client.messages.create({
@@ -1499,10 +1499,25 @@ ${opportunities.map((o, i) =>
   return block && block.type === "text" ? block.text : "Désolé, je n'ai pas pu analyser ces données Reddit.";
 }
 
-function buildCorpusDataBlock(sujet: string, corpus: ReturnType<typeof extractSemanticCorpus>): string {
+function buildCorpusDataBlock(sujet: string, corpus: ReturnType<typeof extractSemanticCorpus>, marque?: string): string {
+  let brandBlock = "";
+  if (marque) {
+    const brandLower = marque.toLowerCase();
+    const brandMentions = corpus.contentIdeas.filter(ci =>
+      ci.title.toLowerCase().includes(brandLower)
+    );
+    if (brandMentions.length > 0) {
+      brandBlock = `\nMentions de la marque "${marque}" détectées (${brandMentions.length}) :
+${brandMentions.map(ci => `- [r/${ci.subreddit}] "${ci.title}" | ↑${ci.score}`).join("\n")}`;
+    } else {
+      brandBlock = `\nMentions de la marque "${marque}" : AUCUNE détectée dans ce corpus. La marque est absente des conversations Reddit sur ce sujet.`;
+    }
+  }
+
   return `Analyse Reddit — corpus sémantique pour : "${sujet}"
 Posts analysés : ${corpus.totalPosts}
 Subreddits couverts : ${corpus.topSubreddits.map(s => `r/${s.name} (${s.posts} posts)`).join(", ")}
+${brandBlock}
 
 Top termes par fréquence (${corpus.topTerms.length}) :
 ${corpus.topTerms.map(t => `${t.term} (×${t.count})`).join(", ")}
@@ -1722,82 +1737,176 @@ async function analyzeSerpForAssistant(p: AnalyzeSerpParams): Promise<string> {
 }
 
 async function findLongtailForAssistant(p: FindLongtailParams): Promise<string> {
-  if (!process.env.FETCHSERP_API_TOKEN) return "La clé API FetchSERP (FETCHSERP_API_TOKEN) n'est pas configurée.";
-  const keywords = await getLongTailKeywords(p.keyword, p.count ?? 20, p.search_intent, p.country ?? "fr");
-  if (!keywords.length) return `Aucun mot-clé longue traîne trouvé pour "${p.keyword}".`;
+  // Try FetchSERP first
+  if (process.env.FETCHSERP_API_TOKEN) {
+    try {
+      const keywords = await getLongTailKeywords(p.keyword, p.count ?? 20, p.search_intent, p.country ?? "fr");
+      if (keywords.length > 0) {
+        const lines = [
+          `## Mots-clés longue traîne — "${p.keyword}" (${(p.country ?? "fr").toUpperCase()})`,
+          p.search_intent ? `Filtre intention : ${p.search_intent}` : "",
+          "",
+          `${keywords.length} mots-clés identifiés :`,
+          ...keywords.map((k, i) => `${i + 1}. ${k}`),
+        ].filter(l => l !== "");
+        return lines.join("\n");
+      }
+    } catch { /* fallback to DataForSEO */ }
+  }
+
+  // Fallback : DataForSEO SERP — PAA + related searches as longtail suggestions
+  const serpData = await getDataForSeoSerp(p.keyword, p.country ?? "fr");
+  if (!serpData) return `Aucun mot-clé longue traîne trouvé pour "${p.keyword}". FetchSERP et DataForSEO sont tous les deux indisponibles.`;
+
+  const suggestions: string[] = [
+    ...serpData.peopleAlsoAsk,
+    ...serpData.relatedSearches,
+  ].filter(Boolean);
+
+  if (!suggestions.length) return `Aucune suggestion de mots-clés trouvée pour "${p.keyword}" via DataForSEO.`;
 
   const lines = [
-    `## Mots-clés longue traîne — "${p.keyword}" (${(p.country ?? "fr").toUpperCase()})`,
-    p.search_intent ? `Filtre intention : ${p.search_intent}` : "",
+    `## Mots-clés longue traîne — "${p.keyword}" (${(p.country ?? "fr").toUpperCase()}) *(via DataForSEO)*`,
+    `> Note : FetchSERP indisponible. Suggestions extraites des People Also Ask et des requêtes associées SERP.`,
     "",
-    `${keywords.length} mots-clés identifiés :`,
-    ...keywords.map((k, i) => `${i + 1}. ${k}`),
-  ].filter(l => l !== "");
+    `${suggestions.length} suggestions identifiées :`,
+  ];
+
+  if (serpData.peopleAlsoAsk.length) {
+    lines.push("", "### Questions (People Also Ask)");
+    serpData.peopleAlsoAsk.forEach((q, i) => lines.push(`${i + 1}. ${q}`));
+  }
+
+  if (serpData.relatedSearches.length) {
+    lines.push("", "### Requêtes associées");
+    serpData.relatedSearches.slice(0, 10).forEach((q, i) => lines.push(`${i + 1}. ${q}`));
+  }
 
   return lines.join("\n");
 }
 
 async function checkRankingForAssistant(p: CheckRankingParams): Promise<string> {
-  if (!process.env.FETCHSERP_API_TOKEN) return "La clé API FetchSERP (FETCHSERP_API_TOKEN) n'est pas configurée.";
-  const result = await getDomainRanking(
-    p.keyword,
-    p.domain,
-    p.country ?? "fr",
-    "google",
-    p.pages_number ?? 5
-  );
+  // Try FetchSERP first
+  if (process.env.FETCHSERP_API_TOKEN) {
+    try {
+      const result = await getDomainRanking(
+        p.keyword,
+        p.domain,
+        p.country ?? "fr",
+        "google",
+        p.pages_number ?? 5
+      );
 
-  if (!result) return `Erreur lors de la vérification du ranking pour "${p.domain}" sur "${p.keyword}".`;
-
-  if (result.position == null) {
-    return `**${p.domain}** n'apparaît pas dans les ${(p.pages_number ?? 5) * 10} premières positions sur Google pour la requête "${p.keyword}" (${(p.country ?? "fr").toUpperCase()}).\n\nCela peut signifier : page non indexée sur ce mot-clé, positionnement au-delà du top ${(p.pages_number ?? 5) * 10}, ou mot-clé non ciblé.`;
+      if (result) {
+        if (result.position == null) {
+          return `**${p.domain}** n'apparaît pas dans les ${(p.pages_number ?? 5) * 10} premières positions sur Google pour la requête "${p.keyword}" (${(p.country ?? "fr").toUpperCase()}).\n\nCela peut signifier : page non indexée sur ce mot-clé, positionnement au-delà du top ${(p.pages_number ?? 5) * 10}, ou mot-clé non ciblé.`;
+        }
+        const lines = [
+          `## Ranking — ${p.domain} sur "${p.keyword}"`,
+          `- Pays : ${(p.country ?? "fr").toUpperCase()}`,
+          `- **Position : #${result.position}**`,
+        ];
+        if (result.url) lines.push(`- URL positionnée : ${result.url}`);
+        if (result.title) lines.push(`- Titre de la page : ${result.title}`);
+        return lines.join("\n");
+      }
+    } catch { /* fallback to DataForSEO */ }
   }
 
+  // Fallback : DataForSEO SERP — check if domain appears in top 10
+  const serpData = await getDataForSeoSerp(p.keyword, p.country ?? "fr");
+  if (!serpData) return `Erreur lors de la vérification du ranking pour "${p.domain}" sur "${p.keyword}". FetchSERP et DataForSEO sont tous les deux indisponibles.`;
+
+  const cleanDomain = p.domain.replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/$/, "");
+  const match = serpData.organic.find(r => r.domain.replace(/^www\./, "") === cleanDomain || r.domain.includes(cleanDomain));
+
   const lines = [
-    `## Ranking — ${p.domain} sur "${p.keyword}"`,
+    `## Ranking — ${p.domain} sur "${p.keyword}" *(via DataForSEO)*`,
     `- Pays : ${(p.country ?? "fr").toUpperCase()}`,
-    `- **Position : #${result.position}**`,
   ];
-  if (result.url) lines.push(`- URL positionnée : ${result.url}`);
-  if (result.title) lines.push(`- Titre de la page : ${result.title}`);
+
+  if (!match) {
+    lines.push(`- **Non détecté dans le top 10** (FetchSERP indisponible — seul le top 10 est couvert par ce fallback)`);
+    lines.push(`\nTop 3 actuels : ${serpData.organic.slice(0, 3).map(r => `**${r.domain}** (pos. ${r.position})`).join(", ")}`);
+  } else {
+    lines.push(`- **Position : #${match.position}**`);
+    if (match.url) lines.push(`- URL positionnée : ${match.url}`);
+    if (match.title) lines.push(`- Titre : ${match.title}`);
+  }
 
   return lines.join("\n");
 }
 
 async function analyzeBacklinksForAssistant(p: AnalyzeBacklinksParams): Promise<string> {
-  if (!process.env.FETCHSERP_API_TOKEN) return "La clé API FetchSERP (FETCHSERP_API_TOKEN) n'est pas configurée.";
-  const result = await getBacklinks(p.domain, p.country ?? "fr", p.pages_number ?? 3);
-  if (!result) return `Erreur lors de l'analyse des backlinks pour "${p.domain}".`;
-  if (!result.backlinks.length) return `Aucun backlink trouvé pour "${p.domain}".`;
+  // Try FetchSERP first for detailed backlink list
+  if (process.env.FETCHSERP_API_TOKEN) {
+    try {
+      const result = await getBacklinks(p.domain, p.country ?? "fr", p.pages_number ?? 3);
+      if (result && result.backlinks.length > 0) {
+        const lines = [
+          `## Backlinks — ${p.domain}`,
+          `Total détecté : **${result.totalBacklinks.toLocaleString("fr")}**`,
+          "",
+          "### Liens entrants (top 30)",
+          "| Domaine référent | Ancre | DA | URL source |",
+          "|-----------------|-------|-----|-----------|",
+        ];
 
-  const lines = [
-    `## Backlinks — ${p.domain}`,
-    `Total détecté : **${result.totalBacklinks.toLocaleString("fr")}**`,
-    "",
-    "### Liens entrants (top 30)",
-    "| Domaine référent | Ancre | DA | URL source |",
-    "|-----------------|-------|-----|-----------|",
-  ];
+        for (const b of result.backlinks) {
+          const anchor = b.anchor ?? "—";
+          const da = b.domainAuthority != null ? String(b.domainAuthority) : "—";
+          const url = b.url.slice(0, 60) + (b.url.length > 60 ? "…" : "");
+          lines.push(`| ${b.domain} | ${anchor} | ${da} | ${url} |`);
+        }
 
-  for (const b of result.backlinks) {
-    const anchor = b.anchor ?? "—";
-    const da = b.domainAuthority != null ? String(b.domainAuthority) : "—";
-    const url = b.url.slice(0, 60) + (b.url.length > 60 ? "…" : "");
-    lines.push(`| ${b.domain} | ${anchor} | ${da} | ${url} |`);
+        const domainCounts = result.backlinks.reduce<Record<string, number>>((acc, b) => {
+          acc[b.domain] = (acc[b.domain] ?? 0) + 1;
+          return acc;
+        }, {});
+        const topDomains = Object.entries(domainCounts).sort(([, a], [, b]) => b - a).slice(0, 5);
+        if (topDomains.length) {
+          lines.push("", "### Domaines référents les plus actifs");
+          lines.push(topDomains.map(([d, c]) => `- **${d}** — ${c} lien${c > 1 ? "s" : ""}`).join("\n"));
+        }
+        return lines.join("\n");
+      }
+    } catch { /* fallback to DataForSEO */ }
   }
 
-  // Summary: top referring domains
-  const domainCounts = result.backlinks.reduce<Record<string, number>>((acc, b) => {
-    acc[b.domain] = (acc[b.domain] ?? 0) + 1;
-    return acc;
-  }, {});
-  const topDomains = Object.entries(domainCounts)
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 5);
+  // Fallback : DataForSEO Backlinks Summary (profil global, pas liste individuelle)
+  const summary = await getDataForSeoBacklinks(p.domain);
+  if (!summary) return `Erreur lors de l'analyse des backlinks pour "${p.domain}". FetchSERP et DataForSEO sont tous les deux indisponibles.`;
 
-  if (topDomains.length) {
-    lines.push("", "### Domaines référents les plus actifs");
-    lines.push(topDomains.map(([d, c]) => `- **${d}** — ${c} lien${c > 1 ? "s" : ""}`).join("\n"));
+  const tldEntries = Object.entries(summary.tldDistribution).sort(([, a], [, b]) => b - a).slice(0, 5);
+  const lines = [
+    `## Profil de backlinks — ${p.domain} *(via DataForSEO)*`,
+    `> Note : FetchSERP indisponible. Données de synthèse DataForSEO — pas de liste individuelle de liens.`,
+    "",
+    `| Métrique | Valeur |`,
+    `|---------|--------|`,
+    `| Backlinks totaux | **${summary.backlinks.toLocaleString("fr")}** |`,
+    `| Domaines référents | **${summary.referringDomains.toLocaleString("fr")}** |`,
+    `| Domaines référents principaux | ${summary.referringMainDomains.toLocaleString("fr")} |`,
+    `| IPs référentes | ${summary.referringIPs.toLocaleString("fr")} |`,
+    `| Backlinks cassés | ${summary.brokenBacklinks} |`,
+    `| Spam score | ${summary.spamScore}/100 |`,
+    `| Score de spam du domaine | ${summary.targetSpamScore}/100 |`,
+  ];
+
+  if (summary.cms) lines.push(`| CMS détecté | ${summary.cms} |`);
+  if (summary.country) lines.push(`| Pays d'hébergement | ${summary.country} |`);
+
+  if (tldEntries.length) {
+    lines.push("", "### Distribution des TLD référents");
+    lines.push(tldEntries.map(([tld, count]) => `- **.${tld}** — ${count} domaine${count > 1 ? "s" : ""}`).join("\n"));
+  }
+
+  const noFollow = summary.linkAttributes["nofollow"] ?? 0;
+  const doFollow = summary.backlinks - noFollow;
+  if (summary.backlinks > 0) {
+    lines.push("", "### Qualité du profil");
+    lines.push(`- Liens dofollow estimés : **${doFollow.toLocaleString("fr")}** (${Math.round((doFollow / summary.backlinks) * 100)}%)`);
+    lines.push(`- Liens nofollow : ${noFollow.toLocaleString("fr")} (${Math.round((noFollow / summary.backlinks) * 100)}%)`);
   }
 
   return lines.join("\n");
@@ -2297,7 +2406,7 @@ async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: stri
   }
 }
 
-const MAX_AGENT_STEPS = 4;
+const MAX_AGENT_STEPS = 10;
 
 export const maxDuration = 150;
 
@@ -2417,6 +2526,8 @@ export async function POST(req: NextRequest) {
           return { role: m.role, content: m.content };
         });
 
+        let tokensStreamed = 0;
+
         for (let step = 0; step <= MAX_AGENT_STEPS; step++) {
           const isForceTextStep = step === MAX_AGENT_STEPS;
 
@@ -2437,6 +2548,7 @@ export async function POST(req: NextRequest) {
               event.delta.text
             ) {
               send("token", JSON.stringify(event.delta.text));
+              tokensStreamed++;
             }
           }
 
@@ -2445,6 +2557,9 @@ export async function POST(req: NextRequest) {
 
           // Pas d'outil → texte déjà streamé, on clôt
           if (toolUses.length === 0 || isForceTextStep) {
+            if (isForceTextStep && tokensStreamed === 0) {
+              send("token", JSON.stringify("⚠️ **La génération a rencontré un problème technique.** Les données ont bien été collectées, mais la synthèse finale n'a pas pu être produite. Essaie de reformuler ta demande ou de la simplifier (par exemple : précise un seul axe plutôt que plusieurs à la fois)."));
+            }
             send("done", "");
             controller.close();
             return;

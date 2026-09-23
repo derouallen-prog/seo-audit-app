@@ -1355,6 +1355,7 @@ function AssistantPageInner() {
                     <div className="mb-2 flex flex-wrap gap-1.5">
                       {pendingFiles.map(f => (
                         <div key={f.id} className="flex items-center gap-1 rounded-lg border border-brand/30 bg-brand/5 px-2 py-1 text-xs text-brand">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
                           {f.dataUrl ? <img src={f.dataUrl} alt={f.name} className="h-4 w-4 rounded object-cover" /> : <span className="opacity-60">📄</span>}
                           <span className="max-w-[120px] truncate">{f.name}</span>
                           <button type="button" onClick={() => removeFile(f.id)} className="ml-0.5 opacity-60 hover:opacity-100 transition" aria-label="Retirer le fichier">✕</button>
@@ -1636,6 +1637,7 @@ function AssistantPageInner() {
                 {pendingFiles.map(f => (
                   <div key={f.id} className="flex items-center gap-1 rounded-lg border border-brand/30 bg-brand/5 px-2 py-1 text-xs text-brand">
                     {f.dataUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
                       <img src={f.dataUrl} alt={f.name} className="h-4 w-4 rounded object-cover" />
                     ) : (
                       <span className="opacity-60">📄</span>
