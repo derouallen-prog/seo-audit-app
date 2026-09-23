@@ -6,6 +6,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Components } from "react-markdown";
 import { WritingSetupModal, WritingChecklist, EditorToolbar, buildArticlePrompt } from "./WritingPanel";
+import { RedditSetupModal, ProductSetupModal, ContentPlanSetupModal } from "./ToolSetupModals";
 import type { WritingConfig } from "./WritingPanel";
 
 interface ChatMessage {
@@ -180,57 +181,57 @@ const TOOLS: Tool[] = [
   },
   // ── Outils data & analyse ─────────────────────────────────────────────────
   {
-    label: "Analyse SERP",
+    label: "Analyse de SERP",
     icon: <IconChartColumn />,
-    desc: "Top 10, intentions, snippets",
-    prompt: "Lance une analyse SERP sur les mots-clés principaux de ce site. Pour chaque mot-clé : identifie l'intention de recherche, décris la structure des résultats (featured snippets, PAA, ads, local pack…) et note les opportunités de positionnement.",
+    desc: "Analyse le top 10 Google sur un mot-clé : intentions de recherche, featured snippets, PAA, structure des résultats et opportunités de positionnement.",
+    prompt: "Lance une analyse SERP sur les mots-clés principaux de ce site. Pour chaque mot-clé : identifie l'intention de recherche, décris la structure des résultats (featured snippets, PAA, ads, local pack) et note les opportunités de positionnement.",
   },
   {
-    label: "Longue traîne",
+    label: "Suggestion de mots-clés longue traîne",
     icon: <IconFileSearch />,
-    desc: "Mots-clés faible concurrence",
+    desc: "Identifie des mots-clés à faible concurrence et fort potentiel, regroupés par thématique, avec volume et intention.",
     prompt: "Identifie des mots-clés de longue traîne à fort potentiel pour ce site. Priorise les requêtes à faible concurrence avec une intention commerciale ou informationnelle claire, et regroupe-les par thématique.",
   },
   {
     label: "Ranking domaine",
     icon: <IconSearch />,
-    desc: "Positions actuelles du domaine",
+    desc: "Vérifie les positions actuelles du domaine sur ses mots-clés : position Google, URL rankée, volume estimé et variations récentes.",
     prompt: "Vérifie les positions actuelles de ce domaine sur ses mots-clés principaux. Indique pour chaque mot-clé : la position, l'URL rankée, le volume estimé et les variations récentes si disponibles.",
   },
   {
-    label: "Backlinks concurrents",
+    label: "Trouver des opportunités de backlinks",
     icon: <IconGlobe />,
-    desc: "Sources de liens à dupliquer",
+    desc: "Analyse les profils de liens des concurrents et identifie les sources les plus pertinentes à cibler pour une stratégie de netlinking.",
     prompt: "Analyse les backlinks des principaux concurrents de ce domaine. Identifie les sources de liens les plus intéressantes à cibler pour une stratégie de netlinking.",
   },
   {
-    label: "Données GSC",
+    label: "Obtenir des données organic de la GSC",
     icon: <IconChartColumn />,
-    desc: "Requêtes & positions Search Console",
+    desc: "Récupère depuis Google Search Console les top requêtes, clics, impressions et positions moyennes du site connecté.",
     prompt: "Récupère les données Google Search Console de ce site : top requêtes, pages associées, clics, impressions et positions moyennes. Donne-moi le domaine si je ne le connais pas encore.",
   },
   {
     label: "Données Semrush",
     icon: <IconChartColumn />,
-    desc: "Mots-clés & backlinks Semrush",
+    desc: "Extrait depuis Semrush les mots-clés organiques du domaine, ses top pages et son profil de backlinks pour identifier forces et faiblesses.",
     prompt: "Analyse les données Semrush pour ce domaine : mots-clés positionnés, top pages organiques et profil de backlinks. Donne-moi le domaine si je ne le connais pas encore.",
   },
   {
-    label: "Reddit search",
+    label: "Popularité mots-clés et marque sur Reddit",
     icon: <IconReddit />,
-    desc: "Sémantique & ninja linking",
-    prompt: "Analyse les discussions Reddit sur la thématique principale de ce site. Identifie le vocabulaire réel des internautes, les questions récurrentes, les pain points, et les opportunités de ninja linking.",
+    desc: "Analyse les discussions Reddit pour extraire le vocabulaire réel des internautes, leurs pain points, questions et opportunités de ninja linking.",
+    prompt: "",
   },
   {
-    label: "Plan de contenu",
+    label: "Rédiger un plan de contenu",
     icon: <IconWandSparkles />,
-    desc: "Pilier + articles satellites",
-    prompt: "Crée un plan de contenu éditorial complet avec page pilier et articles satellites pour la thématique principale de ce site. Inclus les mots-clés cibles, intentions, priorités et maillage interne suggéré.",
+    desc: "Construit un plan éditorial complet avec page pilier et articles satellites, mots-clés cibles, intentions et maillage interne.",
+    prompt: "",
   },
   {
     label: "Stratégie SEO",
     icon: <IconSparkles className="h-3.5 w-3.5" />,
-    desc: "Plan d'action prioritaire",
+    desc: "Génère un plan d'action SEO global et priorisé : technique, contenu, netlinking, maillage interne, SEO local et GEO. Chaque recommandation est classée par impact et urgence.",
     prompt: "Génère un plan stratégique SEO complet et priorisé pour ce site. Couvre les axes : SEO technique, contenu, netlinking, maillage interne, SEO local et GEO. Pour chaque axe : actions concrètes, impact estimé et ordre de priorité.",
   },
 ];
@@ -281,7 +282,7 @@ const markdownComponents: Components = {
   h2: ({ children }) => <h2 className="font-display text-lg text-ink mt-4 mb-2 first:mt-0">{children}</h2>,
   h3: ({ children }) => <h3 className="font-semibold text-sm text-ink mt-3 mb-1.5 first:mt-0">{children}</h3>,
   h4: ({ children }) => <h4 className="font-semibold text-xs text-ink mt-2 mb-1 first:mt-0 uppercase tracking-wide">{children}</h4>,
-  p: ({ children }) => <p className="text-sm leading-relaxed mb-2 last:mb-0">{children}</p>,
+  p: ({ children }) => <p className="text-sm leading-relaxed mb-4 last:mb-0">{children}</p>,
   ul: ({ children }) => <ul className="list-disc list-inside space-y-1 mb-2 text-sm">{children}</ul>,
   ol: ({ children }) => <ol className="list-decimal list-inside space-y-1 mb-2 text-sm">{children}</ol>,
   li: ({ children }) => <li className="text-sm leading-relaxed">{children}</li>,
@@ -523,6 +524,9 @@ function AssistantPageInner() {
   // Writing mode
   const [writingMode, setWritingMode] = useState(false);
   const [showWritingSetup, setShowWritingSetup] = useState(false);
+  const [showRedditSetup, setShowRedditSetup] = useState(false);
+  const [showProductSetup, setShowProductSetup] = useState(false);
+  const [showContentPlanSetup, setShowContentPlanSetup] = useState(false);
   const [writingConfig, setWritingConfig] = useState<WritingConfig | null>(null);
 
   // Session management
@@ -819,10 +823,10 @@ function AssistantPageInner() {
   }
 
   function handleToolClick(tool: Tool) {
-    if (tool.label === "Génération article") {
-      setShowWritingSetup(true);
-      return;
-    }
+    if (tool.label === "Génération article") { setShowWritingSetup(true); return; }
+    if (tool.label === "Popularité mots-clés et marque sur Reddit") { setShowRedditSetup(true); return; }
+    if (tool.label === "Fiche produit") { setShowProductSetup(true); return; }
+    if (tool.label === "Rédiger un plan de contenu") { setShowContentPlanSetup(true); return; }
     send(tool.prompt);
   }
 
@@ -1277,6 +1281,11 @@ function AssistantPageInner() {
       )}
 
     </div>
+
+    {/* ── Tool setup modals ── */}
+    {showRedditSetup && <RedditSetupModal onClose={() => setShowRedditSetup(false)} onSubmit={(p) => { setShowRedditSetup(false); send(p); }} />}
+    {showProductSetup && <ProductSetupModal onClose={() => setShowProductSetup(false)} onSubmit={(p) => { setShowProductSetup(false); send(p); }} />}
+    {showContentPlanSetup && <ContentPlanSetupModal onClose={() => setShowContentPlanSetup(false)} onSubmit={(p) => { setShowContentPlanSetup(false); send(p); }} />}
 
     {/* ── Writing setup modal ── */}
     {showWritingSetup && (
