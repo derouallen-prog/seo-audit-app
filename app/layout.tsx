@@ -1,7 +1,7 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Playfair_Display } from "next/font/google";
+import { Playfair_Display, Plus_Jakarta_Sans } from "next/font/google";
 import NavUser from "@/app/components/NavUser";
 import MobileMenu from "@/app/components/MobileMenu";
 
@@ -9,6 +9,12 @@ const playfair = Playfair_Display({
   subsets: ["latin"],
   style: ["normal", "italic"],
   variable: "--font-display",
+});
+
+const jakarta = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-sans",
 });
 
 export const metadata: Metadata = {
@@ -42,7 +48,7 @@ function Logo() {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="fr" suppressHydrationWarning className={playfair.variable}>
+    <html lang="fr" suppressHydrationWarning className={`${playfair.variable} ${jakarta.variable}`}>
       <body>
         <div className="min-h-dvh bg-background text-ink">
 

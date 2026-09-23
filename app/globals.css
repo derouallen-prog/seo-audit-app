@@ -5,20 +5,20 @@
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 0 0% 7%;
-    --primary: 256 96% 60%;
+    --foreground: 228 7% 14%;
+    --primary: 250 55% 55%;
     --primary-foreground: 0 0% 100%;
-    --muted: 240 20% 97%;
-    --muted-foreground: 220 9% 46%;
+    --muted: 210 17% 98%;
+    --muted-foreground: 240 4% 24%;
     --border: 220 13% 91%;
-    /* Nouveaux tokens SearchMind */
-    --ink: 222 47% 11%;
-    --ink-soft: 220 9% 46%;
+    /* Tokens SearchMind */
+    --ink: 228 7% 14%;        /* #202125 */
+    --ink-soft: 240 4% 24%;   /* #3a3b3f */
     --hairline: 220 13% 91%;
     --good: 142 71% 45%;
-    --brand: 256 100% 60%;
-    --brand-soft: 256 100% 97%;
-    --accent: 220 14% 96%;
+    --brand: 250 55% 55%;     /* #614acf */
+    --brand-soft: 250 55% 97%;
+    --accent: 210 17% 97%;
   }
 
   html, body { height: 100%; }
@@ -26,8 +26,9 @@
   *, ::before, ::after { border-color: hsl(var(--border)); }
 
   body {
-    background-color: hsl(var(--background));
+    background-color: hsl(var(--muted));
     color: hsl(var(--foreground));
+    font-family: var(--font-sans), system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -46,7 +47,7 @@
 
   /* Glow violet sur les éléments brand */
   .glow-brand {
-    box-shadow: 0 0 20px -4px rgb(93 52 255 / 0.40);
+    box-shadow: 0 0 20px -4px rgb(97 74 207 / 0.40);
   }
 
   /* Card élevée SearchMind */

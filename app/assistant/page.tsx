@@ -857,12 +857,12 @@ function AssistantPageInner() {
   return (
     <>
     <div
-      className={`mx-auto grid w-full flex-1 gap-0 px-0 sm:gap-6 sm:px-6 lg:px-8 lg:py-8 ${writingMode ? "max-w-full lg:grid-cols-[1fr_300px]" : "max-w-7xl lg:grid-cols-[290px_1fr]"}`}
+      className={`grid w-full flex-1 gap-0 ${writingMode ? "lg:grid-cols-[1fr_300px]" : "lg:grid-cols-[260px_1fr]"}`}
       style={{ minHeight: "calc(100dvh - 4rem)" }}
     >
 
       {/* ── Sidebar (hidden in writing mode) ── */}
-      {!writingMode && <aside className="hidden lg:flex flex-col gap-4">
+      {!writingMode && <aside className="hidden lg:flex flex-col gap-3 border-r border-hairline bg-background px-3 py-4">
 
         {/* New conversation button */}
         <button
@@ -976,7 +976,7 @@ function AssistantPageInner() {
       </aside>}
 
       {/* ── Main chat ── */}
-      <main className="flex flex-col" style={{ minHeight: "calc(100dvh - 8rem)" }}>
+      <main className="flex flex-col bg-background" style={{ minHeight: "calc(100dvh - 4rem)" }}>
         <div className="card-elevated flex flex-1 flex-col overflow-hidden p-0">
 
           {/* Session header */}
@@ -1044,7 +1044,7 @@ function AssistantPageInner() {
                   </div>
                   <div className="max-w-[720px] space-y-2">
                     <div className="inline-block rounded-2xl px-4 py-3 text-sm leading-relaxed bg-accent text-ink">
-                      Bonjour 👋 Je suis Mind, votre copilote SEO. Donnez-moi une URL, un mot-clé ou un objectif — je m&apos;occupe du reste.
+                      Bonjour, je suis Mind, votre copilote SEO. Donnez-moi une URL, un mot-clé ou un objectif et je m&apos;occupe du reste.
                     </div>
                   </div>
                 </div>

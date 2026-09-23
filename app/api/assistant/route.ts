@@ -67,7 +67,8 @@ Principes méthodologiques à respecter dans toutes tes recommandations et tous 
 - Pour le contenu et la structure éditoriale, pars toujours d'un mot-clé principal clairement défini avant toute autre analyse.
 - Le ton éditorial doit servir l'utilité informationnelle ; un ton promotionnel ou littéraire est incompatible avec un contenu SEO organique performant.
 - Pour les clients de services professionnels, la matérialisation de l'EEAT et l'optimisation de la fiche Google Business Profile sont des fondamentaux, pas des options.
-- Privilégie les listes à puces à la prose longue dans tes livrables. N'utilise pas de tirets cadratins (—) ; préfère les tirets courts (-) ou des puces.
+- Style rédactionnel : phrases courtes et déclaratives, verbes d'action, termes importants en **gras**. Pas de tirets cadratins (—). Pas d'emojis dans les livrables.
+- Structure tes réponses avec des titres (## et ###) pour délimiter chaque section — jamais d'emojis ou de pictogrammes comme marqueurs de section. Réserve les listes à puces à l'énumération d'éléments distincts, d'avantages ou d'étapes concrètes. Pour tout le reste, rédige en prose structurée.
 
 ## Frameworks de diagnostic à mobiliser selon le sujet
 
@@ -225,7 +226,7 @@ Ne fournis pas d'autres instructions de connexion (Google Search Console externe
 
 ## Format de réponse
 
-Structure tes réponses avec des titres markdown (## pour les sections principales, ### pour les sous-sections) afin qu'elles soient bien hiérarchisées une fois affichées. Reste concis dans chaque section : privilégie des listes à puces courtes et actionnables plutôt que des paragraphes denses. Termine par une question ou une proposition d'action concrète quand cela invite à poursuivre l'échange.`;
+Structure tes réponses avec des titres markdown (## pour les sections principales, ### pour les sous-sections). Rédige en prose structurée — réserve les listes à puces à l'énumération d'éléments distincts, d'avantages ou d'étapes. Pas d'emojis. Pas de tirets cadratins (—). Mets les termes importants en **gras**. Termine par une question ou une proposition d'action concrète quand cela invite à poursuivre l'échange.`;
 
 const tools: Anthropic.Tool[] = [
   {
@@ -837,7 +838,7 @@ Pour chaque plan, fournis :
 2. Les articles satellites (nombre demandé, 5 par défaut) : pour chacun, titre, mot-clé/longue traîne visé, intention de recherche (informationnelle, commerciale, comparative...), un plan H2 sommaire, et le lien suggéré vers la page pilier (ancre).
 3. Une note de priorisation : quels articles produire en premier selon le potentiel (volume estimé, facilité de positionnement, valeur business).
 
-Réponds en français, au format markdown, avec des listes à puces structurées. N'utilise pas de tirets cadratins (—), préfère les tirets courts (-) ou des puces.`,
+Réponds en français, au format markdown structuré (## sections, ### sous-sections). Rédige en prose, réserve les listes à puces à l'énumération d'éléments distincts. Pas d'emojis. Pas de tirets cadratins (—). Termes importants en **gras**.`,
     messages: [{
       role: "user",
       content: `Construis un plan de contenu pour : ${p.sujet}
@@ -1490,7 +1491,7 @@ ${opportunities.map((o, i) =>
   const response = await client.messages.create({
     model: MODEL,
     max_tokens: 2000,
-    system: `Tu es un expert SEO et content stratégist senior. ${REDDIT_MODE_BRIEFS[p.mode]}\n\nRéponds en français, au format markdown structuré (## sections, listes à puces). Sois concis et actionnable. N'utilise pas de tirets cadratins (—).`,
+    system: `Tu es un expert SEO et content stratégist senior. ${REDDIT_MODE_BRIEFS[p.mode]}\n\nRéponds en français, au format markdown structuré (## sections, ### sous-sections). Rédige en prose. Pas d'emojis. Pas de tirets cadratins (—). Termes importants en **gras**.`,
     messages: [{ role: "user", content: dataBlock }],
   });
 
