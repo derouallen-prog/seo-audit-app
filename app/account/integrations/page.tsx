@@ -68,53 +68,7 @@ const INTEGRATIONS = [
 
 type Integration = typeof INTEGRATIONS[number];
 
-function WpConnectForm({ onCancel }: { onCancel: () => void }) {
-  const [url, setUrl] = useState("");
-  const [error, setError] = useState("");
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const raw = url.trim();
-    if (!raw) { setError("Entrez l'URL de votre site."); return; }
-    const normalized = raw.startsWith("http") ? raw : `https://${raw}`;
-    try { new URL(normalized); } catch { setError("URL invalide."); return; }
-    window.location.href = `/api/wp/auth?site_url=${encodeURIComponent(normalized)}`;
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="mt-3 space-y-2 border-t border-hairline pt-3">
-      <p className="text-xs text-ink-soft leading-relaxed">
-        Search Mind utilise le flux <strong>Application Passwords</strong> de WordPress (WP 5.6+). Ton site doit être accessible en HTTPS.
-      </p>
-      <div className="flex gap-2">
-        <input
-          autoFocus
-          value={url}
-          onChange={e => { setUrl(e.target.value); setError(""); }}
-          placeholder="ex. : mon-site.fr"
-          className="flex-1 rounded-lg border border-hairline bg-background px-3 py-2 text-sm text-ink placeholder:text-ink-soft/50 focus:outline-none focus:border-brand/50 transition"
-        />
-        <button
-          type="submit"
-          className="rounded-lg bg-ink px-3 py-2 text-xs font-semibold text-background hover:bg-ink/80 transition-colors whitespace-nowrap"
-        >
-          Connecter
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-lg border border-hairline px-3 py-2 text-xs font-medium text-ink-soft hover:bg-muted transition-colors"
-        >
-          Annuler
-        </button>
-      </div>
-      {error && <p className="text-xs text-red-500">{error}</p>}
-    </form>
-  );
-}
-
 function IntegrationCard({ integration }: { integration: Integration }) {
-  const [showWpForm, setShowWpForm] = useState(false);
 
   return (
     <div className="rounded-xl border border-hairline bg-background px-5 py-4 flex flex-col gap-0">
@@ -157,12 +111,12 @@ function IntegrationCard({ integration }: { integration: Integration }) {
               Gérer
             </button>
           ) : integration.requiresSiteUrl ? (
-            <button
-              onClick={() => setShowWpForm(v => !v)}
+            <a
+              href="/integrations"
               className="inline-flex items-center rounded-lg bg-ink px-3 py-1.5 text-xs font-semibold text-background hover:bg-ink/80 transition-colors"
             >
-              {showWpForm ? "Annuler" : "Connecter"}
-            </button>
+              Connecter
+            </a>
           ) : (
             <a
               href={integration.href}
@@ -174,9 +128,6 @@ function IntegrationCard({ integration }: { integration: Integration }) {
         </div>
       </div>
 
-      {showWpForm && integration.requiresSiteUrl && (
-        <WpConnectForm onCancel={() => setShowWpForm(false)} />
-      )}
     </div>
   );
 }

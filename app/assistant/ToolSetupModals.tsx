@@ -379,51 +379,9 @@ const CMS_OPTIONS = [
   },
 ];
 
-function WpInlineForm({ onCancel }: { onCancel: () => void }) {
-  const [url, setUrl] = useState("");
-  const [error, setError] = useState("");
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const raw = url.trim();
-    if (!raw) { setError("Entrez l'URL de votre site."); return; }
-    const normalized = raw.startsWith("http") ? raw : `https://${raw}`;
-    try { new URL(normalized); } catch { setError("URL invalide."); return; }
-    window.location.href = `/api/wp/auth?site_url=${encodeURIComponent(normalized)}`;
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="mt-2 space-y-2 border-t border-hairline pt-3 px-1">
-      <p className="text-[11px] text-ink-soft leading-relaxed">
-        Flux <strong>Application Passwords</strong> (WP 5.6+). Ton site doit être accessible en HTTPS.
-      </p>
-      <div className="flex gap-2">
-        <input
-          autoFocus
-          value={url}
-          onChange={e => { setUrl(e.target.value); setError(""); }}
-          placeholder="ex. : mon-site.fr"
-          className="flex-1 rounded-lg border border-hairline bg-background px-3 py-2 text-sm text-ink placeholder:text-ink-soft/50 focus:outline-none focus:border-brand/50 transition"
-        />
-        <button
-          type="submit"
-          className="rounded-lg bg-ink px-3 py-2 text-xs font-semibold text-background hover:bg-ink/80 transition-colors whitespace-nowrap"
-        >
-          Connecter
-        </button>
-      </div>
-      {error && <p className="text-xs text-red-500">{error}</p>}
-      <button type="button" onClick={onCancel} className="text-[11px] text-ink-soft hover:text-ink transition">
-        Annuler
-      </button>
-    </form>
-  );
-}
-
 export function PublicationCMSModal({ onClose, onSubmit, cmsEnabled }: { onClose: () => void; onSubmit: (prompt: string) => void; cmsEnabled: boolean }) {
   const [type, setType] = useState("article");
   const [content, setContent] = useState("");
-  const [wpFormOpen, setWpFormOpen] = useState(false);
 
   if (!cmsEnabled) {
     return (
@@ -435,41 +393,20 @@ export function PublicationCMSModal({ onClose, onSubmit, cmsEnabled }: { onClose
         />
         <div className="p-6 space-y-3">
           {CMS_OPTIONS.map(cms => (
-            <div key={cms.id}>
-              {cms.id === "wordpress" ? (
-                <div className="rounded-xl border border-hairline px-4 py-3.5">
-                  <button
-                    type="button"
-                    onClick={() => setWpFormOpen(v => !v)}
-                    className="flex w-full items-center gap-4 group text-left"
-                  >
-                    <div className="h-10 w-10 rounded-xl bg-muted flex items-center justify-center shrink-0">
-                      {cms.logo}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold text-ink group-hover:text-brand transition">{cms.name}</div>
-                      <div className="text-xs text-ink-soft mt-0.5 leading-relaxed">{cms.desc}</div>
-                    </div>
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-ink-soft group-hover:text-brand transition shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-                  </button>
-                  {wpFormOpen && <WpInlineForm onCancel={() => setWpFormOpen(false)} />}
-                </div>
-              ) : (
-                <a
-                  href={cms.href}
-                  className="flex items-center gap-4 rounded-xl border border-hairline px-4 py-3.5 hover:border-brand/40 hover:bg-brand/5 transition group"
-                >
-                  <div className="h-10 w-10 rounded-xl bg-muted flex items-center justify-center shrink-0">
-                    {cms.logo}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-ink group-hover:text-brand transition">{cms.name}</div>
-                    <div className="text-xs text-ink-soft mt-0.5 leading-relaxed">{cms.desc}</div>
-                  </div>
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-ink-soft group-hover:text-brand transition shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-                </a>
-              )}
-            </div>
+            <a
+              key={cms.id}
+              href={cms.id === "wordpress" ? "/integrations" : cms.href}
+              className="flex items-center gap-4 rounded-xl border border-hairline px-4 py-3.5 hover:border-brand/40 hover:bg-brand/5 transition group"
+            >
+              <div className="h-10 w-10 rounded-xl bg-muted flex items-center justify-center shrink-0">
+                {cms.logo}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-ink group-hover:text-brand transition">{cms.name}</div>
+                <div className="text-xs text-ink-soft mt-0.5 leading-relaxed">{cms.desc}</div>
+              </div>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-ink-soft group-hover:text-brand transition shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </a>
           ))}
           <p className="text-[11px] text-ink-soft text-center pt-1">
             D&apos;autres CMS arrivent bientôt.{" "}
