@@ -878,7 +878,7 @@ function AssistantPageInner() {
     function onMove(ev: MouseEvent) {
       if (!isResizingRef.current) return;
       const newW = startW + ev.clientX - startX;
-      const maxW = window.innerWidth * 0.3;
+      const maxW = 320;
       if (newW < 180) {
         setSidebarVisible(false);
       } else {
