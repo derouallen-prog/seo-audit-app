@@ -6,7 +6,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Components } from "react-markdown";
 import { WritingSetupModal, WritingChecklist, EditorToolbar, buildArticlePrompt } from "./WritingPanel";
-import { RedditSetupModal, ProductSetupModal, ContentPlanSetupModal, PublicationCMSModal } from "./ToolSetupModals";
+import { RedditSetupModal, ProductSetupModal, ContentPlanSetupModal, PublicationCMSModal, WpConnectModal } from "./ToolSetupModals";
 import type { WritingConfig } from "./WritingPanel";
 
 interface ChatMessage {
@@ -589,6 +589,9 @@ function AssistantPageInner() {
   const [cmsEnabled, setCmsEnabled] = useState(false);
   const [gscEnabled, setGscEnabled] = useState(false);
   const [showCmsModal, setShowCmsModal] = useState(false);
+  const [cmsExpanded, setCmsExpanded] = useState(false);
+  const [dataExpanded, setDataExpanded] = useState(false);
+  const [showWpModalFromPanel, setShowWpModalFromPanel] = useState(false);
 
   // Session management
   const [sessionId, setSessionId] = useState<string | null>(sessionParam);
@@ -1273,18 +1276,76 @@ function AssistantPageInner() {
                           <div className="h-9 w-9 rounded-lg bg-brand/10 grid place-items-center shrink-0"><IconUploadCloud className="h-4 w-4 text-brand" /></div>
                           <div><div className="text-sm font-medium text-ink">Importer des fichiers ou des images</div><div className="text-xs text-ink-soft mt-0.5">PDF, images, CSV, JSON, Markdown…</div></div>
                         </button>
-                        <div className="border-t border-hairline pt-3">
-                          <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft mb-2.5">Connecteurs</p>
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between rounded-xl border border-hairline px-3 py-2.5">
-                              <div className="flex items-center gap-2.5"><span className="text-lg leading-none">🗂️</span><div><div className="text-sm font-medium text-ink">CMS</div><div className="text-[11px] text-ink-soft">WordPress, Webflow, Contentful…</div></div></div>
-                              <button type="button" onClick={() => { if (!cmsEnabled) { setShowCmsModal(true); } else { setCmsEnabled(false); } }} className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${cmsEnabled ? "bg-brand" : "bg-hairline"}`}><span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${cmsEnabled ? "translate-x-[18px]" : "translate-x-0.5"}`} /></button>
+                        <div className="border-t border-hairline pt-3 space-y-1">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft mb-2">Connecteurs</p>
+                          {/* CMS group */}
+                          <button type="button" onClick={() => setCmsExpanded(v => !v)} className="w-full flex items-center justify-between rounded-xl px-3 py-2.5 hover:bg-accent transition">
+                            <div className="flex items-center gap-2.5">
+                              <div className="h-7 w-7 rounded-lg bg-[#21759B]/10 flex items-center justify-center shrink-0">
+                                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="#21759B"><path d="M12 2C6.486 2 2 6.486 2 12s4.486 10 10 10 10-4.486 10-10S17.514 2 12 2zm-1.592 14.964l-3.73-10.218a6.153 6.153 0 0 1 1.265-.218c.132 0 .25.017.364.017.119 0 .23-.017.334-.017-.398 1.316-1.268 3.956-2.233 10.436zm9.295-1.7a6.17 6.17 0 0 1-6.17 1.562l2.098-6.082 1.978-5.444a6.17 6.17 0 0 1 2.094 9.964z"/></svg>
+                              </div>
+                              <div><div className="text-sm font-medium text-ink">CMS</div><div className="text-[11px] text-ink-soft">WordPress, Webflow</div></div>
                             </div>
-                            <div className="flex items-center justify-between rounded-xl border border-hairline px-3 py-2.5">
-                              <div className="flex items-center gap-2.5"><span className="text-lg leading-none">🔍</span><div><div className="text-sm font-medium text-ink">Search Console</div><div className="text-[11px] text-ink-soft">Connecter votre GSC</div></div></div>
-                              <button type="button" onClick={() => setGscEnabled(v => !v)} className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${gscEnabled ? "bg-brand" : "bg-hairline"}`}><span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${gscEnabled ? "translate-x-[18px]" : "translate-x-0.5"}`} /></button>
+                            <svg xmlns="http://www.w3.org/2000/svg" className={`h-3.5 w-3.5 text-ink-soft transition-transform ${cmsExpanded ? "rotate-90" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m9 18 6-6-6-6"/></svg>
+                          </button>
+                          {cmsExpanded && (
+                            <div className="ml-3 pl-3 border-l border-hairline space-y-1 pb-1">
+                              <button type="button" onClick={() => { setShowWpModalFromPanel(true); setShowAttachPanel(false); }} className="w-full flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-accent transition text-left">
+                                <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0" fill="#21759B"><path d="M12 2C6.486 2 2 6.486 2 12s4.486 10 10 10 10-4.486 10-10S17.514 2 12 2zm-1.592 14.964l-3.73-10.218a6.153 6.153 0 0 1 1.265-.218c.132 0 .25.017.364.017.119 0 .23-.017.334-.017-.398 1.316-1.268 3.956-2.233 10.436zm9.295-1.7a6.17 6.17 0 0 1-6.17 1.562l2.098-6.082 1.978-5.444a6.17 6.17 0 0 1 2.094 9.964z"/></svg>
+                                <span className="text-sm text-ink">WordPress</span>
+                              </button>
+                              <a href="/api/webflow/auth" className="flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-accent transition">
+                                <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0" fill="#4353FF"><path d="M17.805 6.14c-1.98 0-3.636 1.265-4.247 3.033-.582-1.77-2.143-3.033-4.04-3.033-2.349 0-4.253 1.9-4.253 4.243 0 .617.135 1.204.373 1.733L12 17.86l6.362-5.744c.238-.53.373-1.117.373-1.733 0-2.343-1.904-4.243-4.253-4.243h-.677z"/></svg>
+                                <span className="text-sm text-ink">Webflow</span>
+                              </a>
                             </div>
-                          </div>
+                          )}
+                          {/* Sources de données group */}
+                          <button type="button" onClick={() => setDataExpanded(v => !v)} className="w-full flex items-center justify-between rounded-xl px-3 py-2.5 hover:bg-accent transition">
+                            <div className="flex items-center gap-2.5">
+                              <div className="h-7 w-7 rounded-lg bg-[#4285F4]/10 flex items-center justify-center shrink-0">
+                                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+                              </div>
+                              <div><div className="text-sm font-medium text-ink">Sources de données</div><div className="text-[11px] text-ink-soft">GSC, Google Ads, Semrush…</div></div>
+                            </div>
+                            <svg xmlns="http://www.w3.org/2000/svg" className={`h-3.5 w-3.5 text-ink-soft transition-transform ${dataExpanded ? "rotate-90" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m9 18 6-6-6-6"/></svg>
+                          </button>
+                          {dataExpanded && (
+                            <div className="ml-3 pl-3 border-l border-hairline space-y-0.5 pb-1">
+                              {/* GSC */}
+                              <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-accent transition">
+                                <div className="flex items-center gap-2.5">
+                                  <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+                                  <span className="text-sm text-ink">Search Console</span>
+                                </div>
+                                <button type="button" onClick={() => setGscEnabled(v => !v)} className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${gscEnabled ? "bg-brand" : "bg-hairline"}`}><span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${gscEnabled ? "translate-x-[18px]" : "translate-x-0.5"}`} /></button>
+                              </div>
+                              {/* Google Ads */}
+                              <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-accent transition">
+                                <div className="flex items-center gap-2.5">
+                                  <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0" fill="none"><path d="M3.4 17.4 9.6 6.6l4 2.3-6.2 10.8z" fill="#FBBC04"/><path d="m20.6 17.4-6.2-10.8-4 2.3 6.2 10.8z" fill="#4285F4"/><circle cx="12" cy="19.5" r="2.5" fill="#34A853"/></svg>
+                                  <span className="text-sm text-ink">Google Ads</span>
+                                </div>
+                                <button type="button" className="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors bg-hairline"><span className="inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform translate-x-0.5" /></button>
+                              </div>
+                              {/* Semrush */}
+                              <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-accent transition">
+                                <div className="flex items-center gap-2.5">
+                                  <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0"><circle cx="12" cy="12" r="12" fill="#FF642D"/><path d="M17.5 8.5c0 3.04-2.46 5.5-5.5 5.5S6.5 11.54 6.5 8.5C6.5 5.46 8.96 3 12 3s5.5 2.46 5.5 5.5z" fill="#FFF"/><path d="M12 6a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z" fill="#FF642D"/><path d="M8 14h8l-1.5 7h-5L8 14z" fill="#FFF"/></svg>
+                                  <span className="text-sm text-ink">Semrush</span>
+                                </div>
+                                <button type="button" className="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors bg-hairline"><span className="inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform translate-x-0.5" /></button>
+                              </div>
+                              {/* Reddit */}
+                              <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-accent transition">
+                                <div className="flex items-center gap-2.5">
+                                  <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0"><circle cx="12" cy="12" r="12" fill="#FF4500"/><path d="M20 12a2 2 0 0 0-2-2 1.98 1.98 0 0 0-1.34.52C15.25 9.8 13.74 9.37 12 9.3l.64-3 2.09.44A1.5 1.5 0 1 0 16.25 5.5l-2.5-.53a.25.25 0 0 0-.29.19l-.71 3.35c-1.76.07-3.28.5-4.44 1.22A2 2 0 1 0 6 11.83a3.6 3.6 0 0 0 0 .42c0 2.12 2.69 3.83 6 3.83s6-1.71 6-3.83a3.6 3.6 0 0 0 0-.42A2 2 0 0 0 20 12zm-13.5.5a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0zm4.25 2.5a2.6 2.6 0 0 1-2-.67.25.25 0 0 1 .35-.35 2.1 2.1 0 0 0 1.65.52 2.1 2.1 0 0 0 1.65-.52.25.25 0 0 1 .35.35 2.6 2.6 0 0 1-2 .67zm-.25-2a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0z" fill="#FFF"/></svg>
+                                  <span className="text-sm text-ink">Reddit</span>
+                                </div>
+                                <button type="button" className="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors bg-hairline"><span className="inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform translate-x-0.5" /></button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1493,59 +1554,76 @@ function AssistantPageInner() {
               <div className="absolute bottom-full left-4 mb-2 w-80 rounded-2xl border border-hairline bg-background shadow-2xl z-30">
                 <div className="p-4 space-y-3">
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">Joindre</p>
-
-                  <button
-                    type="button"
-                    onClick={() => { fileInputRef.current?.click(); setShowAttachPanel(false); }}
-                    className="w-full flex items-center gap-3 rounded-xl border border-hairline p-3 text-left hover:bg-accent transition"
-                  >
-                    <div className="h-9 w-9 rounded-lg bg-brand/10 grid place-items-center shrink-0">
-                      <IconUploadCloud className="h-4 w-4 text-brand" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium text-ink">Importer des fichiers ou des images</div>
-                      <div className="text-xs text-ink-soft mt-0.5">PDF, images, CSV, JSON, Markdown…</div>
-                    </div>
+                  <button type="button" onClick={() => { fileInputRef.current?.click(); setShowAttachPanel(false); }} className="w-full flex items-center gap-3 rounded-xl border border-hairline p-3 text-left hover:bg-accent transition">
+                    <div className="h-9 w-9 rounded-lg bg-brand/10 grid place-items-center shrink-0"><IconUploadCloud className="h-4 w-4 text-brand" /></div>
+                    <div><div className="text-sm font-medium text-ink">Importer des fichiers ou des images</div><div className="text-xs text-ink-soft mt-0.5">PDF, images, CSV, JSON, Markdown…</div></div>
                   </button>
-
-                  <div className="border-t border-hairline pt-3">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft mb-2.5">Connecteurs</p>
-                    <div className="space-y-2">
-                      {/* CMS */}
-                      <div className="flex items-center justify-between rounded-xl border border-hairline px-3 py-2.5">
-                        <div className="flex items-center gap-2.5">
-                          <span className="text-lg leading-none">🗂️</span>
-                          <div>
-                            <div className="text-sm font-medium text-ink">CMS</div>
-                            <div className="text-[11px] text-ink-soft">WordPress, Webflow, Contentful…</div>
-                          </div>
+                  <div className="border-t border-hairline pt-3 space-y-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft mb-2">Connecteurs</p>
+                    {/* CMS group */}
+                    <button type="button" onClick={() => setCmsExpanded(v => !v)} className="w-full flex items-center justify-between rounded-xl px-3 py-2.5 hover:bg-accent transition">
+                      <div className="flex items-center gap-2.5">
+                        <div className="h-7 w-7 rounded-lg bg-[#21759B]/10 flex items-center justify-center shrink-0">
+                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="#21759B"><path d="M12 2C6.486 2 2 6.486 2 12s4.486 10 10 10 10-4.486 10-10S17.514 2 12 2zm-1.592 14.964l-3.73-10.218a6.153 6.153 0 0 1 1.265-.218c.132 0 .25.017.364.017.119 0 .23-.017.334-.017-.398 1.316-1.268 3.956-2.233 10.436zm9.295-1.7a6.17 6.17 0 0 1-6.17 1.562l2.098-6.082 1.978-5.444a6.17 6.17 0 0 1 2.094 9.964z"/></svg>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => { if (!cmsEnabled) { setShowCmsModal(true); } else { setCmsEnabled(false); } }}
-                          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${cmsEnabled ? "bg-brand" : "bg-hairline"}`}
-                        >
-                          <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${cmsEnabled ? "translate-x-[18px]" : "translate-x-0.5"}`} />
-                        </button>
+                        <div><div className="text-sm font-medium text-ink">CMS</div><div className="text-[11px] text-ink-soft">WordPress, Webflow</div></div>
                       </div>
-                      {/* GSC */}
-                      <div className="flex items-center justify-between rounded-xl border border-hairline px-3 py-2.5">
-                        <div className="flex items-center gap-2.5">
-                          <span className="text-lg leading-none">🔍</span>
-                          <div>
-                            <div className="text-sm font-medium text-ink">Search Console</div>
-                            <div className="text-[11px] text-ink-soft">Connecter votre GSC</div>
-                          </div>
+                      <svg xmlns="http://www.w3.org/2000/svg" className={`h-3.5 w-3.5 text-ink-soft transition-transform ${cmsExpanded ? "rotate-90" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m9 18 6-6-6-6"/></svg>
+                    </button>
+                    {cmsExpanded && (
+                      <div className="ml-3 pl-3 border-l border-hairline space-y-1 pb-1">
+                        <button type="button" onClick={() => { setShowWpModalFromPanel(true); setShowAttachPanel(false); }} className="w-full flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-accent transition text-left">
+                          <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0" fill="#21759B"><path d="M12 2C6.486 2 2 6.486 2 12s4.486 10 10 10 10-4.486 10-10S17.514 2 12 2zm-1.592 14.964l-3.73-10.218a6.153 6.153 0 0 1 1.265-.218c.132 0 .25.017.364.017.119 0 .23-.017.334-.017-.398 1.316-1.268 3.956-2.233 10.436zm9.295-1.7a6.17 6.17 0 0 1-6.17 1.562l2.098-6.082 1.978-5.444a6.17 6.17 0 0 1 2.094 9.964z"/></svg>
+                          <span className="text-sm text-ink">WordPress</span>
+                        </button>
+                        <a href="/api/webflow/auth" className="flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-accent transition">
+                          <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0" fill="#4353FF"><path d="M17.805 6.14c-1.98 0-3.636 1.265-4.247 3.033-.582-1.77-2.143-3.033-4.04-3.033-2.349 0-4.253 1.9-4.253 4.243 0 .617.135 1.204.373 1.733L12 17.86l6.362-5.744c.238-.53.373-1.117.373-1.733 0-2.343-1.904-4.243-4.253-4.243h-.677z"/></svg>
+                          <span className="text-sm text-ink">Webflow</span>
+                        </a>
+                      </div>
+                    )}
+                    {/* Sources de données group */}
+                    <button type="button" onClick={() => setDataExpanded(v => !v)} className="w-full flex items-center justify-between rounded-xl px-3 py-2.5 hover:bg-accent transition">
+                      <div className="flex items-center gap-2.5">
+                        <div className="h-7 w-7 rounded-lg bg-[#4285F4]/10 flex items-center justify-center shrink-0">
+                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => setGscEnabled(v => !v)}
-                          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${gscEnabled ? "bg-brand" : "bg-hairline"}`}
-                        >
-                          <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${gscEnabled ? "translate-x-[18px]" : "translate-x-0.5"}`} />
-                        </button>
+                        <div><div className="text-sm font-medium text-ink">Sources de données</div><div className="text-[11px] text-ink-soft">GSC, Google Ads, Semrush…</div></div>
                       </div>
-                    </div>
+                      <svg xmlns="http://www.w3.org/2000/svg" className={`h-3.5 w-3.5 text-ink-soft transition-transform ${dataExpanded ? "rotate-90" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m9 18 6-6-6-6"/></svg>
+                    </button>
+                    {dataExpanded && (
+                      <div className="ml-3 pl-3 border-l border-hairline space-y-0.5 pb-1">
+                        <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-accent transition">
+                          <div className="flex items-center gap-2.5">
+                            <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+                            <span className="text-sm text-ink">Search Console</span>
+                          </div>
+                          <button type="button" onClick={() => setGscEnabled(v => !v)} className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${gscEnabled ? "bg-brand" : "bg-hairline"}`}><span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${gscEnabled ? "translate-x-[18px]" : "translate-x-0.5"}`} /></button>
+                        </div>
+                        <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-accent transition">
+                          <div className="flex items-center gap-2.5">
+                            <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0" fill="none"><path d="M3.4 17.4 9.6 6.6l4 2.3-6.2 10.8z" fill="#FBBC04"/><path d="m20.6 17.4-6.2-10.8-4 2.3 6.2 10.8z" fill="#4285F4"/><circle cx="12" cy="19.5" r="2.5" fill="#34A853"/></svg>
+                            <span className="text-sm text-ink">Google Ads</span>
+                          </div>
+                          <button type="button" className="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors bg-hairline"><span className="inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform translate-x-0.5" /></button>
+                        </div>
+                        <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-accent transition">
+                          <div className="flex items-center gap-2.5">
+                            <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0"><circle cx="12" cy="12" r="12" fill="#FF642D"/><path d="M17.5 8.5c0 3.04-2.46 5.5-5.5 5.5S6.5 11.54 6.5 8.5C6.5 5.46 8.96 3 12 3s5.5 2.46 5.5 5.5z" fill="#FFF"/><path d="M12 6a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z" fill="#FF642D"/><path d="M8 14h8l-1.5 7h-5L8 14z" fill="#FFF"/></svg>
+                            <span className="text-sm text-ink">Semrush</span>
+                          </div>
+                          <button type="button" className="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors bg-hairline"><span className="inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform translate-x-0.5" /></button>
+                        </div>
+                        <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-accent transition">
+                          <div className="flex items-center gap-2.5">
+                            <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0"><circle cx="12" cy="12" r="12" fill="#FF4500"/><path d="M20 12a2 2 0 0 0-2-2 1.98 1.98 0 0 0-1.34.52C15.25 9.8 13.74 9.37 12 9.3l.64-3 2.09.44A1.5 1.5 0 1 0 16.25 5.5l-2.5-.53a.25.25 0 0 0-.29.19l-.71 3.35c-1.76.07-3.28.5-4.44 1.22A2 2 0 1 0 6 11.83a3.6 3.6 0 0 0 0 .42c0 2.12 2.69 3.83 6 3.83s6-1.71 6-3.83a3.6 3.6 0 0 0 0-.42A2 2 0 0 0 20 12zm-13.5.5a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0zm4.25 2.5a2.6 2.6 0 0 1-2-.67.25.25 0 0 1 .35-.35 2.1 2.1 0 0 0 1.65.52 2.1 2.1 0 0 0 1.65-.52.25.25 0 0 1 .35.35 2.6 2.6 0 0 1-2 .67zm-.25-2a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0z" fill="#FFF"/></svg>
+                            <span className="text-sm text-ink">Reddit</span>
+                          </div>
+                          <button type="button" className="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors bg-hairline"><span className="inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform translate-x-0.5" /></button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1678,43 +1756,9 @@ function AssistantPageInner() {
     {showContentPlanSetup && <ContentPlanSetupModal onClose={() => setShowContentPlanSetup(false)} onSubmit={(p) => { setShowContentPlanSetup(false); send(p); }} />}
     {showPublicationCMSSetup && <PublicationCMSModal onClose={() => setShowPublicationCMSSetup(false)} onSubmit={(p) => { setShowPublicationCMSSetup(false); send(p); }} cmsEnabled={cmsEnabled} />}
 
-    {/* ── CMS connection modal ── */}
-    {showCmsModal && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink/30 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) setShowCmsModal(false); }}>
-        <div className="relative w-full max-w-md rounded-2xl border border-hairline bg-background shadow-2xl">
-          <div className="flex items-start justify-between gap-4 border-b border-hairline px-6 py-5">
-            <div>
-              <h2 className="text-sm font-semibold text-ink">Connecter un CMS</h2>
-              <p className="mt-0.5 text-xs text-ink-soft">Choisissez votre plateforme et entrez vos identifiants</p>
-            </div>
-            <button onClick={() => setShowCmsModal(false)} className="shrink-0 rounded-lg p-1 text-ink-soft hover:bg-accent hover:text-ink transition">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
-            </button>
-          </div>
-          <div className="p-6 space-y-4">
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { name: "WordPress", icon: "🌐" },
-                { name: "Webflow", icon: "⚡" },
-                { name: "Contentful", icon: "📦" },
-              ].map(cms => (
-                <button key={cms.name} className="flex flex-col items-center gap-2 rounded-xl border border-hairline p-3 text-center hover:border-brand/40 hover:bg-brand/5 transition">
-                  <span className="text-2xl">{cms.icon}</span>
-                  <span className="text-xs font-medium text-ink">{cms.name}</span>
-                </button>
-              ))}
-            </div>
-            <div className="space-y-2">
-              <input placeholder="URL de votre site (ex. : mon-site.com)" className="w-full rounded-xl border border-hairline bg-background px-3 py-2 text-sm text-ink placeholder:text-ink-soft/50 focus:outline-none focus:border-brand/50 focus:ring-1 focus:ring-brand/20 transition" />
-              <input placeholder="Clé API ou token d'accès" type="password" className="w-full rounded-xl border border-hairline bg-background px-3 py-2 text-sm text-ink placeholder:text-ink-soft/50 focus:outline-none focus:border-brand/50 focus:ring-1 focus:ring-brand/20 transition" />
-            </div>
-            <button onClick={() => { setCmsEnabled(true); setShowCmsModal(false); setShowAttachPanel(false); }} className="w-full rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark transition">
-              Connecter le CMS
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
+    {/* ── CMS connection modal (WordPress) ── */}
+    {showCmsModal && <WpConnectModal onClose={() => setShowCmsModal(false)} />}
+    {showWpModalFromPanel && <WpConnectModal onClose={() => setShowWpModalFromPanel(false)} />}
 
     {/* ── Writing setup modal ── */}
     {showWritingSetup && (
