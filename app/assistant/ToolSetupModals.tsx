@@ -99,7 +99,9 @@ export function RedditSetupModal({ onClose, onSubmit }: { onClose: () => void; o
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (selected === null || !value.trim()) return;
-    onSubmit(REDDIT_OPTIONS[selected].buildPrompt(value.trim()));
+    const opt = REDDIT_OPTIONS[selected];
+    if (!opt) return;
+    onSubmit(opt.buildPrompt(value.trim()));
   }
 
   return (
