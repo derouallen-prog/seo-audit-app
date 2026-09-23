@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 const INTEGRATIONS = [
   {
     id: "gsc",
@@ -35,7 +37,7 @@ const INTEGRATIONS = [
   {
     id: "wordpress",
     name: "WordPress",
-    description: "Connecte ton site WordPress via le plugin Search Mind pour pousser les optimisations directement en production.",
+    description: "Connecte ton site WordPress via le flux Application Passwords (WP 5.6+) pour pousser tes optimisations directement en production.",
     category: "CMS",
     color: "#21759B",
     logo: (
@@ -45,7 +47,7 @@ const INTEGRATIONS = [
     ),
     connected: false,
     href: "/api/wp/auth",
-    comingSoon: false,
+    requiresSiteUrl: true,
   },
   {
     id: "prestashop",
@@ -64,55 +66,117 @@ const INTEGRATIONS = [
   },
 ];
 
-function IntegrationCard({ integration }: { integration: typeof INTEGRATIONS[number] }) {
-  return (
-    <div className="rounded-xl border border-hairline bg-background px-5 py-4 flex items-start gap-4">
-      <div
-        className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0"
-        style={{ background: integration.color + "15" }}
-      >
-        {integration.logo}
-      </div>
+type Integration = typeof INTEGRATIONS[number];
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-sm font-semibold text-ink">{integration.name}</p>
-          <span className="inline-flex rounded-full border border-hairline px-2 py-0.5 text-[10px] font-medium text-ink-soft">
-            {integration.category}
-          </span>
-          {integration.comingSoon && (
-            <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-ink-soft/60">
+function WpConnectForm({ onCancel }: { onCancel: () => void }) {
+  const [url, setUrl] = useState("");
+  const [error, setError] = useState("");
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const raw = url.trim();
+    if (!raw) { setError("Entrez l'URL de votre site."); return; }
+    const normalized = raw.startsWith("http") ? raw : `https://${raw}`;
+    try { new URL(normalized); } catch { setError("URL invalide."); return; }
+    window.location.href = `/api/wp/auth?site_url=${encodeURIComponent(normalized)}`;
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="mt-3 space-y-2 border-t border-hairline pt-3">
+      <p className="text-xs text-ink-soft leading-relaxed">
+        Search Mind utilise le flux <strong>Application Passwords</strong> de WordPress (WP 5.6+). Ton site doit être accessible en HTTPS.
+      </p>
+      <div className="flex gap-2">
+        <input
+          autoFocus
+          value={url}
+          onChange={e => { setUrl(e.target.value); setError(""); }}
+          placeholder="ex. : mon-site.fr"
+          className="flex-1 rounded-lg border border-hairline bg-background px-3 py-2 text-sm text-ink placeholder:text-ink-soft/50 focus:outline-none focus:border-brand/50 transition"
+        />
+        <button
+          type="submit"
+          className="rounded-lg bg-ink px-3 py-2 text-xs font-semibold text-background hover:bg-ink/80 transition-colors whitespace-nowrap"
+        >
+          Connecter
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-lg border border-hairline px-3 py-2 text-xs font-medium text-ink-soft hover:bg-muted transition-colors"
+        >
+          Annuler
+        </button>
+      </div>
+      {error && <p className="text-xs text-red-500">{error}</p>}
+    </form>
+  );
+}
+
+function IntegrationCard({ integration }: { integration: Integration }) {
+  const [showWpForm, setShowWpForm] = useState(false);
+
+  return (
+    <div className="rounded-xl border border-hairline bg-background px-5 py-4 flex flex-col gap-0">
+      <div className="flex items-start gap-4">
+        <div
+          className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0"
+          style={{ background: integration.color + "15" }}
+        >
+          {integration.logo}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-sm font-semibold text-ink">{integration.name}</p>
+            <span className="inline-flex rounded-full border border-hairline px-2 py-0.5 text-[10px] font-medium text-ink-soft">
+              {integration.category}
+            </span>
+            {integration.comingSoon && (
+              <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-ink-soft/60">
+                Bientôt
+              </span>
+            )}
+            {integration.connected && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-semibold text-green-600">
+                <span className="h-1.5 w-1.5 rounded-full bg-green-500 inline-block" />
+                Connecté
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-ink-soft mt-1 leading-relaxed">{integration.description}</p>
+        </div>
+
+        <div className="shrink-0 pt-0.5">
+          {integration.comingSoon ? (
+            <button disabled className="rounded-lg border border-hairline px-3 py-1.5 text-xs font-medium text-ink-soft/40 cursor-not-allowed">
               Bientôt
-            </span>
-          )}
-          {integration.connected && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-semibold text-green-600">
-              <span className="h-1.5 w-1.5 rounded-full bg-green-500 inline-block" />
-              Connecté
-            </span>
+            </button>
+          ) : integration.connected ? (
+            <button className="rounded-lg border border-hairline px-3 py-1.5 text-xs font-medium text-ink hover:bg-muted transition-colors">
+              Gérer
+            </button>
+          ) : integration.requiresSiteUrl ? (
+            <button
+              onClick={() => setShowWpForm(v => !v)}
+              className="inline-flex items-center rounded-lg bg-ink px-3 py-1.5 text-xs font-semibold text-background hover:bg-ink/80 transition-colors"
+            >
+              {showWpForm ? "Annuler" : "Connecter"}
+            </button>
+          ) : (
+            <a
+              href={integration.href}
+              className="inline-flex items-center rounded-lg bg-ink px-3 py-1.5 text-xs font-semibold text-background hover:bg-ink/80 transition-colors"
+            >
+              Connecter
+            </a>
           )}
         </div>
-        <p className="text-xs text-ink-soft mt-1 leading-relaxed">{integration.description}</p>
       </div>
 
-      <div className="shrink-0 pt-0.5">
-        {integration.comingSoon ? (
-          <button disabled className="rounded-lg border border-hairline px-3 py-1.5 text-xs font-medium text-ink-soft/40 cursor-not-allowed">
-            Bientôt
-          </button>
-        ) : integration.connected ? (
-          <button className="rounded-lg border border-hairline px-3 py-1.5 text-xs font-medium text-ink hover:bg-muted transition-colors">
-            Gérer
-          </button>
-        ) : (
-          <a
-            href={integration.href}
-            className="inline-flex items-center rounded-lg bg-ink px-3 py-1.5 text-xs font-semibold text-background hover:bg-ink/80 transition-colors"
-          >
-            Connecter
-          </a>
-        )}
-      </div>
+      {showWpForm && integration.requiresSiteUrl && (
+        <WpConnectForm onCancel={() => setShowWpForm(false)} />
+      )}
     </div>
   );
 }
