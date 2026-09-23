@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 
 interface GscSite {
   siteUrl: string;
@@ -130,7 +131,10 @@ export default function GscConnect() {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6 shadow-sm space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h3 className="text-lg font-bold text-black">Google Search Console</h3>
+        <div className="flex items-center gap-2.5">
+          <Image src="/logos/gsc.png" alt="Google Search Console" width={28} height={28} className="h-7 w-7 rounded object-contain" />
+          <h3 className="text-lg font-bold text-black">Google Search Console</h3>
+        </div>
         {connected && (
           <button onClick={disconnect} className="text-xs text-gray-500 hover:text-brand transition">
             Déconnecter
