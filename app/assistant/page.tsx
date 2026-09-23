@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, Suspense } from "react";
+import Image from "next/image";
 import { useSearchParams, useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -1282,7 +1283,7 @@ function AssistantPageInner() {
                           <button type="button" onClick={() => setCmsExpanded(v => !v)} className="w-full flex items-center justify-between rounded-xl px-3 py-2.5 hover:bg-accent transition">
                             <div className="flex items-center gap-2.5">
                               <div className="h-7 w-7 rounded-lg bg-[#21759B]/10 flex items-center justify-center shrink-0">
-                                <img src="/logos/wordpress.png" alt="WordPress" className="h-4 w-4 rounded object-contain" />
+                                <Image src="/logos/wordpress.png" alt="WordPress" width={16} height={16} className="h-4 w-4 rounded object-contain" />
                               </div>
                               <div><div className="text-sm font-medium text-ink">CMS</div><div className="text-[11px] text-ink-soft">WordPress, Webflow</div></div>
                             </div>
@@ -1291,11 +1292,11 @@ function AssistantPageInner() {
                           {cmsExpanded && (
                             <div className="ml-3 pl-3 border-l border-hairline space-y-1 pb-1">
                               <button type="button" onClick={() => { setShowWpModalFromPanel(true); setShowAttachPanel(false); }} className="w-full flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-accent transition text-left">
-                                <img src="/logos/wordpress.png" alt="WordPress" className="h-5 w-5 shrink-0 rounded object-contain" />
+                                <Image src="/logos/wordpress.png" alt="WordPress" width={20} height={20} className="h-5 w-5 shrink-0 rounded object-contain" />
                                 <span className="text-sm text-ink">WordPress</span>
                               </button>
                               <a href="/api/webflow/auth" className="flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-accent transition">
-                                <img src="/logos/webflow.png" alt="Webflow" className="h-5 w-5 shrink-0 rounded object-contain" />
+                                <Image src="/logos/webflow.png" alt="Webflow" width={20} height={20} className="h-5 w-5 shrink-0 rounded object-contain" />
                                 <span className="text-sm text-ink">Webflow</span>
                               </a>
                             </div>
@@ -1304,7 +1305,7 @@ function AssistantPageInner() {
                           <button type="button" onClick={() => setDataExpanded(v => !v)} className="w-full flex items-center justify-between rounded-xl px-3 py-2.5 hover:bg-accent transition">
                             <div className="flex items-center gap-2.5">
                               <div className="h-7 w-7 rounded-lg bg-[#4285F4]/10 flex items-center justify-center shrink-0">
-                                <img src="/logos/gsc.png" alt="GSC" className="h-4 w-4 rounded object-contain" />
+                                <Image src="/logos/gsc.png" alt="GSC" width={16} height={16} className="h-4 w-4 rounded object-contain" />
                               </div>
                               <div><div className="text-sm font-medium text-ink">Sources de données</div><div className="text-[11px] text-ink-soft">GSC, Google Ads, Semrush…</div></div>
                             </div>
@@ -1315,7 +1316,7 @@ function AssistantPageInner() {
                               {/* GSC */}
                               <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-accent transition">
                                 <div className="flex items-center gap-2.5">
-                                  <img src="/logos/gsc.png" alt="GSC" className="h-5 w-5 shrink-0 rounded object-contain" />
+                                  <Image src="/logos/gsc.png" alt="GSC" width={20} height={20} className="h-5 w-5 shrink-0 rounded object-contain" />
                                   <span className="text-sm text-ink">Search Console</span>
                                 </div>
                                 <button type="button" onClick={() => setGscEnabled(v => !v)} className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${gscEnabled ? "bg-brand" : "bg-hairline"}`}><span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${gscEnabled ? "translate-x-[18px]" : "translate-x-0.5"}`} /></button>
@@ -1323,7 +1324,7 @@ function AssistantPageInner() {
                               {/* Google Ads */}
                               <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-accent transition">
                                 <div className="flex items-center gap-2.5">
-                                  <img src="/logos/google-ads.webp" alt="Google Ads" className="h-5 w-5 shrink-0 rounded object-contain" />
+                                  <Image src="/logos/google-ads.webp" alt="Google Ads" width={20} height={20} className="h-5 w-5 shrink-0 rounded object-contain" />
                                   <span className="text-sm text-ink">Google Ads</span>
                                 </div>
                                 <button type="button" className="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors bg-hairline"><span className="inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform translate-x-0.5" /></button>
@@ -1331,7 +1332,7 @@ function AssistantPageInner() {
                               {/* Semrush */}
                               <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-accent transition">
                                 <div className="flex items-center gap-2.5">
-                                  <img src="/logos/semrush.png" alt="Semrush" className="h-5 w-5 shrink-0 rounded object-contain" />
+                                  <Image src="/logos/semrush.png" alt="Semrush" width={20} height={20} className="h-5 w-5 shrink-0 rounded object-contain" />
                                   <span className="text-sm text-ink">Semrush</span>
                                 </div>
                                 <button type="button" className="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors bg-hairline"><span className="inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform translate-x-0.5" /></button>
@@ -1339,7 +1340,7 @@ function AssistantPageInner() {
                               {/* Reddit */}
                               <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-accent transition">
                                 <div className="flex items-center gap-2.5">
-                                  <img src="/logos/reddit.png" alt="Reddit" className="h-5 w-5 shrink-0 rounded object-contain" />
+                                  <Image src="/logos/reddit.png" alt="Reddit" width={20} height={20} className="h-5 w-5 shrink-0 rounded object-contain" />
                                   <span className="text-sm text-ink">Reddit</span>
                                 </div>
                                 <button type="button" className="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors bg-hairline"><span className="inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform translate-x-0.5" /></button>
@@ -1564,7 +1565,7 @@ function AssistantPageInner() {
                     <button type="button" onClick={() => setCmsExpanded(v => !v)} className="w-full flex items-center justify-between rounded-xl px-3 py-2.5 hover:bg-accent transition">
                       <div className="flex items-center gap-2.5">
                         <div className="h-7 w-7 rounded-lg bg-[#21759B]/10 flex items-center justify-center shrink-0">
-                          <img src="/logos/wordpress.png" alt="WordPress" className="h-4 w-4 rounded object-contain" />
+                          <Image src="/logos/wordpress.png" alt="WordPress" width={16} height={16} className="h-4 w-4 rounded object-contain" />
                         </div>
                         <div><div className="text-sm font-medium text-ink">CMS</div><div className="text-[11px] text-ink-soft">WordPress, Webflow</div></div>
                       </div>
@@ -1573,11 +1574,11 @@ function AssistantPageInner() {
                     {cmsExpanded && (
                       <div className="ml-3 pl-3 border-l border-hairline space-y-1 pb-1">
                         <button type="button" onClick={() => { setShowWpModalFromPanel(true); setShowAttachPanel(false); }} className="w-full flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-accent transition text-left">
-                          <img src="/logos/wordpress.png" alt="WordPress" className="h-5 w-5 shrink-0 rounded object-contain" />
+                          <Image src="/logos/wordpress.png" alt="WordPress" width={20} height={20} className="h-5 w-5 shrink-0 rounded object-contain" />
                           <span className="text-sm text-ink">WordPress</span>
                         </button>
                         <a href="/api/webflow/auth" className="flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-accent transition">
-                          <img src="/logos/webflow.png" alt="Webflow" className="h-5 w-5 shrink-0 rounded object-contain" />
+                          <Image src="/logos/webflow.png" alt="Webflow" width={20} height={20} className="h-5 w-5 shrink-0 rounded object-contain" />
                           <span className="text-sm text-ink">Webflow</span>
                         </a>
                       </div>
@@ -1586,7 +1587,7 @@ function AssistantPageInner() {
                     <button type="button" onClick={() => setDataExpanded(v => !v)} className="w-full flex items-center justify-between rounded-xl px-3 py-2.5 hover:bg-accent transition">
                       <div className="flex items-center gap-2.5">
                         <div className="h-7 w-7 rounded-lg bg-[#4285F4]/10 flex items-center justify-center shrink-0">
-                          <img src="/logos/gsc.png" alt="GSC" className="h-4 w-4 rounded object-contain" />
+                          <Image src="/logos/gsc.png" alt="GSC" width={16} height={16} className="h-4 w-4 rounded object-contain" />
                         </div>
                         <div><div className="text-sm font-medium text-ink">Sources de données</div><div className="text-[11px] text-ink-soft">GSC, Google Ads, Semrush…</div></div>
                       </div>
@@ -1596,28 +1597,28 @@ function AssistantPageInner() {
                       <div className="ml-3 pl-3 border-l border-hairline space-y-0.5 pb-1">
                         <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-accent transition">
                           <div className="flex items-center gap-2.5">
-                            <img src="/logos/gsc.png" alt="GSC" className="h-5 w-5 shrink-0 rounded object-contain" />
+                            <Image src="/logos/gsc.png" alt="GSC" width={20} height={20} className="h-5 w-5 shrink-0 rounded object-contain" />
                             <span className="text-sm text-ink">Search Console</span>
                           </div>
                           <button type="button" onClick={() => setGscEnabled(v => !v)} className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${gscEnabled ? "bg-brand" : "bg-hairline"}`}><span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${gscEnabled ? "translate-x-[18px]" : "translate-x-0.5"}`} /></button>
                         </div>
                         <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-accent transition">
                           <div className="flex items-center gap-2.5">
-                            <img src="/logos/google-ads.webp" alt="Google Ads" className="h-5 w-5 shrink-0 rounded object-contain" />
+                            <Image src="/logos/google-ads.webp" alt="Google Ads" width={20} height={20} className="h-5 w-5 shrink-0 rounded object-contain" />
                             <span className="text-sm text-ink">Google Ads</span>
                           </div>
                           <button type="button" className="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors bg-hairline"><span className="inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform translate-x-0.5" /></button>
                         </div>
                         <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-accent transition">
                           <div className="flex items-center gap-2.5">
-                            <img src="/logos/semrush.png" alt="Semrush" className="h-5 w-5 shrink-0 rounded object-contain" />
+                            <Image src="/logos/semrush.png" alt="Semrush" width={20} height={20} className="h-5 w-5 shrink-0 rounded object-contain" />
                             <span className="text-sm text-ink">Semrush</span>
                           </div>
                           <button type="button" className="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors bg-hairline"><span className="inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform translate-x-0.5" /></button>
                         </div>
                         <div className="flex items-center justify-between rounded-lg px-2 py-2 hover:bg-accent transition">
                           <div className="flex items-center gap-2.5">
-                            <img src="/logos/reddit.png" alt="Reddit" className="h-5 w-5 shrink-0 rounded object-contain" />
+                            <Image src="/logos/reddit.png" alt="Reddit" width={20} height={20} className="h-5 w-5 shrink-0 rounded object-contain" />
                             <span className="text-sm text-ink">Reddit</span>
                           </div>
                           <button type="button" className="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors bg-hairline"><span className="inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform translate-x-0.5" /></button>
@@ -1635,7 +1636,6 @@ function AssistantPageInner() {
                 {pendingFiles.map(f => (
                   <div key={f.id} className="flex items-center gap-1 rounded-lg border border-brand/30 bg-brand/5 px-2 py-1 text-xs text-brand">
                     {f.dataUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
                       <img src={f.dataUrl} alt={f.name} className="h-4 w-4 rounded object-cover" />
                     ) : (
                       <span className="opacity-60">📄</span>

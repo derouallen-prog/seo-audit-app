@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { WpConnectModal } from "@/app/assistant/ToolSetupModals";
 
 const INTEGRATIONS = [
@@ -11,8 +12,7 @@ const INTEGRATIONS = [
     category: "SEO Data",
     color: "#4285F4",
     logo: (
-      /* eslint-disable-next-line @next/next/no-img-element */
-      <img src="/logos/gsc.png" alt="Google Search Console" className="h-6 w-6 rounded object-contain" />
+      <Image src="/logos/gsc.png" alt="Google Search Console" width={24} height={24} className="h-6 w-6 rounded object-contain" />
     ),
     connected: false,
     href: "/api/gsc/auth",
@@ -24,8 +24,7 @@ const INTEGRATIONS = [
     category: "CMS",
     color: "#4353FF",
     logo: (
-      /* eslint-disable-next-line @next/next/no-img-element */
-      <img src="/logos/webflow.png" alt="Webflow" className="h-6 w-6 rounded object-contain" />
+      <Image src="/logos/webflow.png" alt="Webflow" width={24} height={24} className="h-6 w-6 rounded object-contain" />
     ),
     connected: false,
     href: "/api/webflow/auth",
@@ -37,8 +36,7 @@ const INTEGRATIONS = [
     category: "CMS",
     color: "#21759B",
     logo: (
-      /* eslint-disable-next-line @next/next/no-img-element */
-      <img src="/logos/wordpress.png" alt="WordPress" className="h-6 w-6 rounded object-contain" />
+      <Image src="/logos/wordpress.png" alt="WordPress" width={24} height={24} className="h-6 w-6 rounded object-contain" />
     ),
     connected: false,
     href: "/api/wp/auth",

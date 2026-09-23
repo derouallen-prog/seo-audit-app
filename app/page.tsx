@@ -842,8 +842,7 @@ export default function HomePage() {
             <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
               <Link href="/api/gsc/auth">
                 <button className="inline-flex items-center gap-2 rounded-md border border-hairline bg-background px-3 py-1.5 text-xs font-medium shadow-sm transition hover:bg-accent">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/logos/gsc.png" alt="GSC" className="h-4 w-4 rounded object-contain" />
+                  <Image src="/logos/gsc.png" alt="GSC" width={16} height={16} className="h-4 w-4 rounded object-contain" />
                   Connecter Google Search Console
                 </button>
               </Link>

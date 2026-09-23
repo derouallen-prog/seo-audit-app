@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 
 // ── Shared primitives ─────────────────────────────────────────────────────────
 
@@ -378,8 +379,7 @@ export function WpConnectModal({ onClose }: { onClose: () => void }) {
         {/* Logo + nom */}
         <div className="flex items-center gap-3">
           <div className="h-12 w-12 rounded-xl bg-[#21759B]/10 flex items-center justify-center shrink-0">
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img src="/logos/wordpress.png" alt="WordPress" className="h-7 w-7 rounded object-contain" />
+            <Image src="/logos/wordpress.png" alt="WordPress" width={28} height={28} className="h-7 w-7 rounded object-contain" />
           </div>
           <div>
             <p className="text-sm font-semibold text-ink">WordPress / WooCommerce</p>
@@ -446,8 +446,7 @@ const CMS_OPTIONS = [
     desc: "Publie articles, pages et fiches produit via le plugin Search Mind.",
     href: "/api/wp/auth",
     logo: (
-      /* eslint-disable-next-line @next/next/no-img-element */
-      <img src="/logos/wordpress.png" alt="WordPress" className="h-6 w-6 rounded object-contain" />
+      <Image src="/logos/wordpress.png" alt="WordPress" width={24} height={24} className="h-6 w-6 rounded object-contain" />
     ),
   },
   {
@@ -456,8 +455,7 @@ const CMS_OPTIONS = [
     desc: "Synchronise les métadonnées SEO et publie via l'API Webflow.",
     href: "/api/webflow/auth",
     logo: (
-      /* eslint-disable-next-line @next/next/no-img-element */
-      <img src="/logos/webflow.png" alt="Webflow" className="h-6 w-6 rounded object-contain" />
+      <Image src="/logos/webflow.png" alt="Webflow" width={24} height={24} className="h-6 w-6 rounded object-contain" />
     ),
   },
 ];
