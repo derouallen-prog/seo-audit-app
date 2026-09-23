@@ -6,7 +6,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Components } from "react-markdown";
 import { WritingSetupModal, WritingChecklist, EditorToolbar, buildArticlePrompt } from "./WritingPanel";
-import { RedditSetupModal, ProductSetupModal, ContentPlanSetupModal } from "./ToolSetupModals";
+import { RedditSetupModal, ProductSetupModal, ContentPlanSetupModal, PublicationCMSModal } from "./ToolSetupModals";
 import type { WritingConfig } from "./WritingPanel";
 
 interface ChatMessage {
@@ -544,10 +544,17 @@ function AssistantPageInner() {
 
   // Session context menu
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
   // Session search
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+
+  // CMS modal
+  const [showPublicationCMSSetup, setShowPublicationCMSSetup] = useState(false);
 
   // Attach panel (+ button)
   const [showAttachPanel, setShowAttachPanel] = useState(false);
@@ -853,7 +860,10 @@ function AssistantPageInner() {
     if (tool.label === "Popularité mots-clés et marque sur Reddit") { setShowRedditSetup(true); return; }
     if (tool.label === "Fiche produit") { setShowProductSetup(true); return; }
     if (tool.label === "Rédiger un plan de contenu") { setShowContentPlanSetup(true); return; }
-    send(tool.prompt);
+    if (tool.label === "Publication CMS") { setShowPublicationCMSSetup(true); return; }
+    // Fill input, user sends manually
+    setInput(tool.prompt);
+    setTimeout(() => textareaRef.current?.focus(), 0);
   }
 
   function startResize(e: React.MouseEvent) {
@@ -914,7 +924,7 @@ function AssistantPageInner() {
 
   return (
     <>
-    <div className="flex w-full flex-1" style={{ minHeight: "calc(100dvh - 4rem)" }}>
+    <div className="flex w-full" style={{ height: "calc(100dvh - 4rem)", overflow: "hidden" }}>
 
       {/* ── Sidebar (hidden in writing mode or toggled off) ── */}
       {!writingMode && sidebarVisible && <>
@@ -984,56 +994,64 @@ function AssistantPageInner() {
                     <div className="text-xs font-medium uppercase tracking-wider text-ink-soft px-2 mb-1">{label}</div>
                     <ul className="space-y-0.5">
                       {items.map(s => (
-                        <li key={s.id} className="group relative flex items-center">
-                          <button
-                            onClick={() => { loadSession(s.id); setOpenMenuId(null); }}
-                            className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors ${
-                              s.id === sessionId
-                                ? "bg-brand/10 text-brand font-medium"
-                                : "text-ink-soft hover:bg-accent hover:text-ink"
-                            }`}
-                          >
-                            <IconMessage className="h-3 w-3 shrink-0 opacity-60" />
-                            {/* Fade truncation */}
-                            <span className="group/stip relative flex-1 min-w-0 overflow-hidden">
-                              <span className="block whitespace-nowrap">{s.title}</span>
-                              <span
-                                className="pointer-events-none absolute inset-y-0 right-0 w-10 to-transparent"
-                                style={{ background: `linear-gradient(to left, ${s.id === sessionId ? "hsl(var(--brand) / 0.1)" : "hsl(var(--background))"}, transparent)` }}
-                              />
-                              {/* Hover tooltip */}
-                              <span className="pointer-events-none absolute left-0 top-full mt-1 z-50 hidden group-hover/stip:block max-w-[200px] rounded-lg bg-ink px-2.5 py-1.5 text-[11px] leading-snug text-white shadow-xl whitespace-normal break-words">
-                                {s.title}
-                              </span>
-                            </span>
-                          </button>
-
-                          {/* 3-dot context menu */}
-                          <div className="absolute right-1 shrink-0">
+                        <li key={s.id} className="group/sess relative flex items-center">
+                          {renamingId === s.id ? (
+                            <input
+                              autoFocus
+                              value={renameValue}
+                              onChange={e => setRenameValue(e.target.value)}
+                              onBlur={() => setRenamingId(null)}
+                              onKeyDown={e => {
+                                if (e.key === "Enter") setRenamingId(null);
+                                if (e.key === "Escape") setRenamingId(null);
+                              }}
+                              className="flex-1 rounded-lg border border-brand/40 bg-background px-2 py-1 text-xs text-ink focus:outline-none focus:border-brand/60"
+                            />
+                          ) : (
                             <button
-                              onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === s.id ? null : s.id); }}
-                              className="hidden group-hover:flex items-center justify-center h-5 w-5 rounded text-ink-soft hover:bg-accent hover:text-ink transition text-sm leading-none"
+                              onClick={() => { loadSession(s.id); setOpenMenuId(null); setMenuPos(null); }}
+                              className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors ${
+                                s.id === sessionId
+                                  ? "bg-brand/10 text-brand font-medium"
+                                  : "text-ink-soft hover:bg-accent hover:text-ink"
+                              }`}
+                            >
+                              <IconMessage className="h-3 w-3 shrink-0 opacity-60" />
+                              <span className="relative flex-1 min-w-0 overflow-hidden">
+                                <span className="block whitespace-nowrap">{pinnedIds.has(s.id) ? "📌 " : ""}{s.title}</span>
+                                <span
+                                  className="pointer-events-none absolute inset-y-0 right-0 w-10"
+                                  style={{ background: `linear-gradient(to left, ${s.id === sessionId ? "hsl(var(--brand) / 0.1)" : "hsl(var(--background))"}, transparent)` }}
+                                />
+                              </span>
+                            </button>
+                          )}
+
+                          {/* Tooltip title — au niveau <li> en dehors du overflow-hidden */}
+                          {renamingId !== s.id && (
+                            <span className="pointer-events-none absolute left-8 top-full mt-1 z-50 hidden group-hover/sess:block max-w-[200px] rounded-lg bg-ink px-2.5 py-1.5 text-[11px] leading-snug text-white shadow-xl whitespace-normal break-words">
+                              {s.title}
+                            </span>
+                          )}
+
+                          {/* 3-dot button — triggers fixed-position dropdown */}
+                          {renamingId !== s.id && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (openMenuId === s.id) {
+                                  setOpenMenuId(null); setMenuPos(null);
+                                } else {
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+                                  setOpenMenuId(s.id);
+                                }
+                              }}
+                              className="absolute right-1 hidden group-hover/sess:flex items-center justify-center h-5 w-5 rounded text-ink-soft hover:bg-accent hover:text-ink transition text-sm leading-none shrink-0"
                             >
                               ···
                             </button>
-                            {openMenuId === s.id && (
-                              <>
-                                <div className="fixed inset-0 z-40" onClick={() => setOpenMenuId(null)} />
-                                <div className="absolute right-0 top-5 z-50 min-w-[160px] rounded-xl border border-hairline bg-background shadow-xl py-1">
-                                  <button onClick={() => setOpenMenuId(null)} className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-accent">Épingler</button>
-                                  <button onClick={() => setOpenMenuId(null)} className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-accent">Partager</button>
-                                  <button onClick={() => setOpenMenuId(null)} className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-accent">Renommer</button>
-                                  <button onClick={() => setOpenMenuId(null)} className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-accent">Exporter en PDF</button>
-                                  <div className="border-t border-hairline my-1" />
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); setOpenMenuId(null); deleteSession(s.id); }}
-                                    disabled={deletingId === s.id}
-                                    className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50"
-                                  >Supprimer</button>
-                                </div>
-                              </>
-                            )}
-                          </div>
+                          )}
                         </li>
                       ))}
                     </ul>
@@ -1490,10 +1508,51 @@ function AssistantPageInner() {
 
     </div>
 
+    {/* ── Session context menu (fixed position, not clipped by scroll) ── */}
+    {openMenuId && menuPos && (
+      <>
+        <div className="fixed inset-0 z-40" onClick={() => { setOpenMenuId(null); setMenuPos(null); }} />
+        <div className="fixed z-50 min-w-[172px] rounded-xl border border-hairline bg-background shadow-xl py-1" style={{ top: menuPos.top, right: menuPos.right }}>
+          <button
+            onClick={() => { setPinnedIds(prev => { const n = new Set(prev); n.has(openMenuId) ? n.delete(openMenuId) : n.add(openMenuId); return n; }); setOpenMenuId(null); setMenuPos(null); }}
+            className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-accent"
+          >
+            {pinnedIds.has(openMenuId) ? "Désépingler" : "Épingler"}
+          </button>
+          <button
+            onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/assistant?session=${openMenuId}`); setOpenMenuId(null); setMenuPos(null); }}
+            className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-accent"
+          >
+            Partager (copier le lien)
+          </button>
+          <button
+            onClick={() => { setRenameValue(sessions.find(s => s.id === openMenuId)?.title ?? ""); setRenamingId(openMenuId); setOpenMenuId(null); setMenuPos(null); }}
+            className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-accent"
+          >
+            Renommer
+          </button>
+          <button
+            onClick={() => { window.print(); setOpenMenuId(null); setMenuPos(null); }}
+            className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-accent"
+          >
+            Exporter en PDF
+          </button>
+          <div className="border-t border-hairline my-1" />
+          <button
+            onClick={() => { const id = openMenuId; setOpenMenuId(null); setMenuPos(null); deleteSession(id); }}
+            className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50"
+          >
+            Supprimer
+          </button>
+        </div>
+      </>
+    )}
+
     {/* ── Tool setup modals ── */}
     {showRedditSetup && <RedditSetupModal onClose={() => setShowRedditSetup(false)} onSubmit={(p) => { setShowRedditSetup(false); send(p); }} />}
     {showProductSetup && <ProductSetupModal onClose={() => setShowProductSetup(false)} onSubmit={(p) => { setShowProductSetup(false); send(p); }} />}
     {showContentPlanSetup && <ContentPlanSetupModal onClose={() => setShowContentPlanSetup(false)} onSubmit={(p) => { setShowContentPlanSetup(false); send(p); }} />}
+    {showPublicationCMSSetup && <PublicationCMSModal onClose={() => setShowPublicationCMSSetup(false)} onSubmit={(p) => { setShowPublicationCMSSetup(false); send(p); }} cmsEnabled={cmsEnabled} />}
 
     {/* ── CMS connection modal ── */}
     {showCmsModal && (

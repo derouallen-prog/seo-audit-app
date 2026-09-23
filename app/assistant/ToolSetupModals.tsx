@@ -351,3 +351,77 @@ export function ContentPlanSetupModal({ onClose, onSubmit }: { onClose: () => vo
     </Overlay>
   );
 }
+
+// ── Publication CMS Modal ─────────────────────────────────────────────────────
+
+const CMS_INTEGRATIONS_URL = "/account/integrations";
+
+export function PublicationCMSModal({ onClose, onSubmit, cmsEnabled }: { onClose: () => void; onSubmit: (prompt: string) => void; cmsEnabled: boolean }) {
+  const [type, setType] = useState("article");
+  const [content, setContent] = useState("");
+
+  if (!cmsEnabled) {
+    return (
+      <Overlay onClose={onClose}>
+        <ModalHeader
+          title="Publication CMS"
+          subtitle="Connectez votre CMS pour publier directement en production"
+          onClose={onClose}
+        />
+        <div className="p-6 flex flex-col items-center gap-4 text-center">
+          <div className="h-12 w-12 rounded-xl bg-brand/10 grid place-items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-brand" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          </div>
+          <div>
+            <p className="text-sm font-medium text-ink">Aucun CMS connecté</p>
+            <p className="mt-1 text-xs text-ink-soft leading-relaxed">Connectez WordPress, Webflow ou un autre CMS dans vos intégrations pour publier directement depuis l&apos;assistant.</p>
+          </div>
+          <a
+            href={CMS_INTEGRATIONS_URL}
+            onClick={onClose}
+            className="inline-flex items-center rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark transition"
+          >
+            Connecter un CMS
+          </a>
+        </div>
+      </Overlay>
+    );
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!content.trim()) return;
+    const typeLabel = type === "article" ? "article de blog" : type === "product" ? "fiche produit" : "page du site";
+    onSubmit(`Publie ce contenu sur mon CMS en tant que ${typeLabel}.\n\n${content}`);
+  }
+
+  return (
+    <Overlay onClose={onClose}>
+      <ModalHeader
+        title="Publication CMS"
+        subtitle="Choisissez le type de contenu et collez votre texte"
+        onClose={onClose}
+      />
+      <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <Field label="Type de publication" required>
+          <select value={type} onChange={e => setType(e.target.value)} className={inputCls}>
+            <option value="article">Article de blog</option>
+            <option value="product">Fiche produit</option>
+            <option value="page">Page du site</option>
+          </select>
+        </Field>
+        <Field label="Contenu à publier" required tooltip="Collez le texte de votre article ou fiche produit. Vous pouvez aussi décrire ce que vous voulez et l'assistant le générera avant de publier.">
+          <textarea
+            autoFocus
+            value={content}
+            onChange={e => setContent(e.target.value)}
+            rows={6}
+            placeholder="Collez votre contenu ici ou décrivez ce que vous souhaitez publier…"
+            className={textareaCls}
+          />
+        </Field>
+        <SubmitBtn label="Publier sur le CMS" disabled={!content.trim()} />
+      </form>
+    </Overlay>
+  );
+}

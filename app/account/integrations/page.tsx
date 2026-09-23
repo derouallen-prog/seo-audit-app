@@ -44,8 +44,8 @@ const INTEGRATIONS = [
       </svg>
     ),
     connected: false,
-    href: "#",
-    comingSoon: true,
+    href: "/api/integrations/wordpress/connect",
+    comingSoon: false,
   },
   {
     id: "prestashop",
