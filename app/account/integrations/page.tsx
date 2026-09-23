@@ -16,7 +16,7 @@ const INTEGRATIONS = [
       </svg>
     ),
     connected: false,
-    href: "/api/integrations/gsc/connect",
+    href: "/api/gsc/auth",
   },
   {
     id: "webflow",
@@ -30,7 +30,7 @@ const INTEGRATIONS = [
       </svg>
     ),
     connected: false,
-    href: "/api/integrations/webflow/connect",
+    href: "/api/webflow/auth",
   },
   {
     id: "wordpress",
@@ -44,7 +44,7 @@ const INTEGRATIONS = [
       </svg>
     ),
     connected: false,
-    href: "/api/integrations/wordpress/connect",
+    href: "/api/wp/auth",
     comingSoon: false,
   },
   {

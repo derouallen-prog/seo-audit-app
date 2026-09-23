@@ -354,7 +354,30 @@ export function ContentPlanSetupModal({ onClose, onSubmit }: { onClose: () => vo
 
 // ── Publication CMS Modal ─────────────────────────────────────────────────────
 
-const CMS_INTEGRATIONS_URL = "/account/integrations";
+const CMS_OPTIONS = [
+  {
+    id: "wordpress",
+    name: "WordPress",
+    desc: "Publie articles, pages et fiches produit via le plugin Search Mind.",
+    href: "/api/wp/auth",
+    logo: (
+      <svg viewBox="0 0 24 24" className="h-6 w-6" fill="#21759B">
+        <path d="M12 2C6.486 2 2 6.486 2 12s4.486 10 10 10 10-4.486 10-10S17.514 2 12 2zm-1.592 14.964l-3.73-10.218a6.153 6.153 0 0 1 1.265-.218c.132 0 .25.017.364.017.119 0 .23-.017.334-.017-.398 1.316-1.268 3.956-2.233 10.436zm9.295-1.7a6.17 6.17 0 0 1-6.17 1.562l2.098-6.082 1.978-5.444a6.17 6.17 0 0 1 2.094 9.964z"/>
+      </svg>
+    ),
+  },
+  {
+    id: "webflow",
+    name: "Webflow",
+    desc: "Synchronise les métadonnées SEO et publie via l'API Webflow.",
+    href: "/api/webflow/auth",
+    logo: (
+      <svg viewBox="0 0 24 24" className="h-6 w-6" fill="#4353FF">
+        <path d="M17.805 6.14c-1.98 0-3.636 1.265-4.247 3.033-.582-1.77-2.143-3.033-4.04-3.033-2.349 0-4.253 1.9-4.253 4.243 0 .617.135 1.204.373 1.733L12 17.86l6.362-5.744c.238-.53.373-1.117.373-1.733 0-2.343-1.904-4.243-4.253-4.243h-.677z"/>
+      </svg>
+    ),
+  },
+];
 
 export function PublicationCMSModal({ onClose, onSubmit, cmsEnabled }: { onClose: () => void; onSubmit: (prompt: string) => void; cmsEnabled: boolean }) {
   const [type, setType] = useState("article");
@@ -364,25 +387,31 @@ export function PublicationCMSModal({ onClose, onSubmit, cmsEnabled }: { onClose
     return (
       <Overlay onClose={onClose}>
         <ModalHeader
-          title="Publication CMS"
-          subtitle="Connectez votre CMS pour publier directement en production"
+          title="Connecter un CMS"
+          subtitle="Choisissez votre plateforme pour publier directement depuis l'assistant"
           onClose={onClose}
         />
-        <div className="p-6 flex flex-col items-center gap-4 text-center">
-          <div className="h-12 w-12 rounded-xl bg-brand/10 grid place-items-center">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-brand" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-          </div>
-          <div>
-            <p className="text-sm font-medium text-ink">Aucun CMS connecté</p>
-            <p className="mt-1 text-xs text-ink-soft leading-relaxed">Connectez WordPress, Webflow ou un autre CMS dans vos intégrations pour publier directement depuis l&apos;assistant.</p>
-          </div>
-          <a
-            href={CMS_INTEGRATIONS_URL}
-            onClick={onClose}
-            className="inline-flex items-center rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark transition"
-          >
-            Connecter un CMS
-          </a>
+        <div className="p-6 space-y-3">
+          {CMS_OPTIONS.map(cms => (
+            <a
+              key={cms.id}
+              href={cms.href}
+              className="flex items-center gap-4 rounded-xl border border-hairline px-4 py-3.5 hover:border-brand/40 hover:bg-brand/5 transition group"
+            >
+              <div className="h-10 w-10 rounded-xl bg-muted flex items-center justify-center shrink-0">
+                {cms.logo}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-ink group-hover:text-brand transition">{cms.name}</div>
+                <div className="text-xs text-ink-soft mt-0.5 leading-relaxed">{cms.desc}</div>
+              </div>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-ink-soft group-hover:text-brand transition shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </a>
+          ))}
+          <p className="text-[11px] text-ink-soft text-center pt-1">
+            D&apos;autres CMS arrivent bientôt.{" "}
+            <a href="/account/integrations" onClick={onClose} className="text-brand hover:underline">Voir toutes les intégrations</a>
+          </p>
         </div>
       </Overlay>
     );
