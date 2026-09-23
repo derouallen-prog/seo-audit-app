@@ -324,7 +324,11 @@ const markdownComponents: Components = {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function titleFromMessage(text: string): string {
-  return text.slice(0, 55).trim() + (text.length > 55 ? "…" : "");
+  const maxLen = 50;
+  if (text.length <= maxLen) return text.trim();
+  const truncated = text.slice(0, maxLen);
+  const lastSpace = truncated.lastIndexOf(" ");
+  return (lastSpace > 20 ? truncated.slice(0, lastSpace) : truncated).trim();
 }
 
 function formatRelativeDate(iso: string): string {
@@ -863,7 +867,7 @@ function AssistantPageInner() {
     if (tool.label === "Publication CMS") { setShowPublicationCMSSetup(true); return; }
     // Fill input, user sends manually
     setInput(tool.prompt);
-    setTimeout(() => textareaRef.current?.focus(), 0);
+    setTimeout(() => { textareaRef.current?.focus(); autoResize(); }, 0);
   }
 
   function startResize(e: React.MouseEvent) {
@@ -1018,7 +1022,7 @@ function AssistantPageInner() {
                             >
                               <IconMessage className="h-3 w-3 shrink-0 opacity-60" />
                               <span className="relative flex-1 min-w-0 overflow-hidden">
-                                <span className="block whitespace-nowrap">{pinnedIds.has(s.id) ? "📌 " : ""}{s.title}</span>
+                                <span className="block whitespace-nowrap">{pinnedIds.has(s.id) ? "📌 " : ""}{s.title.replace(/…$/, "")}</span>
                                 <span
                                   className="pointer-events-none absolute inset-y-0 right-0 w-10"
                                   style={{ background: `linear-gradient(to left, ${s.id === sessionId ? "hsl(var(--brand) / 0.1)" : "hsl(var(--background))"}, transparent)` }}
@@ -1181,37 +1185,37 @@ function AssistantPageInner() {
           {/* Editor toolbar (writing mode) */}
           {writingMode && <EditorToolbar wordCount={articleWordCount} />}
 
-          {/* Messages area */}
-          <div
-            ref={scrollAreaRef}
-            className="relative flex-1 space-y-4 overflow-y-auto px-3 py-4 sm:space-y-6 sm:px-6 sm:py-6"
-            onDragOver={onDragOver}
-            onDragLeave={onDragLeave}
-            onDrop={onDrop}
-          >
-            {isDragging && (
-              <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-brand bg-brand/5 backdrop-blur-sm">
-                <IconUploadCloud className="h-10 w-10 text-brand opacity-70" />
-                <span className="text-sm font-medium text-brand">Déposez vos fichiers ici</span>
-              </div>
-            )}
-
-            {showWelcome && (
-              <>
-                <div className="flex gap-3" style={{ animation: "fadeUp 0.3s ease forwards" }}>
+          {/* ── Welcome centered layout ── */}
+          {showWelcome && (
+            <div
+              className="flex flex-1 flex-col items-center justify-center overflow-hidden px-4 sm:px-6 py-6"
+              onDragOver={onDragOver}
+              onDragLeave={onDragLeave}
+              onDrop={onDrop}
+            >
+              {isDragging && (
+                <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-brand bg-brand/5 backdrop-blur-sm">
+                  <IconUploadCloud className="h-10 w-10 text-brand opacity-70" />
+                  <span className="text-sm font-medium text-brand">Déposez vos fichiers ici</span>
+                </div>
+              )}
+              <div className="w-full max-w-[720px]" style={{ animation: "fadeUp 0.35s ease forwards" }}>
+                {/* Welcome message */}
+                <div className="flex gap-3 mb-6">
                   <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand text-white glow-brand">
                     <IconSparkles />
                   </div>
-                  <div className="max-w-[720px] space-y-2">
+                  <div className="space-y-2">
                     <div className="inline-block rounded-2xl px-4 py-3 text-sm leading-relaxed bg-accent text-ink">
                       Bonjour, je suis Mind, votre copilote SEO. Donnez-moi une URL, un mot-clé ou un objectif et je m&apos;occupe du reste.
                     </div>
                   </div>
                 </div>
 
-                <div>
-                  <div className="text-xs font-medium uppercase tracking-wider text-ink-soft">Suggestions</div>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {/* Suggestions */}
+                <div className="mb-6">
+                  <div className="text-xs font-medium uppercase tracking-wider text-ink-soft mb-3">Suggestions</div>
+                  <div className="grid gap-2 sm:grid-cols-2">
                     {ANIMATED_SUGGESTIONS.map((suggestion, i) => (
                       <AnimatedSuggestionCard
                         key={i}
@@ -1219,120 +1223,212 @@ function AssistantPageInner() {
                         initialVariantIdx={i}
                         onSelect={(text) => {
                           setInput(text);
-                          setTimeout(() => textareaRef.current?.focus(), 0);
+                          setTimeout(() => { textareaRef.current?.focus(); autoResize(); }, 0);
                         }}
                       />
                     ))}
                   </div>
                 </div>
-              </>
-            )}
 
-            {messages.map((m, i) => (
-              <div key={i} className={`flex gap-3 group ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                {m.role === "assistant" && (
+                {/* Input bar — centered */}
+                <div className="relative">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept="text/*,.md,.markdown,.csv,.json,.yaml,.yml,image/*"
+                    className="hidden"
+                    onChange={(e) => { if (e.target.files?.length) { processFiles(e.target.files); e.target.value = ""; } }}
+                  />
+                  {showAttachPanel && <div className="fixed inset-0 z-20" onClick={() => setShowAttachPanel(false)} />}
+                  {showAttachPanel && (
+                    <div className="absolute bottom-full left-0 mb-2 w-80 rounded-2xl border border-hairline bg-background shadow-2xl z-30">
+                      <div className="p-4 space-y-3">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">Joindre</p>
+                        <button type="button" onClick={() => { fileInputRef.current?.click(); setShowAttachPanel(false); }} className="w-full flex items-center gap-3 rounded-xl border border-hairline p-3 text-left hover:bg-accent transition">
+                          <div className="h-9 w-9 rounded-lg bg-brand/10 grid place-items-center shrink-0"><IconUploadCloud className="h-4 w-4 text-brand" /></div>
+                          <div><div className="text-sm font-medium text-ink">Importer des fichiers ou des images</div><div className="text-xs text-ink-soft mt-0.5">PDF, images, CSV, JSON, Markdown…</div></div>
+                        </button>
+                        <div className="border-t border-hairline pt-3">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft mb-2.5">Connecteurs</p>
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between rounded-xl border border-hairline px-3 py-2.5">
+                              <div className="flex items-center gap-2.5"><span className="text-lg leading-none">🗂️</span><div><div className="text-sm font-medium text-ink">CMS</div><div className="text-[11px] text-ink-soft">WordPress, Webflow, Contentful…</div></div></div>
+                              <button type="button" onClick={() => { if (!cmsEnabled) { setShowCmsModal(true); } else { setCmsEnabled(false); } }} className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${cmsEnabled ? "bg-brand" : "bg-hairline"}`}><span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${cmsEnabled ? "translate-x-[18px]" : "translate-x-0.5"}`} /></button>
+                            </div>
+                            <div className="flex items-center justify-between rounded-xl border border-hairline px-3 py-2.5">
+                              <div className="flex items-center gap-2.5"><span className="text-lg leading-none">🔍</span><div><div className="text-sm font-medium text-ink">Search Console</div><div className="text-[11px] text-ink-soft">Connecter votre GSC</div></div></div>
+                              <button type="button" onClick={() => setGscEnabled(v => !v)} className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${gscEnabled ? "bg-brand" : "bg-hairline"}`}><span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${gscEnabled ? "translate-x-[18px]" : "translate-x-0.5"}`} /></button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {pendingFiles.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-1.5">
+                      {pendingFiles.map(f => (
+                        <div key={f.id} className="flex items-center gap-1 rounded-lg border border-brand/30 bg-brand/5 px-2 py-1 text-xs text-brand">
+                          {f.dataUrl ? <img src={f.dataUrl} alt={f.name} className="h-4 w-4 rounded object-cover" /> : <span className="opacity-60">📄</span>}
+                          <span className="max-w-[120px] truncate">{f.name}</span>
+                          <button type="button" onClick={() => removeFile(f.id)} className="ml-0.5 opacity-60 hover:opacity-100 transition" aria-label="Retirer le fichier">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <form onSubmit={(e) => { e.preventDefault(); send(); }}>
+                    <div className="flex items-end gap-2 rounded-2xl border border-hairline bg-background p-2 transition-shadow focus-within:border-brand/40 focus-within:shadow-lg">
+                      <button type="button" onClick={() => setShowAttachPanel(v => !v)} disabled={loading} title="Joindre ou connecter" className={`h-9 w-9 shrink-0 rounded-lg border bg-accent text-ink-soft hover:text-brand hover:border-brand/40 hover:bg-brand/5 disabled:opacity-40 disabled:cursor-not-allowed grid place-items-center transition-colors ${showAttachPanel ? "border-brand/40 text-brand bg-brand/5" : "border-hairline"}`}>
+                        <IconPlus className="h-4 w-4" />
+                      </button>
+                      <textarea
+                        ref={textareaRef}
+                        rows={1}
+                        value={input}
+                        onChange={(e) => { setInput(e.target.value); autoResize(); }}
+                        onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+                        placeholder="Demandez à Mind d'analyser une SERP, générer un article, auditer un concurrent…"
+                        className="min-h-[52px] flex-1 resize-none bg-transparent px-2 py-2.5 text-sm text-ink placeholder:text-ink-soft/60 focus:outline-none"
+                        style={{ maxHeight: "200px" }}
+                      />
+                      <button type="submit" disabled={loading || (!input.trim() && pendingFiles.length === 0)} className="h-11 w-11 shrink-0 rounded-xl bg-brand text-white glow-brand hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed grid place-items-center transition-colors">
+                        <IconArrowUp />
+                      </button>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-xs text-ink-soft">
+                      <span className="hidden sm:block">Entrée pour envoyer · Maj+Entrée pour un retour à la ligne · Glisser-déposer pour joindre</span>
+                      <span className="sm:hidden">Maj+Entrée pour un retour à la ligne</span>
+                      <span className="font-mono hidden sm:block">mind-agent · Claude</span>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Chat messages area (visible when conversation started) ── */}
+          {!showWelcome && (
+            <div
+              ref={scrollAreaRef}
+              className="relative flex-1 space-y-4 overflow-y-auto px-3 py-4 sm:space-y-6 sm:px-6 sm:py-6"
+              style={{ animation: "fadeUp 0.25s ease forwards" }}
+              onDragOver={onDragOver}
+              onDragLeave={onDragLeave}
+              onDrop={onDrop}
+            >
+              {isDragging && (
+                <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-brand bg-brand/5 backdrop-blur-sm">
+                  <IconUploadCloud className="h-10 w-10 text-brand opacity-70" />
+                  <span className="text-sm font-medium text-brand">Déposez vos fichiers ici</span>
+                </div>
+              )}
+
+              {messages.map((m, i) => (
+                <div key={i} className={`flex gap-3 group ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                  {m.role === "assistant" && (
+                    <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand text-white glow-brand self-start">
+                      <IconSparkles />
+                    </div>
+                  )}
+                  <div className={`min-w-0 ${m.role === "user" ? "max-w-[80%]" : "max-w-[720px] w-full"}`}>
+                    {m.role === "user" ? (
+                      <div className="flex flex-col items-end gap-1">
+                        {m._attachments && m._attachments.length > 0 && (
+                          <div className="flex flex-wrap gap-1 justify-end mb-0.5">
+                            {m._attachments.map((name, j) => (
+                              <span key={j} className="flex items-center gap-1 rounded-lg border border-brand/30 bg-brand/10 px-2 py-0.5 text-xs text-brand">
+                                <span className="opacity-60">📎</span>
+                                <span className="max-w-[140px] truncate">{name}</span>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <div className="inline-block rounded-2xl rounded-br-md px-4 py-2.5 bg-brand text-white text-sm leading-relaxed break-words">
+                          {m._display ?? m.content}
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="rounded-2xl px-4 py-3 bg-accent text-ink overflow-hidden">
+                          <ReactMarkdown components={markdownComponents} remarkPlugins={[remarkGfm]}>
+                            {m.content}
+                          </ReactMarkdown>
+                        </div>
+                        <ExportBar content={m.content} />
+                      </>
+                    )}
+                  </div>
+                  {m.role === "user" && (
+                    <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-ink text-white self-start text-xs font-semibold">
+                      U
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {loading && streamingContent && (
+                <div className="flex gap-3 justify-start">
                   <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand text-white glow-brand self-start">
                     <IconSparkles />
                   </div>
-                )}
-                <div className={`min-w-0 ${m.role === "user" ? "max-w-[80%]" : "max-w-[720px] w-full"}`}>
-                  {m.role === "user" ? (
-                    <div className="flex flex-col items-end gap-1">
-                      {m._attachments && m._attachments.length > 0 && (
-                        <div className="flex flex-wrap gap-1 justify-end mb-0.5">
-                          {m._attachments.map((name, j) => (
-                            <span key={j} className="flex items-center gap-1 rounded-lg border border-brand/30 bg-brand/10 px-2 py-0.5 text-xs text-brand">
-                              <span className="opacity-60">📎</span>
-                              <span className="max-w-[140px] truncate">{name}</span>
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      <div className="inline-block rounded-2xl rounded-br-md px-4 py-2.5 bg-brand text-white text-sm leading-relaxed break-words">
-                        {m._display ?? m.content}
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="rounded-2xl px-4 py-3 bg-accent text-ink overflow-hidden">
-                        <ReactMarkdown components={markdownComponents} remarkPlugins={[remarkGfm]}>
-                          {m.content}
-                        </ReactMarkdown>
-                      </div>
-                      <ExportBar content={m.content} />
-                    </>
-                  )}
-                </div>
-                {m.role === "user" && (
-                  <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-ink text-white self-start text-xs font-semibold">
-                    U
+                  <div className="max-w-[720px] rounded-2xl px-4 py-3 bg-accent text-ink">
+                    <ReactMarkdown components={markdownComponents} remarkPlugins={[remarkGfm]}>
+                      {streamingContent}
+                    </ReactMarkdown>
+                    <span className="inline-block w-1.5 h-4 bg-brand opacity-75 animate-pulse ml-0.5 align-middle" />
                   </div>
-                )}
-              </div>
-            ))}
+                </div>
+              )}
 
-            {loading && streamingContent && (
-              <div className="flex gap-3 justify-start">
-                <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand text-white glow-brand self-start">
-                  <IconSparkles />
+              {loading && !streamingContent && (
+                <div className="flex gap-3 justify-start">
+                  <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand text-white glow-brand self-start">
+                    <IconSparkles />
+                  </div>
+                  <div className="rounded-2xl px-4 py-3 bg-accent">
+                    {toolStatus ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-xs text-brand flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse shrink-0" />
+                          {toolStatus}
+                        </p>
+                        {getSourceChips(toolStatus).map(chip => (
+                          <span key={chip.label} className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${chip.cls}`}>
+                            {chip.label}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 py-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-brand animate-bounce [animation-delay:-0.3s]" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-brand animate-bounce [animation-delay:-0.15s]" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-brand animate-bounce" />
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div className="max-w-[720px] rounded-2xl px-4 py-3 bg-accent text-ink">
-                  <ReactMarkdown components={markdownComponents} remarkPlugins={[remarkGfm]}>
-                    {streamingContent}
-                  </ReactMarkdown>
-                  <span className="inline-block w-1.5 h-4 bg-brand opacity-75 animate-pulse ml-0.5 align-middle" />
-                </div>
-              </div>
-            )}
+              )}
 
-            {loading && !streamingContent && (
-              <div className="flex gap-3 justify-start">
-                <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand text-white glow-brand self-start">
-                  <IconSparkles />
+              {loading && streamingContent && toolStatus && (
+                <div className="flex justify-start pl-11">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-xs text-brand flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse shrink-0" />
+                      {toolStatus}
+                    </p>
+                    {getSourceChips(toolStatus).map(chip => (
+                      <span key={chip.label} className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${chip.cls}`}>
+                        {chip.label}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-                <div className="rounded-2xl px-4 py-3 bg-accent">
-                  {toolStatus ? (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-xs text-brand flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse shrink-0" />
-                        {toolStatus}
-                      </p>
-                      {getSourceChips(toolStatus).map(chip => (
-                        <span key={chip.label} className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${chip.cls}`}>
-                          {chip.label}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1.5 py-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-brand animate-bounce [animation-delay:-0.3s]" />
-                      <span className="w-1.5 h-1.5 rounded-full bg-brand animate-bounce [animation-delay:-0.15s]" />
-                      <span className="w-1.5 h-1.5 rounded-full bg-brand animate-bounce" />
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+              )}
 
-            {loading && streamingContent && toolStatus && (
-              <div className="flex justify-start pl-11">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-xs text-brand flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse shrink-0" />
-                    {toolStatus}
-                  </p>
-                  {getSourceChips(toolStatus).map(chip => (
-                    <span key={chip.label} className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${chip.cls}`}>
-                      {chip.label}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {error && <p className="text-sm text-red-600 pl-11">{error}</p>}
-            <div ref={bottomRef} />
-          </div>
+              {error && <p className="text-sm text-red-600 pl-11">{error}</p>}
+              <div ref={bottomRef} />
+            </div>
+          )}
 
           {/* Anonymous session banner */}
           {isAnonymous && (
@@ -1344,9 +1440,10 @@ function AssistantPageInner() {
             </div>
           )}
 
-          {/* Input form */}
+          {/* Input form — chat mode (bottom) */}
+          {!showWelcome && (
           <form
-            className="border-t border-hairline px-4 pt-3 pb-4 relative"
+            className="px-4 pt-3 pb-4 relative"
             onSubmit={(e) => { e.preventDefault(); send(); }}
           >
           <div className="max-w-[720px] mx-auto">
@@ -1475,8 +1572,8 @@ function AssistantPageInner() {
                   }
                 }}
                 placeholder="Demandez à Mind d'analyser une SERP, générer un article, auditer un concurrent…"
-                className="min-h-11 flex-1 resize-none bg-transparent px-2 py-2.5 text-sm text-ink placeholder:text-ink-soft/60 focus:outline-none"
-                style={{ maxHeight: "160px" }}
+                className="min-h-[52px] flex-1 resize-none bg-transparent px-2 py-2.5 text-sm text-ink placeholder:text-ink-soft/60 focus:outline-none"
+                style={{ maxHeight: "200px" }}
               />
               <button
                 type="submit"
@@ -1493,6 +1590,7 @@ function AssistantPageInner() {
             </div>
           </div>{/* end centered wrapper */}
           </form>
+          )}
         </div>
       </main>
 
