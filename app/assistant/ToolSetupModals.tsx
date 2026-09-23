@@ -132,7 +132,7 @@ export function RedditSetupModal({ onClose, onSubmit }: { onClose: () => void; o
               autoFocus
               value={value}
               onChange={e => setValue(e.target.value)}
-              placeholder={REDDIT_OPTIONS[selected].placeholder}
+              placeholder={REDDIT_OPTIONS[selected]?.placeholder ?? ""}
               className={inputCls}
             />
           </Field>
