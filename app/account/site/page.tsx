@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import Image from "next/image";
 
 interface SiteProfile {
   site_url?: string;
@@ -17,6 +18,13 @@ const CATEGORIES = ["E-commerce", "Blog & média", "Vente de services", "Formati
 const ZONES = ["France", "Belgique", "Suisse", "Canada", "Afrique francophone", "Europe", "International"];
 const TABS = ["À propos", "Concurrents", "Sitemap & pages"] as const;
 type Tab = typeof TABS[number];
+
+type ClearbitSuggestion = { name: string; domain: string; logo: string };
+
+function hasTLD(v: string): boolean {
+  const clean = v.replace(/^https?:\/\//i, "").replace(/^www\./i, "").split(/[/?#]/)[0] ?? "";
+  return /[a-z0-9-]\.[a-z]{2,10}$/i.test(clean);
+}
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <p className="text-[10px] font-semibold uppercase tracking-widest text-ink-soft/60 mb-2">{children}</p>;
@@ -50,6 +58,16 @@ export default function SitePage() {
   const [competitors, setCompetitors] = useState<string[]>([]);
   const [competitorInput, setCompetitorInput] = useState("");
 
+  // Autocomplete Clearbit — champ Mon site
+  const [siteUrlSuggestions, setSiteUrlSuggestions] = useState<ClearbitSuggestion[]>([]);
+  const [showSiteUrlSuggestions, setShowSiteUrlSuggestions] = useState(false);
+  const siteUrlTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Autocomplete Clearbit — champ concurrent
+  const [competitorSuggestions, setCompetitorSuggestions] = useState<ClearbitSuggestion[]>([]);
+  const [showCompetitorSuggestions, setShowCompetitorSuggestions] = useState(false);
+  const competitorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     fetch("/api/account/profile").then(r => r.json()).then((d: { profile: SiteProfile | null }) => {
       const p = d.profile ?? {};
@@ -81,17 +99,69 @@ export default function SitePage() {
   function toggleZone(z: string) {
     setZones(prev => prev.includes(z) ? prev.filter(x => x !== z) : [...prev, z]);
   }
+  function onSiteUrlChange(v: string) {
+    const stripped = v.replace(/^https?:\/\//i, "");
+    setSiteUrl(stripped);
+    if (siteUrlTimer.current) clearTimeout(siteUrlTimer.current);
+    const q = stripped.trim();
+    if (q.length < 2 || hasTLD(q)) {
+      setSiteUrlSuggestions([]);
+      setShowSiteUrlSuggestions(false);
+      return;
+    }
+    siteUrlTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`https://autocomplete.clearbit.com/v1/companies/suggest?query=${encodeURIComponent(q)}`);
+        if (res.ok) {
+          const list = (await res.json()) as ClearbitSuggestion[];
+          if (!hasTLD(q)) { setSiteUrlSuggestions(list); setShowSiteUrlSuggestions(list.length > 0); }
+        }
+      } catch { /* réseau indisponible */ }
+    }, 300);
+  }
+
+  function onCompetitorInputChange(v: string) {
+    setCompetitorInput(v);
+    if (competitorTimer.current) clearTimeout(competitorTimer.current);
+    const q = v.trim();
+    if (q.length < 2 || hasTLD(q)) {
+      setCompetitorSuggestions([]);
+      setShowCompetitorSuggestions(false);
+      return;
+    }
+    competitorTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`https://autocomplete.clearbit.com/v1/companies/suggest?query=${encodeURIComponent(q)}`);
+        if (res.ok) {
+          const list = (await res.json()) as ClearbitSuggestion[];
+          if (!hasTLD(q)) { setCompetitorSuggestions(list); setShowCompetitorSuggestions(list.length > 0); }
+        }
+      } catch { /* réseau indisponible */ }
+    }, 300);
+  }
+
   function addCompetitor() {
     const raw = competitorInput.trim().replace(/^https?:\/\//, "");
     if (!raw || competitors.includes(raw) || competitors.length >= 10) return;
     setCompetitors(prev => [...prev, raw]);
     setCompetitorInput("");
+    setCompetitorSuggestions([]);
+    setShowCompetitorSuggestions(false);
   }
   function removeCompetitor(c: string) {
     setCompetitors(prev => prev.filter(x => x !== c));
   }
 
   const hostname = (() => { try { return new URL(siteUrl.startsWith("http") ? siteUrl : `https://${siteUrl}`).hostname; } catch { return siteUrl; } })();
+
+  const siteDisplayVal = siteUrl.replace(/^https?:\/\//i, "");
+  const siteDomain = siteDisplayVal.replace(/^www\./i, "").split(/[/?#]/)[0] ?? "";
+  const siteFaviconUrl = hasTLD(siteDisplayVal) && siteDomain
+    ? `https://www.google.com/s2/favicons?domain=${siteDomain}&sz=64` : null;
+
+  const competitorDomain = competitorInput.trim().replace(/^https?:\/\//i, "").replace(/^www\./i, "").split(/[/?#]/)[0] ?? "";
+  const competitorFaviconUrl = hasTLD(competitorInput.trim()) && competitorDomain
+    ? `https://www.google.com/s2/favicons?domain=${competitorDomain}&sz=64` : null;
 
   if (!profile) {
     return (
@@ -120,14 +190,44 @@ export default function SitePage() {
       </div>
 
       {/* URL */}
-      <div className="flex overflow-hidden rounded-xl border border-hairline bg-background shadow-sm focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20 transition-all">
-        <span className="flex items-center border-r border-hairline bg-muted px-3 text-xs font-mono text-ink-soft select-none">https://</span>
-        <input
-          value={siteUrl.replace(/^https?:\/\//, "")}
-          onChange={e => setSiteUrl(e.target.value.replace(/^https?:\/\//, ""))}
-          placeholder="www.monsite.fr"
-          className="flex-1 bg-transparent px-3 py-3 text-sm text-ink outline-none placeholder:text-ink-soft/50"
-        />
+      <div className="relative">
+        <div className="flex overflow-hidden rounded-xl border border-hairline bg-background shadow-sm focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20 transition-all">
+          <span className="flex items-center gap-2 border-r border-hairline bg-muted px-3 text-xs font-mono text-ink-soft select-none">
+            {siteFaviconUrl && (
+              <Image src={siteFaviconUrl} alt="" width={18} height={18} unoptimized className="h-[18px] w-[18px] rounded object-contain" />
+            )}
+            https://
+          </span>
+          <input
+            value={siteDisplayVal}
+            onChange={e => onSiteUrlChange(e.target.value)}
+            onBlur={() => setTimeout(() => setShowSiteUrlSuggestions(false), 150)}
+            onFocus={() => siteUrlSuggestions.length > 0 && setShowSiteUrlSuggestions(true)}
+            placeholder="www.monsite.fr"
+            className="flex-1 bg-transparent px-3 py-3 text-sm text-ink outline-none placeholder:text-ink-soft/50"
+          />
+        </div>
+        {showSiteUrlSuggestions && siteUrlSuggestions.length > 0 && (
+          <div className="absolute z-50 left-0 right-0 top-full mt-2 rounded-xl border border-hairline bg-white shadow-xl overflow-hidden">
+            {siteUrlSuggestions.map(s => (
+              <button
+                key={s.domain}
+                type="button"
+                onMouseDown={() => { setSiteUrl(s.domain); setSiteUrlSuggestions([]); setShowSiteUrlSuggestions(false); }}
+                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-accent/40 transition-colors text-left"
+              >
+                {s.logo
+                  ? <Image src={s.logo} alt="" width={24} height={24} unoptimized className="w-6 h-6 rounded shrink-0 object-contain border border-hairline" />
+                  : <div className="w-6 h-6 rounded bg-brand-soft shrink-0 flex items-center justify-center text-xs font-bold text-brand">{s.name[0]}</div>
+                }
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-ink">{s.name}</p>
+                  <p className="text-xs text-ink-soft">{s.domain}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Tabs */}
@@ -233,18 +333,46 @@ export default function SitePage() {
           )}
 
           <div className="flex gap-2">
-            <div className="flex-1 flex overflow-hidden rounded-xl border border-hairline bg-background focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20 transition-all">
-              <span className="flex items-center pl-3 text-ink-soft/50">
-                <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 3v10M3 8h10" /></svg>
-              </span>
-              <input
-                value={competitorInput}
-                onChange={e => setCompetitorInput(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addCompetitor(); } }}
-                placeholder="concurrent.fr + Entrée"
-                disabled={competitors.length >= 10}
-                className="flex-1 bg-transparent px-3 py-3 text-sm text-ink outline-none placeholder:text-ink-soft/50"
-              />
+            <div className="relative flex-1">
+              <div className="flex overflow-hidden rounded-xl border border-hairline bg-background focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20 transition-all">
+                <span className="flex items-center pl-3 text-ink-soft/50">
+                  {competitorFaviconUrl
+                    ? <Image src={competitorFaviconUrl} alt="" width={18} height={18} unoptimized className="h-[18px] w-[18px] rounded object-contain" />
+                    : <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 3v10M3 8h10" /></svg>
+                  }
+                </span>
+                <input
+                  value={competitorInput}
+                  onChange={e => onCompetitorInputChange(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addCompetitor(); } }}
+                  onBlur={() => setTimeout(() => setShowCompetitorSuggestions(false), 150)}
+                  onFocus={() => competitorSuggestions.length > 0 && setShowCompetitorSuggestions(true)}
+                  placeholder="concurrent.fr + Entrée"
+                  disabled={competitors.length >= 10}
+                  className="flex-1 bg-transparent px-3 py-3 text-sm text-ink outline-none placeholder:text-ink-soft/50"
+                />
+              </div>
+              {showCompetitorSuggestions && competitorSuggestions.length > 0 && (
+                <div className="absolute z-50 left-0 right-0 top-full mt-2 rounded-xl border border-hairline bg-white shadow-xl overflow-hidden">
+                  {competitorSuggestions.map(s => (
+                    <button
+                      key={s.domain}
+                      type="button"
+                      onMouseDown={() => { setCompetitorInput(s.domain); setCompetitorSuggestions([]); setShowCompetitorSuggestions(false); }}
+                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-accent/40 transition-colors text-left"
+                    >
+                      {s.logo
+                        ? <Image src={s.logo} alt="" width={24} height={24} unoptimized className="w-6 h-6 rounded shrink-0 object-contain border border-hairline" />
+                        : <div className="w-6 h-6 rounded bg-brand-soft shrink-0 flex items-center justify-center text-xs font-bold text-brand">{s.name[0]}</div>
+                      }
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-ink">{s.name}</p>
+                        <p className="text-xs text-ink-soft">{s.domain}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <button
               onClick={addCompetitor}
