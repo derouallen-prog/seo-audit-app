@@ -2,10 +2,18 @@ import { createClient } from "@supabase/supabase-js";
 import { PerplexityConnector } from "./perplexity";
 import { ClaudeConnector } from "./claude";
 import { GeminiConnector } from "./gemini";
+import { OpenAIConnector } from "./openai";
+import { BingCopilotConnector } from "./bing_copilot";
 import type { Platform, CitationResult } from "./types";
 import { PLATFORMS } from "./types";
 
-const CONNECTORS = [new PerplexityConnector(), new ClaudeConnector(), new GeminiConnector()];
+const CONNECTORS = [
+  new PerplexityConnector(),
+  new ClaudeConnector(),
+  new GeminiConnector(),
+  new OpenAIConnector(),
+  new BingCopilotConnector(),
+];
 
 function getSupabase() {
   return createClient(

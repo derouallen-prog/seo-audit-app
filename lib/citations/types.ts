@@ -1,7 +1,7 @@
 export type Platform = "perplexity" | "claude" | "openai" | "gemini" | "bing_copilot";
 export type Intent = "Informational" | "Navigational" | "Commercial" | "Learn and Solve" | "Local" | "Others";
 
-export const PLATFORMS: Platform[] = ["perplexity", "claude", "gemini"];
+export const PLATFORMS: Platform[] = ["perplexity", "claude", "gemini", "openai", "bing_copilot"];
 export const INTENTS: Intent[] = ["Informational", "Navigational", "Commercial", "Learn and Solve", "Local", "Others"];
 
 export interface CitationResult {
