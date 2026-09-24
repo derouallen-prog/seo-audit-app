@@ -765,15 +765,15 @@ export default function HomePage() {
 
               {/* Mode toggle + batch size */}
               <div className="mt-3 flex flex-col items-center gap-2">
-                <div className="inline-flex items-center gap-0.5 rounded-full border border-hairline bg-muted/40 p-0.5 text-xs">
+                <div className="inline-flex items-center gap-1 text-xs">
                   {(["url", "domain"] as const).map(mode => (
                     <button
                       key={mode}
                       onClick={() => setAnalysisMode(mode)}
-                      className={`rounded-full px-3.5 py-1.5 font-medium transition-all ${
+                      className={`rounded-xl border px-4 py-2 font-medium transition-all ${
                         analysisMode === mode
-                          ? "bg-background shadow-sm text-ink"
-                          : "text-ink-soft hover:text-ink"
+                          ? "border-brand bg-brand/5 text-brand shadow-sm"
+                          : "border-hairline bg-background text-ink-soft hover:border-ink/20 hover:text-ink"
                       }`}
                     >
                       {mode === "url" ? "Page unique" : "Domaine complet"}
