@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return NextResponse.json({ error: error.message || error.code || "Erreur lors de la création du compte." }, { status: 400 });
     }
 
     return NextResponse.json({ success: true });
