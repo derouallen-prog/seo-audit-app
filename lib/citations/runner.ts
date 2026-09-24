@@ -1,17 +1,20 @@
 import { createClient } from "@supabase/supabase-js";
 import { PerplexityConnector } from "./perplexity";
 import { ClaudeConnector } from "./claude";
-import { GeminiConnector } from "./gemini";
-import { OpenAIConnector } from "./openai";
+import { DataForSEOChatGPTConnector } from "./dataforseo_chatgpt";
+import { DataForSEOGeminiConnector } from "./dataforseo_gemini";
 import { BingCopilotConnector } from "./bing_copilot";
 import type { Platform, CitationResult } from "./types";
 import { PLATFORMS } from "./types";
 
+// ChatGPT and Gemini use DataForSEO LLM Scraper (scrapes real web UI, more accurate than direct API).
+// Perplexity and Claude use their official APIs directly (DataForSEO doesn't scrape them yet).
+// Bing Copilot uses Bing Search API v7.
 const CONNECTORS = [
   new PerplexityConnector(),
   new ClaudeConnector(),
-  new GeminiConnector(),
-  new OpenAIConnector(),
+  new DataForSEOGeminiConnector(),
+  new DataForSEOChatGPTConnector(),
   new BingCopilotConnector(),
 ];
 
