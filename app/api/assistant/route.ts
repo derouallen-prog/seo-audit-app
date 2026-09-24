@@ -8,6 +8,7 @@ import { checkGeoVisibility } from "@/lib/geoVisibilityCheck";
 import { createDraftPost, createDraftPage } from "@/lib/wpPublish";
 import { getWcConnection } from "@/lib/wcConnections";
 import { formatProfileForPrompt } from "@/lib/wcSiteProfile";
+import { formatUserSiteProfileForPrompt } from "@/lib/userSiteProfile";
 import { getAuthUser } from "@/lib/supabaseServer";
 import { buildLinkGraphWithSignals } from "@/lib/linkGraph";
 import { fetchWpContentForUrls } from "@/lib/wpContent";
@@ -2472,6 +2473,24 @@ export async function POST(req: NextRequest) {
       }
     } catch { /* non bloquant */ }
   }
+
+  // Profil compte utilisateur (site_url, marché, concurrents, positionnement…)
+  let userSiteProfileBlock = "";
+  if (userId) {
+    try {
+      const { createServerClient } = await import("@supabase/ssr");
+      const { cookies } = await import("next/headers");
+      const cookieStore = await cookies();
+      const sb = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        { cookies: { getAll() { return cookieStore.getAll(); }, setAll(c) { try { c.forEach(({ name, value, options }) => cookieStore.set(name, value, options)); } catch {} } } }
+      );
+      const { data } = await sb.from("user_site_profile").select("site_url,positioning,categories,market,target_zones,competitors").eq("user_id", userId).single();
+      if (data) userSiteProfileBlock = formatUserSiteProfileForPrompt(data);
+    } catch { /* non bloquant */ }
+  }
+
   const encoder = new TextEncoder();
 
   // Charger le contexte d'audit si un auditId est fourni
@@ -2499,6 +2518,7 @@ export async function POST(req: NextRequest) {
         const newsBlock = await getCachedNewsBlock();
         const systemWithNews = [
           SYSTEM_PROMPT,
+          userSiteProfileBlock ? `\n\n---\n\n${userSiteProfileBlock}` : "",
           auditContextBlock ? `\n\n${auditContextBlock}\n\nRéfère-toi systématiquement à ces données d'audit dans tes réponses, sauf si l'utilisateur pose une question sans rapport avec ce site.` : "",
           newsBlock ? `\n\n${newsBlock}\n\nUtilise ces actualités quand elles sont pertinentes pour la question posée, en citant la source.` : "",
           wcProfileBlock ? `\n\n---\n\n${wcProfileBlock}\n\nQuand tu mets à jour ce site via update_woocommerce_product, utilise directement les field keys et la structure de répéteur listées ci-dessus — pas besoin d'appeler get_woocommerce_product si les champs cibles sont déjà connus. Appelle get_woocommerce_product uniquement pour les champs qui ne figurent pas dans ce profil.` : "",

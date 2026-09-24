@@ -68,6 +68,12 @@ export default function SitePage() {
   const [showCompetitorSuggestions, setShowCompetitorSuggestions] = useState(false);
   const competitorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Suggestions IA de concurrents
+  type AiSuggestion = { domain: string; name: string };
+  const [aiSuggestions, setAiSuggestions] = useState<AiSuggestion[]>([]);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiSuggestedMarket, setAiSuggestedMarket] = useState("");
+
   useEffect(() => {
     fetch("/api/account/profile").then(r => r.json()).then((d: { profile: SiteProfile | null }) => {
       const p = d.profile ?? {};
@@ -150,6 +156,32 @@ export default function SitePage() {
   }
   function removeCompetitor(c: string) {
     setCompetitors(prev => prev.filter(x => x !== c));
+  }
+
+  async function suggestCompetitorsWithAI() {
+    const domain = siteUrl.trim();
+    if (!domain) return;
+    setAiLoading(true);
+    setAiSuggestions([]);
+    try {
+      const res = await fetch("/api/account/suggest-competitors", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ site_url: domain, market: market.trim() || undefined }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { market?: string; competitors?: AiSuggestion[] };
+        if (data.competitors) setAiSuggestions(data.competitors);
+        if (data.market && !market.trim()) setAiSuggestedMarket(data.market);
+      }
+    } catch { /* non bloquant */ }
+    finally { setAiLoading(false); }
+  }
+
+  function addAiSuggestion(domain: string) {
+    if (!domain || competitors.includes(domain) || competitors.length >= 10) return;
+    setCompetitors(prev => [...prev, domain]);
+    setAiSuggestions(prev => prev.filter(s => s.domain !== domain));
   }
 
   const hostname = (() => { try { return new URL(siteUrl.startsWith("http") ? siteUrl : `https://${siteUrl}`).hostname; } catch { return siteUrl; } })();
@@ -317,7 +349,77 @@ export default function SitePage() {
       {/* Tab: Concurrents */}
       {tab === "Concurrents" && (
         <div className="space-y-4">
-          <p className="text-sm text-ink-soft">Ces domaines alimentent les analyses comparatives de l&apos;assistant SEO.</p>
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-sm text-ink-soft">Ces domaines alimentent les analyses comparatives de l&apos;assistant SEO.</p>
+            {siteFaviconUrl && competitors.length < 10 && (
+              <button
+                onClick={suggestCompetitorsWithAI}
+                disabled={aiLoading}
+                className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-brand/30 bg-brand/5 px-3 py-1.5 text-xs font-medium text-brand hover:bg-brand/10 transition disabled:opacity-60"
+              >
+                {aiLoading ? (
+                  <>
+                    <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                    Analyse en cours…
+                  </>
+                ) : (
+                  <>
+                    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2zM6 8l1.5 1.5L10 6"/></svg>
+                    Suggérer via IA
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+
+          {/* Marché détecté par l'IA */}
+          {aiSuggestedMarket && (
+            <div className="rounded-xl border border-brand/20 bg-brand/5 px-4 py-3 flex items-start gap-3">
+              <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0 mt-0.5 text-brand" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v3.5l2 1"/></svg>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-brand mb-0.5">Marché détecté</p>
+                <p className="text-sm text-ink">{aiSuggestedMarket}</p>
+                {!market.trim() && (
+                  <button
+                    onClick={() => { setMarket(aiSuggestedMarket); setAiSuggestedMarket(""); }}
+                    className="mt-1.5 text-xs text-brand hover:underline"
+                  >
+                    Utiliser comme description de marché →
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Suggestions IA */}
+          {aiSuggestions.length > 0 && (
+            <div className="rounded-xl border border-hairline bg-background p-4 space-y-2">
+              <p className="text-xs font-semibold text-ink-soft uppercase tracking-wide mb-3">Concurrents suggérés par l&apos;IA</p>
+              {aiSuggestions.map(s => (
+                <div key={s.domain} className="flex items-center gap-3">
+                  <Image
+                    src={`https://www.google.com/s2/favicons?domain=${s.domain}&sz=32`}
+                    alt=""
+                    width={20}
+                    height={20}
+                    unoptimized
+                    className="h-5 w-5 rounded shrink-0"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-ink">{s.name}</p>
+                    <p className="text-xs text-ink-soft">{s.domain}</p>
+                  </div>
+                  <button
+                    onClick={() => addAiSuggestion(s.domain)}
+                    disabled={competitors.includes(s.domain) || competitors.length >= 10}
+                    className="shrink-0 rounded-lg border border-brand/40 bg-brand/5 px-3 py-1 text-xs font-medium text-brand hover:bg-brand/10 transition disabled:opacity-40"
+                  >
+                    {competitors.includes(s.domain) ? "Ajouté" : "+ Ajouter"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
 
           {competitors.length > 0 && (
             <div className="flex flex-wrap gap-2">
