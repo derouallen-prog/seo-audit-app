@@ -90,6 +90,14 @@ const PLATFORM_CFG: Record<string, { label: string; color: string; bg: string }>
   bing_copilot: { label: "Copilot",    color: "#0078d4", bg: "#e6f2fb" },
 };
 
+const PLATFORM_DOMAIN: Record<string, string> = {
+  perplexity: "perplexity.ai",
+  claude: "claude.ai",
+  gemini: "gemini.google.com",
+  openai: "chatgpt.com",
+  bing_copilot: "bing.com",
+};
+
 const LANGUAGE_LABELS: Record<string, string> = {
   fr: "🇫🇷 Français",
   en: "🇬🇧 English",
@@ -333,11 +341,12 @@ export default function CitationsPage() {
   const [notLoggedIn, setNotLoggedIn] = useState(false);
   const [days, setDays] = useState(30);
   const [language, setLanguage] = useState<string>("");
-  const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [running, setRunning] = useState<string | null>(null);
   const [metricMode, setMetricMode] = useState<"citations" | "mentions">("citations");
   const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
   const [runAllStatus, setRunAllStatus] = useState<{ loading: boolean; ran?: number; errors?: number } | null>(null);
+  const [deletingRuns, setDeletingRuns] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // User profile (for domain pre-fill)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -421,6 +430,15 @@ export default function CitationsPage() {
     } catch {
       setRunAllStatus({ loading: false, errors: 1 });
     }
+  }
+
+  async function deleteAllRuns() {
+    setDeletingRuns(true);
+    try {
+      await fetch("/api/citations/runs", { method: "DELETE" });
+      setShowDeleteConfirm(false);
+      await loadData();
+    } finally { setDeletingRuns(false); }
   }
 
   async function runNow(promptId: string) {
@@ -568,15 +586,6 @@ export default function CitationsPage() {
       {/* Filters bar (Visibilité + Citations) */}
       {tab !== "prompts" && (
         <div className="flex flex-wrap items-center gap-3 mb-6">
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-ink-soft">Période :</span>
-            {[7, 30, 90].map(d => (
-              <button key={d} onClick={() => setDays(d)}
-                className={`px-3 py-1 rounded-lg text-xs font-medium border transition-colors ${days === d ? "border-brand bg-brand/10 text-brand" : "border-hairline text-ink-soft hover:text-ink"}`}>
-                {d}j
-              </button>
-            ))}
-          </div>
           {availableLanguages.length > 1 && (
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-ink-soft">Langue :</span>
@@ -849,8 +858,10 @@ export default function CitationsPage() {
                                   {src.count > 1 && <span className="text-xs text-ink-soft shrink-0">×{src.count}</span>}
                                 </div>
                               </td>
-                              <td className="px-4 py-3 max-w-xs">
-                                <p className="text-xs text-ink-soft truncate">{src.prompt || "—"}</p>
+                              <td className="px-4 py-3 max-w-[260px]">
+                                <div className="overflow-x-auto pb-0.5" style={{ scrollbarWidth: "thin" }}>
+                                  <p className="text-xs text-ink-soft whitespace-nowrap" title={src.prompt}>{src.prompt || "—"}</p>
+                                </div>
                               </td>
                               <td className="px-4 py-3 text-right">
                                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${TYPE_COLORS[src.type] ?? "bg-gray-100 text-gray-600"}`}>
@@ -866,8 +877,8 @@ export default function CitationsPage() {
                 );
               })()}
 
-              {/* Run all button */}
-              <div className="flex items-center gap-3 pt-1">
+              {/* Run all + delete */}
+              <div className="flex items-center gap-3 pt-1 flex-wrap">
                 <button onClick={runAll} disabled={runAllStatus?.loading}
                   className="inline-flex items-center gap-2 rounded-xl border border-hairline px-4 py-2 text-sm font-medium text-ink-soft hover:text-brand hover:border-brand transition disabled:opacity-50">
                   {runAllStatus?.loading ? "Analyse en cours…" : "▶ Relancer l'analyse"}
@@ -878,6 +889,26 @@ export default function CitationsPage() {
                     {(runAllStatus.errors ?? 0) > 0 && ` · ${runAllStatus.errors} erreur(s)`}
                   </p>
                 )}
+                <div className="ml-auto">
+                  {!showDeleteConfirm ? (
+                    <button onClick={() => setShowDeleteConfirm(true)}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 px-4 py-2 text-sm font-medium text-red-500 hover:bg-red-50 hover:border-red-300 transition">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+                      </svg>
+                      Supprimer les données de visibilité
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2 rounded-xl border border-red-300 bg-red-50 px-4 py-2">
+                      <span className="text-xs text-red-700">Supprimer toutes les données ? Cette action est irréversible.</span>
+                      <button onClick={deleteAllRuns} disabled={deletingRuns}
+                        className="text-xs font-semibold text-white bg-red-600 hover:bg-red-700 px-3 py-1 rounded-lg transition disabled:opacity-60">
+                        {deletingRuns ? "…" : "Confirmer"}
+                      </button>
+                      <button onClick={() => setShowDeleteConfirm(false)} className="text-xs text-red-500 hover:text-red-700 transition">Annuler</button>
+                    </div>
+                  )}
+                </div>
               </div>
             </>
           )}
@@ -887,6 +918,61 @@ export default function CitationsPage() {
       {/* ── TAB: Prompts ──────────────────────────────────────────────────── */}
       {tab === "prompts" && (
         <div className="space-y-6 max-w-2xl">
+
+          {/* Détail par prompt — moved here from Citations */}
+          {!loading && results?.runDetails && results.runDetails.length > 0 && (() => {
+            return (
+              <div className="rounded-2xl border border-hairline bg-white overflow-hidden">
+                <div className="px-6 py-4 border-b border-hairline">
+                  <h2 className="font-semibold text-sm text-ink">Détail par prompt</h2>
+                  <p className="text-xs text-ink-soft mt-0.5">Statut de citation pour chaque prompt analysé.</p>
+                </div>
+                <div className="grid grid-cols-[1fr_auto_auto_auto] gap-3 px-5 py-3 border-b border-hairline bg-accent/30 text-xs font-semibold text-ink-soft uppercase tracking-wide">
+                  <span>Prompt</span>
+                  <span>Statut</span>
+                  <span className="text-center">Sources</span>
+                  <span>Plateformes</span>
+                </div>
+                {results.prompts.map(prompt => {
+                  const pRuns = byPrompt[prompt.id] ?? [];
+                  if (!pRuns.length) return null;
+                  const cited = pRuns.some(r => r.cited);
+                  const mentioned = pRuns.some(r => r.mentioned);
+                  const totalSources = pRuns.reduce((a, r) => a + r.sources.length, 0);
+                  return (
+                    <div key={prompt.id} className="grid grid-cols-[1fr_auto_auto_auto] gap-3 px-5 py-4 border-b border-hairline last:border-0 items-center hover:bg-accent/10 transition-colors">
+                      <div className="min-w-0">
+                        <p className="text-sm text-ink line-clamp-2">{prompt.prompt_text}</p>
+                        <span className="text-xs text-ink-soft">{prompt.tracked_url}</span>
+                      </div>
+                      <div className="shrink-0"><CitedBadge cited={cited} mentioned={mentioned} /></div>
+                      <div className="text-sm text-center text-ink-soft shrink-0">{totalSources}</div>
+                      <div className="flex flex-wrap gap-1 shrink-0">
+                        {pRuns.map(r => {
+                          const domain = PLATFORM_DOMAIN[r.platform];
+                          return (
+                            <span key={r.platform} title={`${PLATFORM_CFG[r.platform]?.label ?? r.platform}: ${r.cited ? "cité" : r.mentioned ? "mentionné" : "absent"}`}
+                              className="relative">
+                              {domain ? (
+                                <Image
+                                  src={`https://www.google.com/s2/favicons?domain=${domain}&sz=32`}
+                                  alt={r.platform} width={16} height={16} unoptimized
+                                  className={`rounded w-4 h-4 object-contain transition-opacity ${!r.cited && !r.mentioned ? "opacity-25 grayscale" : ""}`}
+                                />
+                              ) : (
+                                <span className="w-4 h-4 rounded-full inline-block"
+                                  style={{ backgroundColor: r.cited ? PLATFORM_CFG[r.platform]?.color : r.mentioned ? "#93c5fd" : "#d1d5db" }} />
+                              )}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           {/* Step 1: get suggestions */}
           {!generatedPrompts.length && !promptsSaved && (
@@ -1116,86 +1202,13 @@ export default function CitationsPage() {
                 )}
               </div>
 
-              {/* Analyse par prompt */}
-              {!results?.runDetails.length ? (
-                <div className="rounded-2xl border border-dashed border-hairline p-12 text-center">
-                  <p className="text-sm text-ink-soft">Aucun run enregistré sur cette période.</p>
-                  <button onClick={() => setTab("prompts")} className="mt-3 text-xs text-brand hover:underline">
+              {/* No runs hint */}
+              {!results?.runDetails.length && (
+                <div className="rounded-2xl border border-dashed border-hairline p-8 text-center">
+                  <p className="text-sm text-ink-soft mb-2">Aucun run enregistré sur cette période.</p>
+                  <button onClick={() => setTab("prompts")} className="text-xs text-brand hover:underline">
                     Configurer et lancer des prompts →
                   </button>
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-hairline bg-white overflow-hidden">
-                  <div className="px-6 py-4 border-b border-hairline">
-                    <h2 className="font-semibold text-sm text-ink">Détail par prompt</h2>
-                    <p className="text-xs text-ink-soft mt-0.5">Réponse et statut de citation pour chaque prompt analysé.</p>
-                  </div>
-                  <div className="grid grid-cols-[2fr_3fr_auto_auto_auto] gap-4 px-5 py-3 border-b border-hairline bg-accent/30 text-xs font-semibold text-ink-soft uppercase tracking-wide">
-                    <span>Prompt</span>
-                    <span>Réponse IA</span>
-                    <span>Statut</span>
-                    <span className="text-center">Sources</span>
-                    <span>Plateformes</span>
-                  </div>
-                  {results.prompts.map(prompt => {
-                    const pRuns = byPrompt[prompt.id] ?? [];
-                    if (!pRuns.length) return null;
-                    const cited = pRuns.some(r => r.cited);
-                    const mentioned = pRuns.some(r => r.mentioned);
-                    const isOpen = expandedRow === prompt.id;
-                    const firstRun = pRuns[0]!;
-                    return (
-                      <div key={prompt.id} className="border-b border-hairline last:border-0">
-                        <button onClick={() => setExpandedRow(isOpen ? null : prompt.id)}
-                          className="w-full grid grid-cols-[2fr_3fr_auto_auto_auto] gap-4 px-5 py-4 text-left hover:bg-accent/20 transition-colors">
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-ink line-clamp-2">{prompt.prompt_text}</p>
-                            <span className="text-xs text-ink-soft">{prompt.tracked_url}</span>
-                          </div>
-                          <p className="text-xs text-ink-soft line-clamp-3 leading-relaxed self-center">
-                            {firstRun.responseExcerpt || <em>Non disponible</em>}
-                          </p>
-                          <div className="self-center"><CitedBadge cited={cited} mentioned={mentioned} /></div>
-                          <div className="text-sm text-center text-ink-soft self-center">{firstRun.sources.length}</div>
-                          <div className="flex flex-wrap gap-1 self-center">
-                            {pRuns.map(r => (
-                              <span key={r.platform} className="w-2 h-2 rounded-full"
-                                title={`${PLATFORM_CFG[r.platform]?.label}: ${r.cited ? "cité" : r.mentioned ? "mentionné" : "absent"}`}
-                                style={{ backgroundColor: r.cited ? PLATFORM_CFG[r.platform]?.color : r.mentioned ? "#93c5fd" : "#d1d5db" }} />
-                            ))}
-                          </div>
-                        </button>
-                        {isOpen && (
-                          <div className="bg-accent/20 border-t border-hairline divide-y divide-hairline/60">
-                            {pRuns.map(run => (
-                              <div key={run.id} className="px-6 py-4 grid grid-cols-[140px_1fr_auto] gap-4 items-start">
-                                <PlatformBadge platform={run.platform} />
-                                <div>
-                                  {run.responseExcerpt && (
-                                    <p className="text-xs text-ink leading-relaxed mb-2">{run.responseExcerpt}{run.responseExcerpt.length >= 280 ? "…" : ""}</p>
-                                  )}
-                                  {run.sources.length > 0 && (
-                                    <div className="space-y-0.5">
-                                      {run.sources.slice(0, 5).map((s, i) => (
-                                        <p key={i} className={`text-xs truncate ${i === 0 && run.cited ? "text-green-700 font-medium" : "text-ink-soft"}`}>
-                                          {i + 1}. {s}
-                                        </p>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                                <div className="flex flex-col items-end gap-1 shrink-0">
-                                  <CitedBadge cited={run.cited} mentioned={run.mentioned} />
-                                  {run.citation_position && <span className="text-xs text-ink-soft">Pos. #{run.citation_position}</span>}
-                                  <span className="text-xs text-ink-soft">{new Date(run.run_at).toLocaleDateString("fr-FR")}</span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
                 </div>
               )}
 
