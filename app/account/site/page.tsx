@@ -188,11 +188,16 @@ export default function SitePage() {
 
   async function confirmDomainChange() {
     if (!domainChangeDialog) return;
-    // Delete all prompts for the old domain
+    // Wipe all domain-scoped data (prompts, runs, audits, conversations, competitors, market)
     try {
-      await fetch(`/api/citations/prompts?domain=${encodeURIComponent(domainChangeDialog.oldDomain)}`, { method: "DELETE" });
+      await fetch("/api/account/clear-domain-data", { method: "DELETE" });
     } catch { /* non bloquant */ }
     setDomainChangeDialog(null);
+    // Also reset local UI state for competitors and market
+    setCompetitors([]);
+    setMarket("");
+    setAiSuggestions([]);
+    setAiSuggestedMarket("");
     await doSave();
   }
 
@@ -334,8 +339,11 @@ export default function SitePage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
           <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl p-6">
             <h2 className="font-semibold text-base text-ink mb-2">Confirmer le changement de domaine</h2>
+            <p className="text-sm text-ink-soft leading-relaxed mb-2">
+              Êtes-vous sûr de vouloir remplacer <strong className="text-ink">{domainChangeDialog.oldDomain}</strong> par <strong className="text-ink">{domainChangeDialog.newDomain}</strong> ?
+            </p>
             <p className="text-sm text-ink-soft leading-relaxed mb-5">
-              Vous êtes sur le point de remplacer <strong className="text-ink">{domainChangeDialog.oldDomain}</strong> par <strong className="text-ink">{domainChangeDialog.newDomain}</strong>. Cette action supprimera tous les prompts et données Citations IA associés à l&apos;ancien domaine. Cette action est irréversible.
+              Cette action est irréversible et supprimera <strong className="text-ink">toutes les données associées</strong> à l&apos;ancien site : concurrents enregistrés, conversations assistant, pages auditées et données Citations IA.
             </p>
             <div className="flex justify-end gap-3">
               <button onClick={() => setDomainChangeDialog(null)}
@@ -344,7 +352,7 @@ export default function SitePage() {
               </button>
               <button onClick={confirmDomainChange}
                 className="px-4 py-2 rounded-xl bg-red-600 text-sm font-medium text-white hover:bg-red-700 transition">
-                Changer et supprimer
+                Supprimer et changer
               </button>
             </div>
           </div>
