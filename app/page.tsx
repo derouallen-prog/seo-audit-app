@@ -509,11 +509,18 @@ export default function HomePage() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const suggestTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Returns true when the input already contains a TLD (domain is "complete")
+  function hasTLD(v: string): boolean {
+    const clean = v.replace(/^https?:\/\//i, "").replace(/^www\./i, "").split(/[/?#]/)[0] ?? "";
+    return /[a-z0-9-]\.[a-z]{2,10}$/i.test(clean);
+  }
+
   function onUrlChange(v: string) {
     setUrl(v);
     if (suggestTimer.current) clearTimeout(suggestTimer.current);
     const q = v.trim();
-    if (q.length < 2 || /^https?:\/\//i.test(q)) {
+    // Hide suggestions when domain is complete (TLD present) or too short
+    if (q.length < 2 || /^https?:\/\//i.test(q) || hasTLD(q)) {
       setUrlSuggestions([]);
       setShowSuggestions(false);
       return;
@@ -523,8 +530,11 @@ export default function HomePage() {
         const res = await fetch(`https://autocomplete.clearbit.com/v1/companies/suggest?query=${encodeURIComponent(q)}`);
         if (res.ok) {
           const list = (await res.json()) as { name: string; domain: string; logo: string }[];
-          setUrlSuggestions(list);
-          setShowSuggestions(list.length > 0);
+          // Don't show if user typed a TLD while we were fetching
+          if (!hasTLD(q)) {
+            setUrlSuggestions(list);
+            setShowSuggestions(list.length > 0);
+          }
         }
       } catch { /* réseau indisponible */ }
     }, 300);
@@ -535,6 +545,12 @@ export default function HomePage() {
     setUrlSuggestions([]);
     setShowSuggestions(false);
   }
+
+  // Favicon du domaine saisi (Google favicon service, pas de clé requise)
+  const inputDomain = url.trim().replace(/^https?:\/\//i, "").replace(/^www\./i, "").split(/[/?#]/)[0] ?? "";
+  const faviconUrl = hasTLD(url.trim()) && inputDomain
+    ? `https://www.google.com/s2/favicons?domain=${inputDomain}&sz=64`
+    : null;
 
   // Charge un audit existant si ?auditId= est dans l'URL (lien depuis le dashboard)
   useEffect(() => {
@@ -694,12 +710,16 @@ export default function HomePage() {
                   onSubmit={(e) => { e.preventDefault(); onAnalyze(); }}
                   className="flex w-full items-center gap-2 rounded-2xl border border-hairline bg-background p-2 shadow-sm transition-shadow focus-within:border-brand/40 focus-within:shadow-lg"
                 >
-                  <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-muted text-ink-soft">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="10"/>
-                      <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/>
-                      <path d="M2 12h20"/>
-                    </svg>
+                  <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-muted text-ink-soft overflow-hidden">
+                    {faviconUrl ? (
+                      <Image src={faviconUrl} alt="" width={28} height={28} unoptimized className="h-7 w-7 rounded object-contain" />
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/>
+                        <path d="M2 12h20"/>
+                      </svg>
+                    )}
                   </div>
                   <input
                     value={url}

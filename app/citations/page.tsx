@@ -92,6 +92,11 @@ function getWeekKey(isoDate: string): string {
 // ── Domain autocomplete (Clearbit public API, no key required) ─────────────
 interface ClearbitSuggestion { name: string; domain: string; logo: string }
 
+function hasTLD(v: string): boolean {
+  const clean = v.replace(/^https?:\/\//i, "").replace(/^www\./i, "").split(/[/?#]/)[0] ?? "";
+  return /[a-z0-9-]\.[a-z]{2,10}$/i.test(clean);
+}
+
 function DomainAutocomplete({ value, onChange }: { value: string; onChange: (domain: string) => void }) {
   const [query, setQuery] = useState(value);
   const [suggestions, setSuggestions] = useState<ClearbitSuggestion[]>([]);
@@ -99,10 +104,15 @@ function DomainAutocomplete({ value, onChange }: { value: string; onChange: (dom
   const [fetching, setFetching] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const inputDomain = query.trim().replace(/^https?:\/\//i, "").replace(/^www\./i, "").split(/[/?#]/)[0] ?? "";
+  const faviconUrl = hasTLD(query.trim()) && inputDomain
+    ? `https://www.google.com/s2/favicons?domain=${inputDomain}&sz=64`
+    : null;
+
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current);
     const q = query.trim();
-    if (q.length < 2) { setSuggestions([]); return; }
+    if (q.length < 2 || hasTLD(q)) { setSuggestions([]); return; }
     timer.current = setTimeout(async () => {
       setFetching(true);
       try {
@@ -123,6 +133,11 @@ function DomainAutocomplete({ value, onChange }: { value: string; onChange: (dom
 
   return (
     <div className="relative">
+      {faviconUrl && (
+        <div className="pointer-events-none absolute inset-y-0 left-2.5 flex items-center">
+          <Image src={faviconUrl} alt="" width={20} height={20} unoptimized className="h-5 w-5 rounded object-contain" />
+        </div>
+      )}
       <input
         type="text"
         value={query}
@@ -130,7 +145,7 @@ function DomainAutocomplete({ value, onChange }: { value: string; onChange: (dom
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         placeholder="ex: monsite.fr ou votre marque…"
-        className="w-full rounded-lg border border-hairline bg-white px-3 py-2 text-sm focus:outline-none focus:border-brand"
+        className={`w-full rounded-lg border border-hairline bg-white py-2 text-sm focus:outline-none focus:border-brand ${faviconUrl ? "pl-9 pr-3" : "px-3"}`}
       />
       {open && (fetching || suggestions.length > 0) && (
         <div className="absolute z-50 top-full left-0 right-0 mt-1 rounded-xl border border-hairline bg-white shadow-lg overflow-hidden">
