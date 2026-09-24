@@ -1257,25 +1257,35 @@ function AssistantPageInner() {
                 <div className="mb-6">
                   <div className="text-xs font-medium uppercase tracking-wider text-ink-soft mb-3">Suggestions</div>
                   <div className="grid gap-2 sm:grid-cols-2">
-                    {(contextSuggestions
-                      ? [
-                          { ...ANIMATED_SUGGESTIONS[0]!, variants: contextSuggestions.serp },
-                          { ...ANIMATED_SUGGESTIONS[1]!, variants: contextSuggestions.compare },
-                          { ...ANIMATED_SUGGESTIONS[2]!, variants: contextSuggestions.paa },
-                          { ...ANIMATED_SUGGESTIONS[3]!, variants: contextSuggestions.ads },
-                        ]
-                      : ANIMATED_SUGGESTIONS
-                    ).map((suggestion, i) => (
-                      <AnimatedSuggestionCard
-                        key={`${i}-${contextSuggestions ? "ctx" : "default"}`}
-                        suggestion={suggestion}
-                        initialVariantIdx={i}
-                        onSelect={(text) => {
-                          setInput(text);
-                          setTimeout(() => { textareaRef.current?.focus(); autoResize(); }, 0);
-                        }}
-                      />
-                    ))}
+                    {contextSuggestions === null ? (
+                      // Skeleton pendant le chargement des suggestions contextuelles
+                      Array.from({ length: 4 }).map((_, i) => (
+                        <div key={i} className="flex items-center gap-3 rounded-xl border border-hairline bg-background px-4 py-3 animate-pulse">
+                          <div className="h-8 w-8 shrink-0 rounded-lg bg-muted" />
+                          <div className="flex-1 space-y-2">
+                            <div className="h-2.5 rounded bg-muted w-3/4" />
+                            <div className="h-2 rounded bg-muted/60 w-1/2" />
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      [
+                        { ...ANIMATED_SUGGESTIONS[0]!, variants: contextSuggestions.serp },
+                        { ...ANIMATED_SUGGESTIONS[1]!, variants: contextSuggestions.compare },
+                        { ...ANIMATED_SUGGESTIONS[2]!, variants: contextSuggestions.paa },
+                        { ...ANIMATED_SUGGESTIONS[3]!, variants: contextSuggestions.ads },
+                      ].map((suggestion, i) => (
+                        <AnimatedSuggestionCard
+                          key={i}
+                          suggestion={suggestion}
+                          initialVariantIdx={i}
+                          onSelect={(text) => {
+                            setInput(text);
+                            setTimeout(() => { textareaRef.current?.focus(); autoResize(); }, 0);
+                          }}
+                        />
+                      ))
+                    )}
                   </div>
                 </div>
 

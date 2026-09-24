@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
+
+interface TechItem { name: string; category: string; color: string }
 
 interface SiteProfile {
   site_url?: string;
@@ -10,9 +12,13 @@ interface SiteProfile {
   market?: string;
   target_zones?: string[];
   competitors?: string[];
-  tech_stack?: { name: string; category: string; color: string }[];
+  tech_stack?: TechItem[];
   sitemap_count?: number;
 }
+
+// Per-tab save snapshots
+interface AproposSnapshot { siteUrl: string; positioning: string; categories: string[]; market: string; zones: string[]; techStack: TechItem[] }
+interface ConcurrentsSnapshot { competitors: string[] }
 
 const CATEGORIES = ["E-commerce", "Blog & média", "Vente de services", "Formation", "SaaS", "Affiliation", "Forum", "Application mobile", "Vente de leads"];
 const ZONES = ["France", "Belgique", "Suisse", "Canada", "Afrique francophone", "Europe", "International"];
@@ -24,6 +30,14 @@ type ClearbitSuggestion = { name: string; domain: string; logo: string };
 function hasTLD(v: string): boolean {
   const clean = v.replace(/^https?:\/\//i, "").replace(/^www\./i, "").split(/[/?#]/)[0] ?? "";
   return /[a-z0-9-]\.[a-z]{2,10}$/i.test(clean);
+}
+
+function snapshotAproposEq(a: AproposSnapshot, b: AproposSnapshot) {
+  return a.siteUrl === b.siteUrl &&
+    a.positioning === b.positioning &&
+    a.market === b.market &&
+    JSON.stringify(a.categories) === JSON.stringify(b.categories) &&
+    JSON.stringify(a.zones) === JSON.stringify(b.zones);
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -47,7 +61,7 @@ export default function SitePage() {
   const [tab, setTab] = useState<Tab>("À propos");
   const [profile, setProfile] = useState<SiteProfile | null>(null);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [saveLabel, setSaveLabel] = useState<"idle" | "saving" | "updating" | "done">("idle");
 
   // Editable fields
   const [siteUrl, setSiteUrl] = useState("");
@@ -58,63 +72,150 @@ export default function SitePage() {
   const [competitors, setCompetitors] = useState<string[]>([]);
   const [competitorInput, setCompetitorInput] = useState("");
 
-  // Autocomplete Clearbit — champ Mon site
+  // Tech stack (detected dynamically, empty by default)
+  const [techStack, setTechStack] = useState<TechItem[]>([]);
+  const [detectingTech, setDetectingTech] = useState(false);
+  const techDetectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastDetectedDomain = useRef<string>("");
+
+  // Per-tab save snapshots (set after load & after each save)
+  const [savedApropos, setSavedApropos] = useState<AproposSnapshot | null>(null);
+  const [savedConcurrents, setSavedConcurrents] = useState<ConcurrentsSnapshot | null>(null);
+
+  // Pop animation state for save button
+  const [popAnim, setPopAnim] = useState(false);
+  const prevDirtyRef = useRef(false);
+
+  // Autocomplete Clearbit — site
   const [siteUrlSuggestions, setSiteUrlSuggestions] = useState<ClearbitSuggestion[]>([]);
   const [showSiteUrlSuggestions, setShowSiteUrlSuggestions] = useState(false);
   const siteUrlTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Autocomplete Clearbit — champ concurrent
+  // Autocomplete Clearbit — concurrent
   const [competitorSuggestions, setCompetitorSuggestions] = useState<ClearbitSuggestion[]>([]);
   const [showCompetitorSuggestions, setShowCompetitorSuggestions] = useState(false);
   const competitorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Suggestions IA de concurrents
+  // IA suggestions concurrents
   type AiSuggestion = { domain: string; name: string };
   const [aiSuggestions, setAiSuggestions] = useState<AiSuggestion[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSuggestedMarket, setAiSuggestedMarket] = useState("");
 
+  // Load profile once
   useEffect(() => {
     fetch("/api/account/profile").then(r => r.json()).then((d: { profile: SiteProfile | null }) => {
       const p = d.profile ?? {};
       setProfile(p);
-      setSiteUrl(p.site_url ?? "");
-      setPositioning(p.positioning ?? "");
-      setCategories(p.categories ?? []);
-      setMarket(p.market ?? "");
-      setZones(p.target_zones ?? []);
-      setCompetitors(p.competitors ?? []);
+      const su = p.site_url ?? "";
+      const pos = p.positioning ?? "";
+      const cats = p.categories ?? [];
+      const mkt = p.market ?? "";
+      const zns = p.target_zones ?? [];
+      const comp = p.competitors ?? [];
+      const ts = p.tech_stack ?? [];
+      setSiteUrl(su);
+      setPositioning(pos);
+      setCategories(cats);
+      setMarket(mkt);
+      setZones(zns);
+      setCompetitors(comp);
+      setTechStack(ts);
+      setSavedApropos({ siteUrl: su, positioning: pos, categories: cats, market: mkt, zones: zns, techStack: ts });
+      setSavedConcurrents({ competitors: comp });
     });
   }, []);
 
+  // Dirty state per tab
+  const currentApropos: AproposSnapshot = { siteUrl, positioning, categories, market, zones, techStack };
+  const isDirtyApropos = !!savedApropos && !snapshotAproposEq(currentApropos, savedApropos);
+  const isDirtyConcurrents = !!savedConcurrents && JSON.stringify(competitors) !== JSON.stringify(savedConcurrents.competitors);
+  const isDirty = tab === "À propos" ? isDirtyApropos : tab === "Concurrents" ? isDirtyConcurrents : false;
+
+  // Pop animation when dirty becomes true
+  useEffect(() => {
+    if (isDirty && !prevDirtyRef.current) {
+      setPopAnim(true);
+      const t = setTimeout(() => setPopAnim(false), 600);
+      return () => clearTimeout(t);
+    }
+    prevDirtyRef.current = isDirty;
+  }, [isDirty]);
+
+  // Tech stack auto-detection when URL changes to a new TLD domain
+  const siteDisplayVal = siteUrl.replace(/^https?:\/\//i, "");
+  const siteDomain = siteDisplayVal.replace(/^www\./i, "").split(/[/?#]/)[0] ?? "";
+
+  useEffect(() => {
+    if (!hasTLD(siteDisplayVal) || !siteDomain) return;
+    if (siteDomain === lastDetectedDomain.current) return;
+    if (techDetectTimer.current) clearTimeout(techDetectTimer.current);
+    techDetectTimer.current = setTimeout(async () => {
+      lastDetectedDomain.current = siteDomain;
+      setDetectingTech(true);
+      setTechStack([]);
+      try {
+        const res = await fetch(`/api/account/detect-tech?url=${encodeURIComponent(siteDomain)}`);
+        if (res.ok) {
+          const data = (await res.json()) as { tech_stack: TechItem[] };
+          setTechStack(data.tech_stack ?? []);
+        }
+      } catch { /* non bloquant */ }
+      finally { setDetectingTech(false); }
+    }, 1200);
+    return () => { if (techDetectTimer.current) clearTimeout(techDetectTimer.current); };
+  }, [siteDomain, siteDisplayVal]);
+
+  // Save (tab-scoped)
   async function save() {
     setSaving(true);
+    setSaveLabel("saving");
+
+    const payload: Record<string, unknown> = {};
+    if (tab === "À propos") {
+      Object.assign(payload, { site_url: siteUrl, positioning, categories, market, target_zones: zones, tech_stack: techStack });
+    } else if (tab === "Concurrents") {
+      payload.competitors = competitors;
+    }
+
     await fetch("/api/account/profile", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ site_url: siteUrl, positioning, categories, market, target_zones: zones, competitors }),
+      body: JSON.stringify(payload),
     });
+
+    setSaveLabel("updating");
+    // Pre-warm contextual suggestions
+    try { await fetch("/api/account/suggestions"); } catch { /* non bloquant */ }
+
+    setSaveLabel("done");
     setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+
+    // Update snapshots
+    if (tab === "À propos") {
+      setSavedApropos({ siteUrl, positioning, categories, market, zones, techStack });
+    } else if (tab === "Concurrents") {
+      setSavedConcurrents({ competitors });
+    }
+
+    setTimeout(() => setSaveLabel("idle"), 2200);
   }
 
-  function toggleCategory(c: string) {
-    setCategories(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c]);
-  }
-  function toggleZone(z: string) {
-    setZones(prev => prev.includes(z) ? prev.filter(x => x !== z) : [...prev, z]);
-  }
+  const saveButtonLabel =
+    saveLabel === "saving" ? "Enregistrement…" :
+    saveLabel === "updating" ? "Mise à jour IA…" :
+    saveLabel === "done" ? "✓ Contexte mis à jour" :
+    "Enregistrer";
+
+  function toggleCategory(c: string) { setCategories(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c]); }
+  function toggleZone(z: string) { setZones(prev => prev.includes(z) ? prev.filter(x => x !== z) : [...prev, z]); }
+
   function onSiteUrlChange(v: string) {
     const stripped = v.replace(/^https?:\/\//i, "");
     setSiteUrl(stripped);
     if (siteUrlTimer.current) clearTimeout(siteUrlTimer.current);
     const q = stripped.trim();
-    if (q.length < 2 || hasTLD(q)) {
-      setSiteUrlSuggestions([]);
-      setShowSiteUrlSuggestions(false);
-      return;
-    }
+    if (q.length < 2 || hasTLD(q)) { setSiteUrlSuggestions([]); setShowSiteUrlSuggestions(false); return; }
     siteUrlTimer.current = setTimeout(async () => {
       try {
         const res = await fetch(`https://autocomplete.clearbit.com/v1/companies/suggest?query=${encodeURIComponent(q)}`);
@@ -130,11 +231,7 @@ export default function SitePage() {
     setCompetitorInput(v);
     if (competitorTimer.current) clearTimeout(competitorTimer.current);
     const q = v.trim();
-    if (q.length < 2 || hasTLD(q)) {
-      setCompetitorSuggestions([]);
-      setShowCompetitorSuggestions(false);
-      return;
-    }
+    if (q.length < 2 || hasTLD(q)) { setCompetitorSuggestions([]); setShowCompetitorSuggestions(false); return; }
     competitorTimer.current = setTimeout(async () => {
       try {
         const res = await fetch(`https://autocomplete.clearbit.com/v1/companies/suggest?query=${encodeURIComponent(q)}`);
@@ -154,20 +251,17 @@ export default function SitePage() {
     setCompetitorSuggestions([]);
     setShowCompetitorSuggestions(false);
   }
-  function removeCompetitor(c: string) {
-    setCompetitors(prev => prev.filter(x => x !== c));
-  }
+  function removeCompetitor(c: string) { setCompetitors(prev => prev.filter(x => x !== c)); }
 
   async function suggestCompetitorsWithAI() {
-    const domain = siteUrl.trim();
-    if (!domain) return;
+    if (!siteUrl.trim()) return;
     setAiLoading(true);
     setAiSuggestions([]);
     try {
       const res = await fetch("/api/account/suggest-competitors", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ site_url: domain, market: market.trim() || undefined }),
+        body: JSON.stringify({ site_url: siteUrl, market: market.trim() || undefined }),
       });
       if (res.ok) {
         const data = (await res.json()) as { market?: string; competitors?: AiSuggestion[] };
@@ -184,13 +278,12 @@ export default function SitePage() {
     setAiSuggestions(prev => prev.filter(s => s.domain !== domain));
   }
 
-  const hostname = (() => { try { return new URL(siteUrl.startsWith("http") ? siteUrl : `https://${siteUrl}`).hostname; } catch { return siteUrl; } })();
+  const hostname = useCallback(() => {
+    try { return new URL(siteUrl.startsWith("http") ? siteUrl : `https://${siteUrl}`).hostname; } catch { return siteUrl; }
+  }, [siteUrl])();
 
-  const siteDisplayVal = siteUrl.replace(/^https?:\/\//i, "");
-  const siteDomain = siteDisplayVal.replace(/^www\./i, "").split(/[/?#]/)[0] ?? "";
   const siteFaviconUrl = hasTLD(siteDisplayVal) && siteDomain
     ? `https://www.google.com/s2/favicons?domain=${siteDomain}&sz=64` : null;
-
   const competitorDomain = competitorInput.trim().replace(/^https?:\/\//i, "").replace(/^www\./i, "").split(/[/?#]/)[0] ?? "";
   const competitorFaviconUrl = hasTLD(competitorInput.trim()) && competitorDomain
     ? `https://www.google.com/s2/favicons?domain=${competitorDomain}&sz=64` : null;
@@ -212,14 +305,31 @@ export default function SitePage() {
           <h1 className="text-xl font-semibold text-ink">Mon site</h1>
           {hostname && <p className="text-sm text-ink-soft mt-0.5">{hostname}</p>}
         </div>
-        <button
-          onClick={save}
-          disabled={saving}
-          className="flex items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-brand/90 disabled:opacity-60 shrink-0"
-        >
-          {saving ? "Enregistrement…" : saved ? "✓ Enregistré" : "Enregistrer"}
-        </button>
+        {/* Save button: visible only when dirty in current tab */}
+        <div className="h-10 shrink-0">
+          {isDirty && (
+            <button
+              onClick={save}
+              disabled={saving}
+              style={{ animation: popAnim ? "pop 0.35s cubic-bezier(.36,.07,.19,.97)" : undefined }}
+              className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all shrink-0 disabled:opacity-70 ${
+                saveLabel === "done" ? "bg-green-600 hover:bg-green-700" : "bg-brand hover:bg-brand/90"
+              }`}
+            >
+              {saveLabel === "saving" && (
+                <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+              )}
+              {saveLabel === "updating" && (
+                <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+              )}
+              {saveButtonLabel}
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Inline pop keyframe */}
+      <style>{`@keyframes pop{0%,100%{transform:scale(1)}30%{transform:scale(1.12)}70%{transform:scale(0.96)}}`}</style>
 
       {/* URL */}
       <div className="relative">
@@ -242,9 +352,7 @@ export default function SitePage() {
         {showSiteUrlSuggestions && siteUrlSuggestions.length > 0 && (
           <div className="absolute z-50 left-0 right-0 top-full mt-2 rounded-xl border border-hairline bg-white shadow-xl overflow-hidden">
             {siteUrlSuggestions.map(s => (
-              <button
-                key={s.domain}
-                type="button"
+              <button key={s.domain} type="button"
                 onMouseDown={() => { setSiteUrl(s.domain); setSiteUrlSuggestions([]); setShowSiteUrlSuggestions(false); }}
                 className="w-full flex items-center gap-3 px-4 py-3 hover:bg-accent/40 transition-colors text-left"
               >
@@ -265,9 +373,7 @@ export default function SitePage() {
       {/* Tabs */}
       <div className="border-b border-hairline flex gap-0">
         {TABS.map(t => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
+          <button key={t} onClick={() => setTab(t)}
             className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
               tab === t ? "border-brand text-brand" : "border-transparent text-ink-soft hover:text-ink"
             }`}
@@ -280,7 +386,6 @@ export default function SitePage() {
       {/* Tab: À propos */}
       {tab === "À propos" && (
         <div className="space-y-6">
-          {/* Catégories */}
           <div>
             <SectionLabel>Contexte métier</SectionLabel>
             <p className="text-xs text-ink-soft mb-3">Quelles catégories définissent le mieux ton site ?</p>
@@ -291,31 +396,23 @@ export default function SitePage() {
             </div>
           </div>
 
-          {/* Positionnement + Marché */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <SectionLabel>Positionnement</SectionLabel>
-              <textarea
-                value={positioning}
-                onChange={e => setPositioning(e.target.value)}
-                rows={4}
+              <textarea value={positioning} onChange={e => setPositioning(e.target.value)} rows={4}
                 placeholder="Décris en 1-3 phrases ce que ton site propose et à qui…"
                 className="w-full rounded-xl border border-hairline bg-background px-3 py-2.5 text-sm text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all resize-none placeholder:text-ink-soft/50"
               />
             </div>
             <div>
               <SectionLabel>Marché</SectionLabel>
-              <textarea
-                value={market}
-                onChange={e => setMarket(e.target.value)}
-                rows={4}
-                placeholder="Ex : Perruques et accessoires capillaires pour alopécie…"
+              <textarea value={market} onChange={e => setMarket(e.target.value)} rows={4}
+                placeholder="Ex : Vente d'épices et condiments bio en ligne…"
                 className="w-full rounded-xl border border-hairline bg-background px-3 py-2.5 text-sm text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all resize-none placeholder:text-ink-soft/50"
               />
             </div>
           </div>
 
-          {/* Zone cible */}
           <div>
             <SectionLabel>Zone cible</SectionLabel>
             <div className="flex flex-wrap gap-2">
@@ -325,24 +422,32 @@ export default function SitePage() {
             </div>
           </div>
 
-          {/* Stack tech */}
-          {(profile.tech_stack?.length ?? 0) > 0 && (
-            <div>
-              <SectionLabel>Stack technique détectée</SectionLabel>
+          {/* Stack tech — détectée dynamiquement, vide par défaut */}
+          <div>
+            <SectionLabel>Stack technique détectée</SectionLabel>
+            {detectingTech ? (
+              <div className="flex items-center gap-2 text-xs text-ink-soft">
+                <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                Analyse de la stack…
+              </div>
+            ) : techStack.length > 0 ? (
               <div className="flex flex-wrap gap-2">
-                {profile.tech_stack!.map(t => (
-                  <span
-                    key={t.name}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-background px-3 py-1.5 text-xs font-medium text-ink"
-                    style={{ borderLeftColor: t.color, borderLeftWidth: 3 }}
-                  >
+                {techStack.map(t => (
+                  <span key={t.name} className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-background px-3 py-1.5 text-xs font-medium text-ink"
+                    style={{ borderLeftColor: t.color, borderLeftWidth: 3 }}>
                     {t.name}
                     <span className="text-[10px] text-ink-soft">{t.category}</span>
                   </span>
                 ))}
               </div>
-            </div>
-          )}
+            ) : (
+              <p className="text-xs text-ink-soft/50">
+                {hasTLD(siteDisplayVal)
+                  ? "Aucune technologie reconnue détectée."
+                  : "Renseigne ton URL ci-dessus pour détecter la stack automatiquement."}
+              </p>
+            )}
+          </div>
         </div>
       )}
 
@@ -352,27 +457,18 @@ export default function SitePage() {
           <div className="flex items-start justify-between gap-3">
             <p className="text-sm text-ink-soft">Ces domaines alimentent les analyses comparatives de l&apos;assistant SEO.</p>
             {siteFaviconUrl && competitors.length < 10 && (
-              <button
-                onClick={suggestCompetitorsWithAI}
-                disabled={aiLoading}
+              <button onClick={suggestCompetitorsWithAI} disabled={aiLoading}
                 className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-brand/30 bg-brand/5 px-3 py-1.5 text-xs font-medium text-brand hover:bg-brand/10 transition disabled:opacity-60"
               >
                 {aiLoading ? (
-                  <>
-                    <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                    Analyse en cours…
-                  </>
+                  <><svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>Analyse en cours…</>
                 ) : (
-                  <>
-                    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2zM6 8l1.5 1.5L10 6"/></svg>
-                    Suggérer via IA
-                  </>
+                  <><svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2z"/><path d="M6 8.5l1.5 1.5L10.5 6.5"/></svg>Suggérer via IA</>
                 )}
               </button>
             )}
           </div>
 
-          {/* Marché détecté par l'IA */}
           {aiSuggestedMarket && (
             <div className="rounded-xl border border-brand/20 bg-brand/5 px-4 py-3 flex items-start gap-3">
               <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0 mt-0.5 text-brand" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v3.5l2 1"/></svg>
@@ -380,10 +476,8 @@ export default function SitePage() {
                 <p className="text-xs font-semibold text-brand mb-0.5">Marché détecté</p>
                 <p className="text-sm text-ink">{aiSuggestedMarket}</p>
                 {!market.trim() && (
-                  <button
-                    onClick={() => { setMarket(aiSuggestedMarket); setAiSuggestedMarket(""); }}
-                    className="mt-1.5 text-xs text-brand hover:underline"
-                  >
+                  <button onClick={() => { setMarket(aiSuggestedMarket); setAiSuggestedMarket(""); }}
+                    className="mt-1.5 text-xs text-brand hover:underline">
                     Utiliser comme description de marché →
                   </button>
                 )}
@@ -391,29 +485,19 @@ export default function SitePage() {
             </div>
           )}
 
-          {/* Suggestions IA */}
           {aiSuggestions.length > 0 && (
-            <div className="rounded-xl border border-hairline bg-background p-4 space-y-2">
-              <p className="text-xs font-semibold text-ink-soft uppercase tracking-wide mb-3">Concurrents suggérés par l&apos;IA</p>
+            <div className="rounded-xl border border-hairline bg-background p-4 space-y-3">
+              <p className="text-xs font-semibold text-ink-soft uppercase tracking-wide">Concurrents suggérés par l&apos;IA</p>
               {aiSuggestions.map(s => (
                 <div key={s.domain} className="flex items-center gap-3">
-                  <Image
-                    src={`https://www.google.com/s2/favicons?domain=${s.domain}&sz=32`}
-                    alt=""
-                    width={20}
-                    height={20}
-                    unoptimized
-                    className="h-5 w-5 rounded shrink-0"
-                  />
+                  <Image src={`https://www.google.com/s2/favicons?domain=${s.domain}&sz=32`} alt="" width={20} height={20} unoptimized className="h-5 w-5 rounded shrink-0" />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-ink">{s.name}</p>
                     <p className="text-xs text-ink-soft">{s.domain}</p>
                   </div>
-                  <button
-                    onClick={() => addAiSuggestion(s.domain)}
+                  <button onClick={() => addAiSuggestion(s.domain)}
                     disabled={competitors.includes(s.domain) || competitors.length >= 10}
-                    className="shrink-0 rounded-lg border border-brand/40 bg-brand/5 px-3 py-1 text-xs font-medium text-brand hover:bg-brand/10 transition disabled:opacity-40"
-                  >
+                    className="shrink-0 rounded-lg border border-brand/40 bg-brand/5 px-3 py-1 text-xs font-medium text-brand hover:bg-brand/10 transition disabled:opacity-40">
                     {competitors.includes(s.domain) ? "Ajouté" : "+ Ajouter"}
                   </button>
                 </div>
@@ -443,23 +527,18 @@ export default function SitePage() {
                     : <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 3v10M3 8h10" /></svg>
                   }
                 </span>
-                <input
-                  value={competitorInput}
-                  onChange={e => onCompetitorInputChange(e.target.value)}
+                <input value={competitorInput} onChange={e => onCompetitorInputChange(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addCompetitor(); } }}
                   onBlur={() => setTimeout(() => setShowCompetitorSuggestions(false), 150)}
                   onFocus={() => competitorSuggestions.length > 0 && setShowCompetitorSuggestions(true)}
-                  placeholder="concurrent.fr + Entrée"
-                  disabled={competitors.length >= 10}
+                  placeholder="concurrent.fr + Entrée" disabled={competitors.length >= 10}
                   className="flex-1 bg-transparent px-3 py-3 text-sm text-ink outline-none placeholder:text-ink-soft/50"
                 />
               </div>
               {showCompetitorSuggestions && competitorSuggestions.length > 0 && (
                 <div className="absolute z-50 left-0 right-0 top-full mt-2 rounded-xl border border-hairline bg-white shadow-xl overflow-hidden">
                   {competitorSuggestions.map(s => (
-                    <button
-                      key={s.domain}
-                      type="button"
+                    <button key={s.domain} type="button"
                       onMouseDown={() => { setCompetitorInput(s.domain); setCompetitorSuggestions([]); setShowCompetitorSuggestions(false); }}
                       className="w-full flex items-center gap-3 px-4 py-3 hover:bg-accent/40 transition-colors text-left"
                     >
@@ -476,11 +555,8 @@ export default function SitePage() {
                 </div>
               )}
             </div>
-            <button
-              onClick={addCompetitor}
-              disabled={!competitorInput.trim() || competitors.length >= 10}
-              className="rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40 hover:bg-brand/90 transition"
-            >
+            <button onClick={addCompetitor} disabled={!competitorInput.trim() || competitors.length >= 10}
+              className="rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40 hover:bg-brand/90 transition">
               Ajouter
             </button>
           </div>
