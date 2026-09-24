@@ -72,6 +72,15 @@ interface UserProfile {
   competitors?: string[] | null;
 }
 
+type VolumeLevel = "faible" | "moyen" | "élevé";
+
+interface GeneratedPrompt {
+  keyword: string;
+  prompt_text: string;
+  intent: Intent;
+  estimated_volume?: VolumeLevel;
+}
+
 // ── Platform config ────────────────────────────────────────────────────────
 const PLATFORM_CFG: Record<string, { label: string; color: string; bg: string }> = {
   perplexity:   { label: "Perplexity", color: "#20808d", bg: "#e6f4f5" },
@@ -338,12 +347,13 @@ export default function CitationsPage() {
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState("");
 
-  // Keyword generation
+  // Prompt generation
   const [kwInput, setKwInput] = useState("");
-  const [generatedPrompts, setGeneratedPrompts] = useState<{ keyword: string; prompt_text: string; intent: Intent }[]>([]);
+  const [brandName, setBrandName] = useState("");
+  const [generatedPrompts, setGeneratedPrompts] = useState<GeneratedPrompt[]>([]);
   const [generating, setGenerating] = useState(false);
-  const [generatingFromProfile, setGeneratingFromProfile] = useState(false);
   const [savingAll, setSavingAll] = useState(false);
+  const [promptsSaved, setPromptsSaved] = useState(false);
 
   // Load user profile and pre-fill domain
   useEffect(() => {
@@ -421,29 +431,33 @@ export default function CitationsPage() {
     } finally { setRunning(null); }
   }
 
+  async function getSuggestions() {
+    const domain = form.tracked_url || (userProfile?.site_url ?? "");
+    const brand = brandName || domain.replace(/\.[^.]+$/, "");
+    if (!brand && !domain) return;
+    setGenerating(true);
+    setGeneratedPrompts([]);
+    setPromptsSaved(false);
+    try {
+      const res = await fetch("/api/citations/generate-prompts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brand, domain, language: form.language, market: userProfile?.market }),
+      });
+      if (res.ok) { const d = await res.json() as { prompts: GeneratedPrompt[] }; setGeneratedPrompts(d.prompts ?? []); }
+    } finally { setGenerating(false); }
+  }
+
   async function generateFromKeywords() {
     const keywords = kwInput.split(/[,\n]+/).map(k => k.trim()).filter(Boolean).slice(0, 15);
     if (!keywords.length) return;
     setGenerating(true);
     setGeneratedPrompts([]);
+    setPromptsSaved(false);
     try {
       const res = await fetch("/api/citations/generate-prompts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ keywords, language: form.language }) });
-      if (res.ok) { const d = await res.json() as { prompts: typeof generatedPrompts }; setGeneratedPrompts(d.prompts ?? []); }
+      if (res.ok) { const d = await res.json() as { prompts: GeneratedPrompt[] }; setGeneratedPrompts(d.prompts ?? []); }
     } finally { setGenerating(false); }
-  }
-
-  async function generateFromProfile() {
-    if (!userProfile?.market) return;
-    setGeneratingFromProfile(true);
-    setGeneratedPrompts([]);
-    const keywords = [
-      userProfile.market,
-      ...(userProfile.competitors ?? []).slice(0, 3),
-    ].filter(Boolean);
-    try {
-      const res = await fetch("/api/citations/generate-prompts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ keywords, language: form.language, market: userProfile.market }) });
-      if (res.ok) { const d = await res.json() as { prompts: typeof generatedPrompts }; setGeneratedPrompts(d.prompts ?? []); }
-    } finally { setGeneratingFromProfile(false); }
   }
 
   async function saveAllGenerated() {
@@ -455,6 +469,7 @@ export default function CitationsPage() {
       }
       setGeneratedPrompts([]);
       setKwInput("");
+      setPromptsSaved(true);
       await loadData();
     } finally { setSavingAll(false); }
   }
@@ -605,43 +620,147 @@ export default function CitationsPage() {
               </div>
               <h3 className="font-display text-xl text-ink mb-2">Surveillez votre visibilité IA</h3>
               <p className="text-sm text-ink-soft max-w-md mx-auto leading-relaxed">
-                Configurez des prompts dans l&apos;onglet <strong>Prompts</strong>, puis lancez une analyse pour voir si votre marque apparaît dans les réponses des LLMs — en citation (URL) ou en mention (texte).
+                {prompts.length > 0
+                  ? `${prompts.length} prompt${prompts.length > 1 ? "s" : ""} configuré${prompts.length > 1 ? "s" : ""} — lancez une analyse pour voir vos données.`
+                  : "Configurez des prompts dans l'onglet Prompts, puis lancez une analyse."}
               </p>
               <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
-                <button onClick={() => setTab("prompts")}
-                  className="inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-dark transition shadow glow-brand">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-                  </svg>
-                  Configurer mes prompts
-                </button>
+                {prompts.length > 0 ? (
+                  <button onClick={runAll} disabled={runAllStatus?.loading}
+                    className="inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-dark transition shadow glow-brand disabled:opacity-60">
+                    {runAllStatus?.loading ? "Analyse en cours…" : "▶ Lancer l'analyse"}
+                  </button>
+                ) : (
+                  <button onClick={() => setTab("prompts")}
+                    className="inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-dark transition shadow glow-brand">
+                    Configurer mes prompts →
+                  </button>
+                )}
               </div>
+              {runAllStatus && !runAllStatus.loading && (
+                <p className={`mt-3 text-xs ${(runAllStatus.errors ?? 0) > 0 ? "text-amber-600" : "text-green-700"}`}>
+                  {runAllStatus.ran} analyse{(runAllStatus.ran ?? 0) !== 1 ? "s" : ""} terminée{(runAllStatus.ran ?? 0) !== 1 ? "s" : ""}
+                  {(runAllStatus.errors ?? 0) > 0 && ` · ${runAllStatus.errors} erreur(s)`}
+                </p>
+              )}
             </div>
           ) : (
             <>
-              {/* Top KPIs */}
-              <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr_1fr_1fr] gap-4 items-stretch">
-                <div className="rounded-2xl border border-hairline bg-white p-6 flex flex-col items-center justify-center">
-                  <SoVDonut value={results?.shareOfVoice ?? 0} rank={sovRank} total={sovTotal} />
-                </div>
-                <div className={`rounded-2xl border p-5 ${metricMode === "citations" ? "border-green-200 bg-green-50" : "border-hairline bg-white"}`}>
-                  <p className="text-xs text-ink-soft mb-1">Citations (URL)</p>
-                  <p className="text-4xl font-bold text-green-700">{totalCited}</p>
-                  <p className="text-xs text-ink-soft mt-2">URL apparaît dans les sources IA</p>
-                  <div className="mt-3"><TrendBars data={results?.trend ?? []} field="share" selectedWeek={selectedWeek} onBarClick={w => setSelectedWeek(w || null)} /></div>
-                </div>
-                <div className={`rounded-2xl border p-5 ${metricMode === "mentions" ? "border-blue-200 bg-blue-50" : "border-hairline bg-white"}`}>
-                  <p className="text-xs text-ink-soft mb-1">Mentions (texte)</p>
-                  <p className="text-4xl font-bold text-blue-600">{totalMentioned}</p>
-                  <p className="text-xs text-ink-soft mt-2">Marque évoquée dans la réponse</p>
-                  <div className="mt-3"><TrendBars data={results?.trend ?? []} field="mentionShare" selectedWeek={selectedWeek} onBarClick={w => setSelectedWeek(w || null)} /></div>
-                </div>
+              {/* ── 4 KPI cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { label: "VISIBILITY", value: `${results?.shareOfVoice ?? 0}%`, sub: `Rang #${sovRank}/${sovTotal}`, color: "text-ink" },
+                  { label: "CITATIONS", value: String(totalCited), sub: "URLs dans sources IA", color: "text-green-700" },
+                  { label: "MENTIONS", value: String(totalMentioned), sub: "Marque dans réponses", color: "text-blue-600" },
+                  { label: "VOS PAGES", value: String(results?.topPages?.length ?? 0), sub: "URLs citées distinctes", color: "text-purple-700" },
+                ].map(k => (
+                  <div key={k.label} className="rounded-xl border border-hairline bg-white px-4 py-4">
+                    <p className="text-[10px] font-semibold tracking-widest text-ink-soft/60 uppercase mb-1">{k.label}</p>
+                    <p className={`text-2xl font-bold ${k.color}`}>{k.value}</p>
+                    <p className="text-xs text-ink-soft mt-1">{k.sub}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* ── Trend chart + Competitor leaderboard */}
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-4">
+
+                {/* Trend polyline */}
                 <div className="rounded-2xl border border-hairline bg-white p-5">
-                  <p className="text-xs text-ink-soft mb-1">Runs ({days}j)</p>
-                  <p className="text-4xl font-bold text-ink">{totalRuns}</p>
-                  <p className="text-xs text-ink-soft mt-2">{prompts.filter(p => p.active).length} prompts actifs</p>
-                  <p className="text-xs text-ink-soft mt-1">{activePlatforms.join(" · ")}</p>
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="font-semibold text-sm text-ink">Évolution sur {days}j</h2>
+                    <div className="flex items-center gap-1 rounded-lg bg-accent/60 p-0.5">
+                      <button onClick={() => setMetricMode("citations")}
+                        className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${metricMode === "citations" ? "bg-white text-ink shadow-sm" : "text-ink-soft"}`}>
+                        Citations
+                      </button>
+                      <button onClick={() => setMetricMode("mentions")}
+                        className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${metricMode === "mentions" ? "bg-white text-ink shadow-sm" : "text-ink-soft"}`}>
+                        Mentions
+                      </button>
+                    </div>
+                  </div>
+                  {(() => {
+                    const trend = results?.trend ?? [];
+                    if (!trend.length) return <p className="text-xs text-ink-soft text-center py-8">Pas encore de données de tendance.</p>;
+                    const field = metricMode === "citations" ? "share" : "mentionShare";
+                    const vals = trend.map(d => d[field]);
+                    const max = Math.max(...vals, 1);
+                    const W = 560; const H = 120; const pad = 8;
+                    const pts = trend.map((d, i) => {
+                      const x = pad + (i / Math.max(trend.length - 1, 1)) * (W - 2 * pad);
+                      const y = H - pad - (d[field] / max) * (H - 2 * pad);
+                      return `${x},${y}`;
+                    }).join(" ");
+                    const areaBot = H - pad;
+                    const firstPt = `${pad},${H - pad}`;
+                    const lastPt = `${W - pad},${H - pad}`;
+                    const lineColor = metricMode === "citations" ? "#10b981" : "#3b82f6";
+                    const areaColor = metricMode === "citations" ? "#10b98118" : "#3b82f618";
+                    return (
+                      <div className="overflow-x-auto">
+                        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" className="w-full" style={{ minWidth: 200, height: 120 }}>
+                          {/* gridlines */}
+                          {[0,25,50,75,100].map(v => {
+                            const y = H - pad - (v / 100) * (H - 2 * pad);
+                            return <line key={v} x1={pad} y1={y} x2={W - pad} y2={y} stroke="#f3f4f6" strokeWidth="1"/>;
+                          })}
+                          {/* area fill */}
+                          <polyline points={`${firstPt} ${pts} ${lastPt} ${pad},${areaBot}`} fill={areaColor} stroke="none"/>
+                          {/* line */}
+                          <polyline points={pts} fill="none" stroke={lineColor} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>
+                          {/* dots */}
+                          {trend.map((d, i) => {
+                            const x = pad + (i / Math.max(trend.length - 1, 1)) * (W - 2 * pad);
+                            const y = H - pad - (d[field] / max) * (H - 2 * pad);
+                            return <circle key={i} cx={x} cy={y} r="3" fill={lineColor} stroke="white" strokeWidth="1.5">
+                              <title>{new Date(d.week + "T12:00:00Z").toLocaleDateString("fr-FR", { day: "numeric", month: "short" })} : {d[field]}%</title>
+                            </circle>;
+                          })}
+                        </svg>
+                        {/* x labels */}
+                        <div className="flex justify-between mt-1 px-1">
+                          {trend.filter((_, i) => i === 0 || i === Math.floor(trend.length / 2) || i === trend.length - 1).map((d, i) => (
+                            <span key={i} className="text-[10px] text-ink-soft">
+                              {new Date(d.week + "T12:00:00Z").toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
+
+                {/* Competitor leaderboard */}
+                {results?.competitorMatrix && results.competitorMatrix.length > 0 && (
+                  <div className="rounded-2xl border border-hairline bg-white p-5">
+                    <h2 className="font-semibold text-sm text-ink mb-4">Benchmark IA</h2>
+                    <div className="space-y-2.5">
+                      {results.competitorMatrix.slice(0, 7).map((row, i) => {
+                        const maxTotal = results.competitorMatrix[0]?.total ?? 1;
+                        const share = Math.round((row.total / Math.max(totalRuns, 1)) * 100);
+                        return (
+                          <div key={row.domain} className="flex items-center gap-2">
+                            <Image
+                              src={`https://www.google.com/s2/favicons?domain=${row.domain}&sz=32`}
+                              alt="" width={16} height={16} unoptimized
+                              className="rounded shrink-0 w-4 h-4 object-contain"
+                            />
+                            <p className="flex-1 text-xs text-ink truncate min-w-0">{row.domain}</p>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <div className="w-14 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                                <div className="h-full rounded-full bg-brand/60 transition-all"
+                                  style={{ width: `${(row.total / maxTotal) * 100}%` }} />
+                              </div>
+                              <span className="text-xs font-semibold text-ink w-8 text-right">{share}%</span>
+                              <span className="text-xs text-ink-soft w-3">#{i + 1}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Weekly drill-down */}
@@ -654,136 +773,112 @@ export default function CitationsPage() {
                 />
               )}
 
-              {/* Platform breakdown */}
-              <div className="rounded-2xl border border-hairline bg-white p-6">
-                <div className="flex items-center justify-between mb-5">
-                  <h2 className="font-semibold text-sm text-ink">Répartition par plateforme</h2>
-                  <div className="flex items-center gap-4 text-xs text-ink-soft">
-                    <span className="flex items-center gap-1.5">
-                      <span className="inline-block w-3 h-1.5 rounded-full bg-green-500" />Citation (URL)
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="inline-block w-3 h-1.5 rounded-full bg-blue-400" />Mention (texte)
-                    </span>
-                  </div>
-                </div>
-                <div className="space-y-5">
-                  {PLATFORMS.filter(p => results?.citationShare[p]).map(p => {
-                    const cit = results!.citationShare[p]!;
-                    const men = results?.mentionShare[p];
-                    const cfg = PLATFORM_CFG[p]!;
-                    return (
-                      <div key={p} className="flex items-center gap-4">
-                        <div className="w-24 shrink-0">
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium"
-                            style={{ backgroundColor: cfg.bg, color: cfg.color }}>
-                            {cfg.label}
-                          </span>
-                        </div>
-                        <div className="flex-1 space-y-1.5">
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 h-2 rounded-full bg-gray-100 overflow-hidden">
-                              <div className="h-full rounded-full bg-green-500 transition-all duration-700"
-                                style={{ width: `${cit.share}%` }} />
-                            </div>
-                            <span className="text-xs font-semibold text-green-700 w-10 text-right">{cit.share}%</span>
-                            <span className="text-xs text-ink-soft w-14 text-right">{cit.cited}/{cit.total}</span>
-                          </div>
-                          {men && (
-                            <div className="flex items-center gap-2">
-                              <div className="flex-1 h-2 rounded-full bg-gray-100 overflow-hidden">
-                                <div className="h-full rounded-full bg-blue-400 transition-all duration-700"
-                                  style={{ width: `${men.share}%` }} />
-                              </div>
-                              <span className="text-xs font-semibold text-blue-600 w-10 text-right">{men.share}%</span>
-                              <span className="text-xs text-ink-soft w-14 text-right">{men.mentioned}/{men.total}</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              {/* ── Sources table (Promptwatch style) */}
+              {results?.runDetails && results.runDetails.length > 0 && (() => {
+                // Collect unique cited sources with favicon + type inference
+                const sourceMap: Map<string, { url: string; domain: string; prompt: string; type: string; count: number }> = new Map();
+                const TYPE_RULES: [RegExp, string][] = [
+                  [/reddit\.com/i, "Forum"],
+                  [/quora\.com/i, "Forum"],
+                  [/trustpilot|avis|reviews?|g2\.com|capterra/i, "Avis"],
+                  [/wikipedia\.org/i, "Encyclopédie"],
+                  [/youtube\.com/i, "Vidéo"],
+                  [/amazon\.|fnac\.|cdiscount\.|darty\./i, "E-commerce"],
+                  [/\.gov|\.gouv/i, "Officiel"],
+                  [/blog|article|magazine|media|presse|news|actu/i, "Blog/Media"],
+                ];
+                for (const rd of results.runDetails) {
+                  for (const src of rd.sources.slice(0, 5)) {
+                    const domain = src.replace(/^https?:\/\/(www\.)?/i, "").split(/[/?#]/)[0] ?? "";
+                    if (!domain) continue;
+                    const existing = sourceMap.get(domain);
+                    if (existing) { existing.count++; continue; }
+                    let type = "Corporate";
+                    for (const [re, t] of TYPE_RULES) {
+                      if (re.test(domain) || re.test(src)) { type = t; break; }
+                    }
+                    const promptObj = results.prompts.find(p => p.id === rd.prompt_id);
+                    sourceMap.set(domain, { url: src, domain, prompt: promptObj?.prompt_text ?? "", type, count: 1 });
+                  }
+                }
+                const sourceList = [...sourceMap.values()].sort((a, b) => b.count - a.count).slice(0, 12);
+                if (!sourceList.length) return null;
 
-              {/* Competitor benchmark */}
-              {results?.competitorMatrix && results.competitorMatrix.length > 0 && (
-                <div className="rounded-2xl border border-hairline bg-white overflow-hidden">
-                  <div className="px-6 py-4 border-b border-hairline flex items-start justify-between gap-4">
-                    <div>
-                      <h2 className="font-semibold text-sm text-ink">Benchmark concurrentiel</h2>
-                      <p className="text-xs text-ink-soft mt-0.5">Domaines cités en concurrence sur les mêmes prompts.</p>
+                const TYPE_COLORS: Record<string, string> = {
+                  Forum: "bg-orange-50 text-orange-700",
+                  Avis: "bg-yellow-50 text-yellow-700",
+                  "Blog/Media": "bg-blue-50 text-blue-700",
+                  Encyclopédie: "bg-gray-100 text-gray-600",
+                  Vidéo: "bg-red-50 text-red-600",
+                  "E-commerce": "bg-purple-50 text-purple-700",
+                  Officiel: "bg-green-50 text-green-700",
+                  Corporate: "bg-slate-100 text-slate-600",
+                };
+                return (
+                  <div className="rounded-2xl border border-hairline bg-white overflow-hidden">
+                    <div className="px-6 py-4 border-b border-hairline flex items-center gap-4 flex-wrap">
+                      <div>
+                        <h2 className="font-semibold text-sm text-ink">Sources citées par les IA</h2>
+                        <p className="text-xs text-ink-soft mt-0.5">Domaines qui apparaissent le plus souvent dans les réponses sur vos prompts.</p>
+                      </div>
+                      <div className="flex items-center gap-4 ml-auto text-xs">
+                        <span className="text-ink-soft"><strong className="text-ink">{results.runDetails.reduce((a, r) => a + r.sources.length, 0)}</strong> sources totales</span>
+                        <span className="text-ink-soft"><strong className="text-ink">{results.topPages?.length ?? 0}</strong> de vos pages</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-xs text-ink-soft">Rang :</span>
-                      <span className="font-semibold text-sm text-ink">#{sovRank}</span>
-                      <span className="text-xs text-ink-soft">/ {sovTotal}</span>
-                    </div>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-hairline bg-accent/30">
-                          <th className="text-left px-6 py-3 text-xs font-semibold text-ink-soft uppercase tracking-wide">Domaine</th>
-                          <th className="px-4 py-3 text-xs font-semibold text-ink-soft uppercase tracking-wide text-center">Total</th>
-                          {PLATFORMS.filter(p => results.competitorMatrix.some(r => r.byPlatform[p])).map(p => (
-                            <th key={p} className="px-4 py-3 text-center">
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-                                style={{ backgroundColor: PLATFORM_CFG[p]?.bg, color: PLATFORM_CFG[p]?.color }}>
-                                {PLATFORM_CFG[p]?.label}
-                              </span>
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-hairline">
-                        {results.competitorMatrix.map((row, i) => {
-                          const maxTotal = results.competitorMatrix[0]?.total ?? 1;
-                          const pCols = PLATFORMS.filter(p => results.competitorMatrix.some(r => r.byPlatform[p]));
-                          return (
-                            <tr key={row.domain} className="hover:bg-accent/10 transition-colors">
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b border-hairline bg-accent/30">
+                            <th className="text-left px-6 py-2.5 text-xs font-semibold text-ink-soft uppercase tracking-wide">Source</th>
+                            <th className="text-left px-4 py-2.5 text-xs font-semibold text-ink-soft uppercase tracking-wide">Prompt associé</th>
+                            <th className="px-4 py-2.5 text-xs font-semibold text-ink-soft uppercase tracking-wide text-right">Type</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-hairline">
+                          {sourceList.map(src => (
+                            <tr key={src.domain} className="hover:bg-accent/10 transition-colors">
                               <td className="px-6 py-3">
-                                <div className="flex items-center gap-3">
-                                  <span className="text-xs font-mono text-ink-soft w-5">{i + 1}</span>
-                                  <span className="font-medium text-ink">{row.domain}</span>
+                                <div className="flex items-center gap-2.5">
+                                  <Image
+                                    src={`https://www.google.com/s2/favicons?domain=${src.domain}&sz=32`}
+                                    alt="" width={18} height={18} unoptimized
+                                    className="rounded shrink-0 w-[18px] h-[18px] object-contain"
+                                  />
+                                  <span className="text-sm font-medium text-ink truncate max-w-[200px]">{src.domain}</span>
+                                  {src.count > 1 && <span className="text-xs text-ink-soft shrink-0">×{src.count}</span>}
                                 </div>
                               </td>
-                              <td className="px-4 py-3">
-                                <div className="flex items-center gap-2 justify-end">
-                                  <div className="w-16 h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                                    <div className="h-full rounded-full bg-gray-400 transition-all"
-                                      style={{ width: `${(row.total / maxTotal) * 100}%` }} />
-                                  </div>
-                                  <span className="text-xs font-semibold text-ink w-6 text-right">{row.total}</span>
-                                </div>
+                              <td className="px-4 py-3 max-w-xs">
+                                <p className="text-xs text-ink-soft truncate">{src.prompt || "—"}</p>
                               </td>
-                              {pCols.map(p => {
-                                const val = row.byPlatform[p] ?? 0;
-                                const maxForP = Math.max(...results.competitorMatrix.map(r => r.byPlatform[p] ?? 0), 1);
-                                return (
-                                  <td key={p} className="px-4 py-3 text-center">
-                                    {val > 0 ? (
-                                      <div className="flex items-center gap-1.5 justify-center">
-                                        <div className="w-12 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: PLATFORM_CFG[p]?.bg }}>
-                                          <div className="h-full rounded-full transition-all"
-                                            style={{ width: `${(val / maxForP) * 100}%`, backgroundColor: PLATFORM_CFG[p]?.color }} />
-                                        </div>
-                                        <span className="text-xs text-ink-soft">{val}</span>
-                                      </div>
-                                    ) : (
-                                      <span className="text-xs text-gray-200">—</span>
-                                    )}
-                                  </td>
-                                );
-                              })}
+                              <td className="px-4 py-3 text-right">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${TYPE_COLORS[src.type] ?? "bg-gray-100 text-gray-600"}`}>
+                                  {src.type}
+                                </span>
+                              </td>
                             </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
+
+              {/* Run all button */}
+              <div className="flex items-center gap-3 pt-1">
+                <button onClick={runAll} disabled={runAllStatus?.loading}
+                  className="inline-flex items-center gap-2 rounded-xl border border-hairline px-4 py-2 text-sm font-medium text-ink-soft hover:text-brand hover:border-brand transition disabled:opacity-50">
+                  {runAllStatus?.loading ? "Analyse en cours…" : "▶ Relancer l'analyse"}
+                </button>
+                {runAllStatus && !runAllStatus.loading && (
+                  <p className={`text-xs ${(runAllStatus.errors ?? 0) > 0 ? "text-amber-600" : "text-green-700"}`}>
+                    {runAllStatus.ran} analyse{(runAllStatus.ran ?? 0) !== 1 ? "s" : ""} terminée{(runAllStatus.ran ?? 0) !== 1 ? "s" : ""}
+                    {(runAllStatus.errors ?? 0) > 0 && ` · ${runAllStatus.errors} erreur(s)`}
+                  </p>
+                )}
+              </div>
             </>
           )}
         </div>
@@ -791,107 +886,155 @@ export default function CitationsPage() {
 
       {/* ── TAB: Prompts ──────────────────────────────────────────────────── */}
       {tab === "prompts" && (
-        <div className="space-y-6">
+        <div className="space-y-6 max-w-2xl">
 
-          {/* Auto-generate from profile */}
-          {userProfile?.market && (
-            <div className="rounded-2xl border border-brand/30 bg-brand/5 p-5 flex items-start gap-4">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-ink mb-0.5">Générer depuis votre profil</p>
-                <p className="text-xs text-ink-soft">
-                  Marché détecté : <strong className="text-ink">{userProfile.market}</strong>
-                  {userProfile.competitors && userProfile.competitors.length > 0 && (
-                    <> · Concurrents : {userProfile.competitors.slice(0, 3).join(", ")}</>
-                  )}
-                </p>
+          {/* Step 1: get suggestions */}
+          {!generatedPrompts.length && !promptsSaved && (
+            <div className="rounded-2xl border border-hairline bg-white p-6 space-y-5">
+              <div>
+                <h2 className="font-semibold text-sm text-ink mb-1">Obtenir des suggestions de prompts</h2>
+                <p className="text-xs text-ink-soft">On génère des questions que de vraies personnes posent aux IA sur votre marque et votre marché.</p>
               </div>
-              <button onClick={generateFromProfile} disabled={generatingFromProfile}
-                className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark transition disabled:opacity-50">
-                {generatingFromProfile ? (
-                  <><svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Génération…</>
-                ) : (
-                  <>✦ Générer depuis mon profil</>
-                )}
-              </button>
+
+              {userProfile?.site_url ? (
+                /* Profile already filled */
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3 rounded-xl bg-accent/40 px-4 py-3">
+                    <Image
+                      src={`https://www.google.com/s2/favicons?domain=${userProfile.site_url.replace(/^https?:\/\//i,"").replace(/^www\./i,"").split(/[/?#]/)[0]}&sz=32`}
+                      alt="" width={18} height={18} unoptimized className="rounded shrink-0"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-ink truncate">{userProfile.site_url.replace(/^https?:\/\//i,"").replace(/^www\./i,"").split(/[/?#]/)[0]}</p>
+                      {userProfile.market && <p className="text-xs text-ink-soft">{userProfile.market}</p>}
+                    </div>
+                    <a href="/account/site" className="text-xs text-brand hover:underline shrink-0">Modifier</a>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-ink mb-1">Langue des prompts</label>
+                      <select value={form.language} onChange={e => setForm(f => ({ ...f, language: e.target.value }))}
+                        className="w-full rounded-lg border border-hairline bg-white px-3 py-2 text-sm focus:outline-none focus:border-brand">
+                        {Object.entries(LANGUAGE_LABELS).map(([code, label]) => (
+                          <option key={code} value={code}>{label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <button onClick={getSuggestions} disabled={generating}
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-dark transition disabled:opacity-60">
+                    {generating ? (
+                      <><svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Analyse en cours…</>
+                    ) : "✦ Obtenir des suggestions de prompts"}
+                  </button>
+                </div>
+              ) : (
+                /* No profile yet */
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-ink mb-1">Nom de marque</label>
+                      <input type="text" value={brandName} onChange={e => setBrandName(e.target.value)}
+                        placeholder="ex: Nomie Épices"
+                        className="w-full rounded-lg border border-hairline bg-white px-3 py-2 text-sm focus:outline-none focus:border-brand" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-ink mb-1">Domaine de marque</label>
+                      <DomainAutocomplete
+                        value={form.tracked_url}
+                        onChange={v => setForm(f => ({ ...f, tracked_url: v }))}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-ink mb-1">Langue des prompts</label>
+                    <select value={form.language} onChange={e => setForm(f => ({ ...f, language: e.target.value }))}
+                      className="w-full rounded-lg border border-hairline bg-white px-3 py-2 text-sm focus:outline-none focus:border-brand">
+                      {Object.entries(LANGUAGE_LABELS).map(([code, label]) => (
+                        <option key={code} value={code}>{label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <button onClick={getSuggestions} disabled={generating || (!brandName.trim() && !form.tracked_url.trim())}
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-dark transition disabled:opacity-60">
+                    {generating ? (
+                      <><svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Analyse en cours…</>
+                    ) : "✦ Obtenir des suggestions de prompts"}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
-          {/* Génération depuis mots-clés */}
-          <div className="rounded-2xl border border-hairline bg-white p-6">
-            <h2 className="font-semibold text-sm text-ink mb-1">Générer depuis des mots-clés</h2>
-            <p className="text-xs text-ink-soft mb-4">Entrez vos mots-clés (un par ligne ou séparés par virgules) — l&apos;IA génère des questions naturelles à surveiller.</p>
-
-            <div className="grid grid-cols-2 gap-3 mb-3">
-              <div>
-                <label className="block text-xs font-medium text-ink mb-1">Domaine à tracker</label>
-                <DomainAutocomplete
-                  value={form.tracked_url}
-                  onChange={v => setForm(f => ({ ...f, tracked_url: v }))}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-ink mb-1">Langue des prompts</label>
-                <select value={form.language} onChange={e => setForm(f => ({ ...f, language: e.target.value }))}
-                  className="w-full rounded-lg border border-hairline bg-white px-3 py-2 text-sm focus:outline-none focus:border-brand">
-                  {Object.entries(LANGUAGE_LABELS).map(([code, label]) => (
-                    <option key={code} value={code}>{label}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <textarea rows={3} placeholder={"audit seo\nvisibilité ia\ncitation tracking"} value={kwInput}
-                onChange={e => setKwInput(e.target.value)}
-                className="flex-1 rounded-lg border border-hairline bg-white px-3 py-2 text-sm focus:outline-none focus:border-brand resize-none" />
-              <button onClick={generateFromKeywords} disabled={generating || !kwInput.trim()}
-                className="shrink-0 self-end rounded-xl bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark transition disabled:opacity-50">
-                {generating ? "Génération…" : "Générer"}
-              </button>
-            </div>
-          </div>
-
-          {/* Generated prompts preview */}
+          {/* Generated prompts with volume */}
           {generatedPrompts.length > 0 && (
-            <div className="rounded-2xl border border-hairline bg-white p-6">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-sm font-semibold text-ink">{generatedPrompts.length} prompts générés</p>
-                <div className="flex items-center gap-2">
-                  {formError && <p className="text-xs text-red-600">{formError}</p>}
-                  <button onClick={saveAllGenerated} disabled={savingAll || !form.tracked_url}
-                    className="rounded-xl bg-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-dark transition disabled:opacity-50">
-                    {savingAll ? "Sauvegarde…" : "Tout sauvegarder"}
-                  </button>
-                </div>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-ink">{generatedPrompts.length} prompts suggérés</p>
+                <p className="text-xs text-ink-soft">Volume estimé sur les plateformes IA</p>
               </div>
-              {!form.tracked_url && <p className="text-xs text-amber-600 mb-3">Renseignez le domaine à tracker ci-dessus avant de sauvegarder.</p>}
               <div className="space-y-2">
                 {generatedPrompts.map((gp, idx) => (
-                  <div key={idx} className="flex items-start gap-3 rounded-lg bg-accent/30 border border-hairline p-3">
+                  <div key={idx} className="flex items-start gap-3 rounded-xl bg-white border border-hairline p-4">
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs text-brand font-medium mb-0.5">{gp.keyword}</p>
+                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                        <span className="text-xs text-brand font-medium">{gp.keyword}</span>
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-accent/60 text-ink-soft">{gp.intent}</span>
+                        {gp.estimated_volume && (
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            gp.estimated_volume === "élevé" ? "bg-green-50 text-green-700" :
+                            gp.estimated_volume === "moyen" ? "bg-blue-50 text-blue-600" :
+                            "bg-gray-100 text-gray-500"
+                          }`}>
+                            {gp.estimated_volume === "élevé" ? "↑ " : gp.estimated_volume === "moyen" ? "→ " : "↓ "}
+                            Volume {gp.estimated_volume}
+                          </span>
+                        )}
+                      </div>
                       <p className="text-sm text-ink">{gp.prompt_text}</p>
-                      <span className="text-xs text-ink-soft">{gp.intent}</span>
                     </div>
                     <button onClick={() => setGeneratedPrompts(g => g.filter((_, i) => i !== idx))}
-                      className="shrink-0 text-xs text-ink-soft hover:text-red-500 transition">✕</button>
+                      className="shrink-0 text-xs text-ink-soft hover:text-red-500 transition mt-0.5">✕</button>
                   </div>
                 ))}
               </div>
+
+              {/* Domain + save */}
+              {!form.tracked_url && !userProfile?.site_url && (
+                <div>
+                  <label className="block text-xs font-medium text-ink mb-1">Domaine à tracker</label>
+                  <DomainAutocomplete value={form.tracked_url} onChange={v => setForm(f => ({ ...f, tracked_url: v }))} />
+                </div>
+              )}
+              {formError && <p className="text-xs text-red-600">{formError}</p>}
+              <button onClick={saveAllGenerated} disabled={savingAll}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-dark transition disabled:opacity-60">
+                {savingAll ? "Sauvegarde…" : `Activer ces ${generatedPrompts.length} prompts`}
+              </button>
             </div>
           )}
 
-          {/* Ajout manuel */}
+          {/* Post-save CTA */}
+          {promptsSaved && (
+            <div className="rounded-2xl border border-green-200 bg-green-50 p-6 text-center">
+              <div className="text-2xl mb-2">✓</div>
+              <p className="font-semibold text-sm text-green-800 mb-1">Prompts activés</p>
+              <p className="text-xs text-green-700 mb-4">Rendez-vous dans l&apos;onglet <strong>Visibilité</strong> pour consulter la visibilité de votre marque en termes de citations.</p>
+              <button onClick={() => { setTab("visibilite"); setPromptsSaved(false); }}
+                className="inline-flex items-center gap-2 rounded-xl bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800 transition">
+                Voir la Visibilité →
+              </button>
+            </div>
+          )}
+
+          {/* Manual add */}
           <div className="rounded-2xl border border-hairline bg-white p-6">
             <h2 className="font-semibold text-sm text-ink mb-4">Ajouter un prompt manuellement</h2>
             <form onSubmit={createPrompt} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-ink mb-1">Domaine à tracker</label>
-                  <DomainAutocomplete
-                    value={form.tracked_url}
-                    onChange={v => setForm(f => ({ ...f, tracked_url: v }))}
-                  />
+                  <DomainAutocomplete value={form.tracked_url} onChange={v => setForm(f => ({ ...f, tracked_url: v }))} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-ink mb-1">Langue</label>
@@ -905,7 +1048,7 @@ export default function CitationsPage() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-ink mb-1">Prompt</label>
-                <textarea rows={3} placeholder="ex: Quels sont les meilleurs outils SEO en 2026 ?" value={form.prompt_text}
+                <textarea rows={3} placeholder="ex: Quels sont les meilleurs compléments alimentaires pour la récupération ?" value={form.prompt_text}
                   onChange={e => setForm(f => ({ ...f, prompt_text: e.target.value }))}
                   className="w-full rounded-lg border border-hairline bg-white px-3 py-2 text-sm focus:outline-none focus:border-brand resize-none" />
                 <p className="text-xs text-ink-soft mt-1">{form.prompt_text.length}/500</p>
@@ -920,7 +1063,7 @@ export default function CitationsPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-ink mb-1">Thématique</label>
-                  <input type="text" placeholder="ex: SEO technique" value={form.topic}
+                  <input type="text" placeholder="ex: récupération sportive" value={form.topic}
                     onChange={e => setForm(f => ({ ...f, topic: e.target.value }))}
                     className="w-full rounded-lg border border-hairline bg-white px-3 py-2 text-sm focus:outline-none focus:border-brand" />
                 </div>
@@ -932,58 +1075,6 @@ export default function CitationsPage() {
               </button>
             </form>
           </div>
-
-          {/* Liste des prompts */}
-          {prompts.length > 0 && (
-            <div className="rounded-2xl border border-hairline bg-white">
-              <div className="px-6 py-4 border-b border-hairline flex items-center justify-between flex-wrap gap-2">
-                <h2 className="font-semibold text-sm text-ink">Prompts configurés ({prompts.length})</h2>
-                <div className="flex items-center gap-3">
-                  <p className="text-xs text-ink-soft">Cron hebdomadaire · lundi 8h</p>
-                  <button onClick={runAll} disabled={runAllStatus?.loading}
-                    className="rounded-xl border border-hairline px-3 py-1.5 text-xs font-medium text-ink-soft hover:text-brand hover:border-brand transition disabled:opacity-50">
-                    {runAllStatus?.loading ? "Exécution…" : "▶ Lancer maintenant"}
-                  </button>
-                </div>
-              </div>
-              {runAllStatus && !runAllStatus.loading && (
-                <div className={`px-6 py-2 text-xs border-b border-hairline ${(runAllStatus.errors ?? 0) > 0 ? "bg-amber-50 text-amber-700" : "bg-green-50 text-green-700"}`}>
-                  Run terminé : {runAllStatus.ran} exécution{(runAllStatus.ran ?? 0) !== 1 ? "s" : ""}
-                  {(runAllStatus.errors ?? 0) > 0 && `, ${runAllStatus.errors} erreur${runAllStatus.errors !== 1 ? "s" : ""}`}
-                </div>
-              )}
-              <div className="divide-y divide-hairline">
-                {prompts.map(p => (
-                  <div key={p.id} className="flex items-start gap-4 px-6 py-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-1">
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-accent text-ink-soft font-medium">{p.tracked_url}</span>
-                        <span className="text-xs text-ink-soft">{p.intent}</span>
-                        {p.topic && <span className="text-xs text-ink-soft">· {p.topic}</span>}
-                        <span className="text-xs px-1.5 py-0.5 rounded bg-accent/60 text-ink-soft">{LANGUAGE_LABELS[p.language] ?? p.language}</span>
-                        {!p.active && <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-500">Inactif</span>}
-                      </div>
-                      <p className="text-sm text-ink">{p.prompt_text}</p>
-                    </div>
-                    <div className="shrink-0 flex items-center gap-1.5">
-                      <button onClick={() => runNow(p.id)} disabled={running === p.id} title="Exécuter maintenant"
-                        className="rounded-lg border border-hairline px-2.5 py-1.5 text-xs text-ink-soft hover:text-brand hover:border-brand transition disabled:opacity-50">
-                        {running === p.id ? "…" : "▶"}
-                      </button>
-                      <button onClick={() => togglePrompt(p.id, !p.active)}
-                        className="rounded-lg border border-hairline px-2.5 py-1.5 text-xs text-ink-soft hover:text-ink transition">
-                        {p.active ? "⏸" : "▶"}
-                      </button>
-                      <button onClick={() => deletePrompt(p.id)}
-                        className="rounded-lg border border-hairline px-2.5 py-1.5 text-xs text-ink-soft hover:text-red-600 hover:border-red-300 transition">
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       )}
 

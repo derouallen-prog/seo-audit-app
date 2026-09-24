@@ -105,16 +105,31 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({ ok: true });
 }
 
-// DELETE /api/citations/prompts — remove a prompt and its runs
+// DELETE /api/citations/prompts — remove a prompt (by id) or all prompts for a domain (?domain=xxx)
 export async function DELETE(req: NextRequest) {
   const user = await getAuthUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
-  if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
+  const domain = searchParams.get("domain");
 
   const sb = getSupabase();
+
+  if (domain) {
+    // Delete all prompts for a given tracked_url (domain change flow)
+    const normalized = domain.replace(/^https?:\/\/(www\.)?/, "").replace(/\/+$/, "").toLowerCase();
+    const { error } = await sb
+      .from("prompt_sets")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("tracked_url", normalized);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (!id) return NextResponse.json({ error: "id or domain required" }, { status: 400 });
+
   const { error } = await sb
     .from("prompt_sets")
     .delete()

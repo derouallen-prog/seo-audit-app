@@ -63,6 +63,9 @@ export default function SitePage() {
   const [saving, setSaving] = useState(false);
   const [saveLabel, setSaveLabel] = useState<"idle" | "saving" | "updating" | "done">("idle");
 
+  // Domain change confirmation dialog
+  const [domainChangeDialog, setDomainChangeDialog] = useState<{ oldDomain: string; newDomain: string } | null>(null);
+
   // Editable fields
   const [siteUrl, setSiteUrl] = useState("");
   const [positioning, setPositioning] = useState("");
@@ -166,8 +169,34 @@ export default function SitePage() {
     return () => { if (techDetectTimer.current) clearTimeout(techDetectTimer.current); };
   }, [siteDomain, siteDisplayVal]);
 
-  // Save (tab-scoped)
+  function normalizeDomain(url: string) {
+    return url.replace(/^https?:\/\/(www\.)?/i, "").replace(/\/+$/, "").toLowerCase().split(/[/?#]/)[0] ?? "";
+  }
+
+  // Save (tab-scoped) — with domain-change guard
   async function save() {
+    if (tab === "À propos" && savedApropos) {
+      const oldDomain = normalizeDomain(savedApropos.siteUrl);
+      const newDomain = normalizeDomain(siteUrl);
+      if (oldDomain && newDomain && oldDomain !== newDomain) {
+        setDomainChangeDialog({ oldDomain, newDomain });
+        return;
+      }
+    }
+    await doSave();
+  }
+
+  async function confirmDomainChange() {
+    if (!domainChangeDialog) return;
+    // Delete all prompts for the old domain
+    try {
+      await fetch(`/api/citations/prompts?domain=${encodeURIComponent(domainChangeDialog.oldDomain)}`, { method: "DELETE" });
+    } catch { /* non bloquant */ }
+    setDomainChangeDialog(null);
+    await doSave();
+  }
+
+  async function doSave() {
     setSaving(true);
     setSaveLabel("saving");
 
@@ -299,6 +328,29 @@ export default function SitePage() {
 
   return (
     <div className="space-y-6">
+
+      {/* Domain change confirmation dialog */}
+      {domainChangeDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl p-6">
+            <h2 className="font-semibold text-base text-ink mb-2">Confirmer le changement de domaine</h2>
+            <p className="text-sm text-ink-soft leading-relaxed mb-5">
+              Vous êtes sur le point de remplacer <strong className="text-ink">{domainChangeDialog.oldDomain}</strong> par <strong className="text-ink">{domainChangeDialog.newDomain}</strong>. Cette action supprimera tous les prompts et données Citations IA associés à l&apos;ancien domaine. Cette action est irréversible.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setDomainChangeDialog(null)}
+                className="px-4 py-2 rounded-xl border border-hairline text-sm text-ink-soft hover:text-ink transition">
+                Annuler
+              </button>
+              <button onClick={confirmDomainChange}
+                className="px-4 py-2 rounded-xl bg-red-600 text-sm font-medium text-white hover:bg-red-700 transition">
+                Changer et supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
