@@ -601,6 +601,11 @@ function AssistantPageInner() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isAnonymous, setIsAnonymous] = useState(false);
 
+  // Suggestions contextuelles basées sur le profil compte
+  const [contextSuggestions, setContextSuggestions] = useState<{
+    serp: string[]; compare: string[]; paa: string[]; ads: string[];
+  } | null>(null);
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -610,6 +615,14 @@ function AssistantPageInner() {
 
   // Keep ref in sync
   useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
+
+  // Charge les suggestions contextuelles depuis le profil compte
+  useEffect(() => {
+    fetch("/api/account/suggestions")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setContextSuggestions(d); })
+      .catch(() => {});
+  }, []);
 
   // Load sessions list
   const loadSessions = useCallback(async () => {
@@ -1244,9 +1257,17 @@ function AssistantPageInner() {
                 <div className="mb-6">
                   <div className="text-xs font-medium uppercase tracking-wider text-ink-soft mb-3">Suggestions</div>
                   <div className="grid gap-2 sm:grid-cols-2">
-                    {ANIMATED_SUGGESTIONS.map((suggestion, i) => (
+                    {(contextSuggestions
+                      ? [
+                          { ...ANIMATED_SUGGESTIONS[0]!, variants: contextSuggestions.serp },
+                          { ...ANIMATED_SUGGESTIONS[1]!, variants: contextSuggestions.compare },
+                          { ...ANIMATED_SUGGESTIONS[2]!, variants: contextSuggestions.paa },
+                          { ...ANIMATED_SUGGESTIONS[3]!, variants: contextSuggestions.ads },
+                        ]
+                      : ANIMATED_SUGGESTIONS
+                    ).map((suggestion, i) => (
                       <AnimatedSuggestionCard
-                        key={i}
+                        key={`${i}-${contextSuggestions ? "ctx" : "default"}`}
                         suggestion={suggestion}
                         initialVariantIdx={i}
                         onSelect={(text) => {
