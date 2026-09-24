@@ -66,6 +66,12 @@ interface ResultsData {
   meta: { days: number; totalRuns: number };
 }
 
+interface UserProfile {
+  site_url?: string | null;
+  market?: string | null;
+  competitors?: string[] | null;
+}
+
 // ── Platform config ────────────────────────────────────────────────────────
 const PLATFORM_CFG: Record<string, { label: string; color: string; bg: string }> = {
   perplexity:   { label: "Perplexity", color: "#20808d", bg: "#e6f4f5" },
@@ -89,7 +95,7 @@ function getWeekKey(isoDate: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-// ── Domain autocomplete (Clearbit public API, no key required) ─────────────
+// ── Domain autocomplete ────────────────────────────────────────────────────
 interface ClearbitSuggestion { name: string; domain: string; logo: string }
 
 function hasTLD(v: string): boolean {
@@ -103,6 +109,8 @@ function DomainAutocomplete({ value, onChange }: { value: string; onChange: (dom
   const [open, setOpen] = useState(false);
   const [fetching, setFetching] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => { setQuery(value); }, [value]);
 
   const inputDomain = query.trim().replace(/^https?:\/\//i, "").replace(/^www\./i, "").split(/[/?#]/)[0] ?? "";
   const faviconUrl = hasTLD(query.trim()) && inputDomain
@@ -118,7 +126,7 @@ function DomainAutocomplete({ value, onChange }: { value: string; onChange: (dom
       try {
         const res = await fetch(`https://autocomplete.clearbit.com/v1/companies/suggest?query=${encodeURIComponent(q)}`);
         if (res.ok) setSuggestions((await res.json()) as ClearbitSuggestion[]);
-      } catch { /* réseau indisponible — on ignore */ }
+      } catch { /* réseau indisponible */ }
       finally { setFetching(false); }
     }, 300);
     return () => { if (timer.current) clearTimeout(timer.current); };
@@ -226,7 +234,7 @@ function SoVDonut({ value, rank, total }: { value: number; rank: number; total: 
   );
 }
 
-// ── Mini trend bars (KPI cards) ───────────────────────────────────────────
+// ── Mini trend bars ────────────────────────────────────────────────────────
 function TrendBars({ data, field, selectedWeek, onBarClick }: {
   data: TrendPoint[];
   field: "share" | "mentionShare";
@@ -309,7 +317,7 @@ function WeekPanel({ week, runs, prompts, onClose }: {
 
 // ── Main Page ──────────────────────────────────────────────────────────────
 export default function CitationsPage() {
-  const [tab, setTab] = useState<"overview" | "analyse" | "competitors" | "pages" | "setup">("overview");
+  const [tab, setTab] = useState<"visibilite" | "prompts" | "citations">("visibilite");
   const [results, setResults] = useState<ResultsData | null>(null);
   const [prompts, setPrompts] = useState<PromptSet[]>([]);
   const [loading, setLoading] = useState(true);
@@ -322,6 +330,9 @@ export default function CitationsPage() {
   const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
   const [runAllStatus, setRunAllStatus] = useState<{ loading: boolean; ran?: number; errors?: number } | null>(null);
 
+  // User profile (for domain pre-fill)
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+
   // Setup form
   const [form, setForm] = useState({ tracked_url: "", prompt_text: "", intent: "Informational" as Intent, topic: "", language: "fr" });
   const [creating, setCreating] = useState(false);
@@ -331,7 +342,24 @@ export default function CitationsPage() {
   const [kwInput, setKwInput] = useState("");
   const [generatedPrompts, setGeneratedPrompts] = useState<{ keyword: string; prompt_text: string; intent: Intent }[]>([]);
   const [generating, setGenerating] = useState(false);
+  const [generatingFromProfile, setGeneratingFromProfile] = useState(false);
   const [savingAll, setSavingAll] = useState(false);
+
+  // Load user profile and pre-fill domain
+  useEffect(() => {
+    fetch("/api/account/profile")
+      .then(r => r.ok ? r.json() : null)
+      .then((data: { profile?: UserProfile } | null) => {
+        if (data?.profile) {
+          setUserProfile(data.profile);
+          if (data.profile.site_url) {
+            const domain = data.profile.site_url.replace(/^https?:\/\//i, "").replace(/^www\./i, "").split(/[/?#]/)[0] ?? data.profile.site_url;
+            setForm(f => ({ ...f, tracked_url: f.tracked_url || domain }));
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -358,7 +386,7 @@ export default function CitationsPage() {
       const res = await fetch("/api/citations/prompts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
       const data = await res.json() as { error?: string };
       if (!res.ok) { setFormError(data.error ?? "Erreur"); return; }
-      setForm({ tracked_url: "", prompt_text: "", intent: "Informational", topic: "", language: "fr" });
+      setForm(f => ({ ...f, prompt_text: "", topic: "" }));
       await loadData();
     } finally { setCreating(false); }
   }
@@ -404,6 +432,20 @@ export default function CitationsPage() {
     } finally { setGenerating(false); }
   }
 
+  async function generateFromProfile() {
+    if (!userProfile?.market) return;
+    setGeneratingFromProfile(true);
+    setGeneratedPrompts([]);
+    const keywords = [
+      userProfile.market,
+      ...(userProfile.competitors ?? []).slice(0, 3),
+    ].filter(Boolean);
+    try {
+      const res = await fetch("/api/citations/generate-prompts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ keywords, language: form.language, market: userProfile.market }) });
+      if (res.ok) { const d = await res.json() as { prompts: typeof generatedPrompts }; setGeneratedPrompts(d.prompts ?? []); }
+    } finally { setGeneratingFromProfile(false); }
+  }
+
   async function saveAllGenerated() {
     if (!generatedPrompts.length || !form.tracked_url) { setFormError("Saisissez d'abord le domaine à tracker."); return; }
     setSavingAll(true);
@@ -434,12 +476,10 @@ export default function CitationsPage() {
   const sovTotal = allDomainCounts.length + 1;
 
   const TABS = [
-    { key: "overview",     label: "Vue d'ensemble" },
-    { key: "analyse",      label: "Prompts analysés" },
-    { key: "competitors",  label: "Concurrents" },
-    { key: "pages",        label: "Pages citées" },
-    { key: "setup",        label: "Prompts" },
-  ] as const;
+    { key: "visibilite" as const, label: "Visibilité" },
+    { key: "prompts"    as const, label: "Prompts" },
+    { key: "citations"  as const, label: "Citations" },
+  ];
 
   const availableLanguages = results?.languages ?? [];
   const activePlatforms = PLATFORMS.filter(p => results?.citationShare[p] || results?.mentionShare[p]);
@@ -456,10 +496,7 @@ export default function CitationsPage() {
           </div>
           <h1 className="font-display text-2xl text-ink mb-2">Citations IA</h1>
           <p className="text-sm text-ink-soft mb-6">Connectez-vous pour configurer vos prompts et suivre votre visibilité sur les moteurs IA.</p>
-          <a
-            href="/auth"
-            className="inline-flex items-center gap-2 rounded-xl bg-brand px-6 py-2.5 text-sm font-medium text-white hover:bg-brand-dark transition shadow glow-brand"
-          >
+          <a href="/auth" className="inline-flex items-center gap-2 rounded-xl bg-brand px-6 py-2.5 text-sm font-medium text-white hover:bg-brand-dark transition shadow glow-brand">
             Se connecter
           </a>
           <p className="mt-4 text-xs text-ink-soft">
@@ -477,10 +514,21 @@ export default function CitationsPage() {
       {/* Header */}
       <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="font-display text-3xl text-ink">Visibilité IA</h1>
-          <p className="mt-1 text-sm text-ink-soft">Mentions et citations de votre marque sur Perplexity, Claude, Gemini, ChatGPT et Copilot.</p>
+          <div className="flex items-center gap-3 mb-1">
+            <h1 className="font-display text-3xl text-ink">Visibilité IA</h1>
+            {userProfile?.site_url && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-accent/60 text-xs text-ink-soft">
+                <Image
+                  src={`https://www.google.com/s2/favicons?domain=${userProfile.site_url.replace(/^https?:\/\//i,"").replace(/^www\./i,"").split(/[/?#]/)[0]}&sz=32`}
+                  alt="" width={14} height={14} unoptimized className="rounded"
+                />
+                {userProfile.site_url.replace(/^https?:\/\//i,"").replace(/^www\./i,"").split(/[/?#]/)[0]}
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-ink-soft">Mentions et citations de votre marque sur Perplexity, Claude, Gemini, ChatGPT et Copilot.</p>
         </div>
-        <button onClick={() => setTab("setup")}
+        <button onClick={() => setTab("prompts")}
           className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark transition">
           + Nouveau prompt
         </button>
@@ -493,17 +541,17 @@ export default function CitationsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 rounded-xl bg-accent/50 p-1 mb-5 w-fit overflow-x-auto">
+      <div className="flex gap-1 rounded-xl bg-accent/50 p-1 mb-5 w-fit">
         {TABS.map(({ key, label }) => (
           <button key={key} onClick={() => setTab(key)}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${tab === key ? "bg-white text-ink shadow-sm" : "text-ink-soft hover:text-ink"}`}>
+            className={`px-5 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === key ? "bg-white text-ink shadow-sm" : "text-ink-soft hover:text-ink"}`}>
             {label}
           </button>
         ))}
       </div>
 
-      {/* Filters bar */}
-      {tab !== "setup" && (
+      {/* Filters bar (Visibilité + Citations) */}
+      {tab !== "prompts" && (
         <div className="flex flex-wrap items-center gap-3 mb-6">
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-ink-soft">Période :</span>
@@ -529,7 +577,7 @@ export default function CitationsPage() {
               ))}
             </div>
           )}
-          {tab === "overview" && (
+          {tab === "visibilite" && (
             <div className="ml-auto flex items-center gap-1 rounded-lg bg-accent/60 p-0.5">
               <button onClick={() => setMetricMode("citations")}
                 className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${metricMode === "citations" ? "bg-white text-ink shadow-sm" : "text-ink-soft"}`}>
@@ -544,8 +592,8 @@ export default function CitationsPage() {
         </div>
       )}
 
-      {/* ── TAB: Vue d'ensemble ─────────────────────────────────────────────── */}
-      {tab === "overview" && (
+      {/* ── TAB: Visibilité ────────────────────────────────────────────────── */}
+      {tab === "visibilite" && (
         <div className="space-y-5">
           {loading ? <p className="py-12 text-center text-sm text-ink-soft">Chargement…</p>
           : totalRuns === 0 ? (
@@ -557,17 +605,16 @@ export default function CitationsPage() {
               </div>
               <h3 className="font-display text-xl text-ink mb-2">Surveillez votre visibilité IA</h3>
               <p className="text-sm text-ink-soft max-w-md mx-auto leading-relaxed">
-                Citations IA interroge Perplexity, Claude et Gemini avec vos questions stratégiques et détecte si votre marque apparaît dans les réponses — en citation (URL) ou en mention (texte).
+                Configurez des prompts dans l&apos;onglet <strong>Prompts</strong>, puis lancez une analyse pour voir si votre marque apparaît dans les réponses des LLMs — en citation (URL) ou en mention (texte).
               </p>
               <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
-                <button onClick={() => setTab("setup")}
+                <button onClick={() => setTab("prompts")}
                   className="inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-dark transition shadow glow-brand">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
                   </svg>
-                  Créer mon premier prompt
+                  Configurer mes prompts
                 </button>
-                <p className="text-xs text-ink-soft">Exemple : &laquo;&nbsp;Quelle solution pour le SEO e-commerce&nbsp;?&raquo;</p>
               </div>
             </div>
           ) : (
@@ -658,229 +705,120 @@ export default function CitationsPage() {
                   })}
                 </div>
               </div>
+
+              {/* Competitor benchmark */}
+              {results?.competitorMatrix && results.competitorMatrix.length > 0 && (
+                <div className="rounded-2xl border border-hairline bg-white overflow-hidden">
+                  <div className="px-6 py-4 border-b border-hairline flex items-start justify-between gap-4">
+                    <div>
+                      <h2 className="font-semibold text-sm text-ink">Benchmark concurrentiel</h2>
+                      <p className="text-xs text-ink-soft mt-0.5">Domaines cités en concurrence sur les mêmes prompts.</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs text-ink-soft">Rang :</span>
+                      <span className="font-semibold text-sm text-ink">#{sovRank}</span>
+                      <span className="text-xs text-ink-soft">/ {sovTotal}</span>
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-hairline bg-accent/30">
+                          <th className="text-left px-6 py-3 text-xs font-semibold text-ink-soft uppercase tracking-wide">Domaine</th>
+                          <th className="px-4 py-3 text-xs font-semibold text-ink-soft uppercase tracking-wide text-center">Total</th>
+                          {PLATFORMS.filter(p => results.competitorMatrix.some(r => r.byPlatform[p])).map(p => (
+                            <th key={p} className="px-4 py-3 text-center">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                                style={{ backgroundColor: PLATFORM_CFG[p]?.bg, color: PLATFORM_CFG[p]?.color }}>
+                                {PLATFORM_CFG[p]?.label}
+                              </span>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-hairline">
+                        {results.competitorMatrix.map((row, i) => {
+                          const maxTotal = results.competitorMatrix[0]?.total ?? 1;
+                          const pCols = PLATFORMS.filter(p => results.competitorMatrix.some(r => r.byPlatform[p]));
+                          return (
+                            <tr key={row.domain} className="hover:bg-accent/10 transition-colors">
+                              <td className="px-6 py-3">
+                                <div className="flex items-center gap-3">
+                                  <span className="text-xs font-mono text-ink-soft w-5">{i + 1}</span>
+                                  <span className="font-medium text-ink">{row.domain}</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-2 justify-end">
+                                  <div className="w-16 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                                    <div className="h-full rounded-full bg-gray-400 transition-all"
+                                      style={{ width: `${(row.total / maxTotal) * 100}%` }} />
+                                  </div>
+                                  <span className="text-xs font-semibold text-ink w-6 text-right">{row.total}</span>
+                                </div>
+                              </td>
+                              {pCols.map(p => {
+                                const val = row.byPlatform[p] ?? 0;
+                                const maxForP = Math.max(...results.competitorMatrix.map(r => r.byPlatform[p] ?? 0), 1);
+                                return (
+                                  <td key={p} className="px-4 py-3 text-center">
+                                    {val > 0 ? (
+                                      <div className="flex items-center gap-1.5 justify-center">
+                                        <div className="w-12 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: PLATFORM_CFG[p]?.bg }}>
+                                          <div className="h-full rounded-full transition-all"
+                                            style={{ width: `${(val / maxForP) * 100}%`, backgroundColor: PLATFORM_CFG[p]?.color }} />
+                                        </div>
+                                        <span className="text-xs text-ink-soft">{val}</span>
+                                      </div>
+                                    ) : (
+                                      <span className="text-xs text-gray-200">—</span>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
       )}
 
-      {/* ── TAB: Prompts analysés ──────────────────────────────────────────── */}
-      {tab === "analyse" && (
-        <div className="space-y-4">
-          {loading ? <p className="py-12 text-center text-sm text-ink-soft">Chargement…</p>
-          : !results?.runDetails.length ? (
-            <div className="rounded-2xl border border-dashed border-hairline p-12 text-center">
-              <p className="text-sm text-ink-soft">Aucun run enregistré sur cette période.</p>
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-hairline bg-white overflow-hidden">
-              <div className="grid grid-cols-[2fr_3fr_auto_auto_auto] gap-4 px-5 py-3 border-b border-hairline bg-accent/30 text-xs font-semibold text-ink-soft uppercase tracking-wide">
-                <span>Prompt</span>
-                <span>Réponse IA</span>
-                <span>Statut</span>
-                <span className="text-center">Sources</span>
-                <span>Plateformes</span>
-              </div>
-              {results.prompts.map(prompt => {
-                const pRuns = byPrompt[prompt.id] ?? [];
-                if (!pRuns.length) return null;
-                const cited = pRuns.some(r => r.cited);
-                const mentioned = pRuns.some(r => r.mentioned);
-                const isOpen = expandedRow === prompt.id;
-                const firstRun = pRuns[0]!;
-                return (
-                  <div key={prompt.id} className="border-b border-hairline last:border-0">
-                    <button onClick={() => setExpandedRow(isOpen ? null : prompt.id)}
-                      className="w-full grid grid-cols-[2fr_3fr_auto_auto_auto] gap-4 px-5 py-4 text-left hover:bg-accent/20 transition-colors">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-ink line-clamp-2">{prompt.prompt_text}</p>
-                        <span className="text-xs text-ink-soft">{prompt.tracked_url}</span>
-                      </div>
-                      <p className="text-xs text-ink-soft line-clamp-3 leading-relaxed self-center">
-                        {firstRun.responseExcerpt || <em>Non disponible</em>}
-                      </p>
-                      <div className="self-center"><CitedBadge cited={cited} mentioned={mentioned} /></div>
-                      <div className="text-sm text-center text-ink-soft self-center">{firstRun.sources.length}</div>
-                      <div className="flex flex-wrap gap-1 self-center">
-                        {pRuns.map(r => (
-                          <span key={r.platform} className="w-2 h-2 rounded-full"
-                            title={`${PLATFORM_CFG[r.platform]?.label}: ${r.cited ? "cité" : r.mentioned ? "mentionné" : "absent"}`}
-                            style={{ backgroundColor: r.cited ? PLATFORM_CFG[r.platform]?.color : r.mentioned ? "#93c5fd" : "#d1d5db" }} />
-                        ))}
-                      </div>
-                    </button>
-                    {isOpen && (
-                      <div className="bg-accent/20 border-t border-hairline divide-y divide-hairline/60">
-                        {pRuns.map(run => (
-                          <div key={run.id} className="px-6 py-4 grid grid-cols-[140px_1fr_auto] gap-4 items-start">
-                            <PlatformBadge platform={run.platform} />
-                            <div>
-                              {run.responseExcerpt && (
-                                <p className="text-xs text-ink leading-relaxed mb-2">{run.responseExcerpt}{run.responseExcerpt.length >= 280 ? "…" : ""}</p>
-                              )}
-                              {run.sources.length > 0 && (
-                                <div className="space-y-0.5">
-                                  {run.sources.slice(0, 5).map((s, i) => (
-                                    <p key={i} className={`text-xs truncate ${i === 0 && run.cited ? "text-green-700 font-medium" : "text-ink-soft"}`}>
-                                      {i + 1}. {s}
-                                    </p>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex flex-col items-end gap-1 shrink-0">
-                              <CitedBadge cited={run.cited} mentioned={run.mentioned} />
-                              {run.citation_position && <span className="text-xs text-ink-soft">Pos. #{run.citation_position}</span>}
-                              <span className="text-xs text-ink-soft">{new Date(run.run_at).toLocaleDateString("fr-FR")}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── TAB: Concurrents (matrix Ahrefs-style) ────────────────────────── */}
-      {tab === "competitors" && (
-        <div className="space-y-5">
-          {results?.shareOfVoice != null && (
-            <div className="rounded-2xl border border-hairline bg-white p-6 flex items-center gap-8 flex-wrap">
-              <SoVDonut value={results.shareOfVoice} rank={sovRank} total={sovTotal} />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-ink mb-1">Share of Voice IA</p>
-                <p className="text-xs text-ink-soft max-w-sm">
-                  Part de votre domaine dans l&apos;ensemble des URLs citées sur les mêmes questions.
-                  Calculé sur les domaines co-présents dans les mêmes runs.
-                </p>
-                <div className="mt-3 flex flex-wrap items-center gap-6 text-xs">
-                  <span className="text-ink-soft">Rang : <strong className="text-ink">#{sovRank}</strong> / {sovTotal}</span>
-                  <span className="text-ink-soft">Citations : <strong className="text-green-700">{totalCited}</strong></span>
-                  <span className="text-ink-soft">Mentions : <strong className="text-blue-600">{totalMentioned}</strong></span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {loading ? <p className="py-8 text-center text-sm text-ink-soft">Chargement…</p>
-          : !results?.competitorMatrix.length ? (
-            <div className="rounded-2xl border border-dashed border-hairline p-12 text-center">
-              <p className="text-sm text-ink-soft">Pas encore de données concurrentielles.</p>
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-hairline bg-white overflow-hidden">
-              <div className="px-6 py-4 border-b border-hairline">
-                <h2 className="font-semibold text-sm text-ink">Domaines cités en concurrence</h2>
-                <p className="text-xs text-ink-soft mt-0.5">Apparitions dans les sources IA sur les mêmes prompts que votre site.</p>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-hairline bg-accent/30">
-                      <th className="text-left px-6 py-3 text-xs font-semibold text-ink-soft uppercase tracking-wide">Domaine</th>
-                      <th className="px-4 py-3 text-xs font-semibold text-ink-soft uppercase tracking-wide text-center">Total</th>
-                      {PLATFORMS.filter(p => results.competitorMatrix.some(r => r.byPlatform[p])).map(p => (
-                        <th key={p} className="px-4 py-3 text-center">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-                            style={{ backgroundColor: PLATFORM_CFG[p]?.bg, color: PLATFORM_CFG[p]?.color }}>
-                            {PLATFORM_CFG[p]?.label}
-                          </span>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-hairline">
-                    {results.competitorMatrix.map((row, i) => {
-                      const maxTotal = results.competitorMatrix[0]?.total ?? 1;
-                      const pCols = PLATFORMS.filter(p => results.competitorMatrix.some(r => r.byPlatform[p]));
-                      return (
-                        <tr key={row.domain} className="hover:bg-accent/10 transition-colors">
-                          <td className="px-6 py-3">
-                            <div className="flex items-center gap-3">
-                              <span className="text-xs font-mono text-ink-soft w-5">{i + 1}</span>
-                              <span className="font-medium text-ink">{row.domain}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2 justify-end">
-                              <div className="w-16 h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                                <div className="h-full rounded-full bg-gray-400 transition-all"
-                                  style={{ width: `${(row.total / maxTotal) * 100}%` }} />
-                              </div>
-                              <span className="text-xs font-semibold text-ink w-6 text-right">{row.total}</span>
-                            </div>
-                          </td>
-                          {pCols.map(p => {
-                            const val = row.byPlatform[p] ?? 0;
-                            const maxForP = Math.max(...results.competitorMatrix.map(r => r.byPlatform[p] ?? 0), 1);
-                            return (
-                              <td key={p} className="px-4 py-3 text-center">
-                                {val > 0 ? (
-                                  <div className="flex items-center gap-1.5 justify-center">
-                                    <div className="w-12 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: PLATFORM_CFG[p]?.bg }}>
-                                      <div className="h-full rounded-full transition-all"
-                                        style={{ width: `${(val / maxForP) * 100}%`, backgroundColor: PLATFORM_CFG[p]?.color }} />
-                                    </div>
-                                    <span className="text-xs text-ink-soft">{val}</span>
-                                  </div>
-                                ) : (
-                                  <span className="text-xs text-gray-200">—</span>
-                                )}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── TAB: Pages citées ─────────────────────────────────────────────── */}
-      {tab === "pages" && (
-        <div className="rounded-2xl border border-hairline bg-white">
-          <div className="px-6 py-4 border-b border-hairline">
-            <h2 className="font-semibold text-sm text-ink">Pages les plus citées</h2>
-            <p className="text-xs text-ink-soft mt-0.5">URLs de votre site apparaissant en source dans les réponses IA.</p>
-          </div>
-          {loading ? <p className="p-8 text-center text-sm text-ink-soft">Chargement…</p>
-          : !results?.topPages?.length ? <p className="p-8 text-center text-sm text-ink-soft">Aucune citation enregistrée.</p>
-          : (
-            <div className="divide-y divide-hairline">
-              {results.topPages.map((p, i) => {
-                const max = results.topPages[0]?.count ?? 1;
-                return (
-                  <div key={p.url} className="flex items-center gap-4 px-6 py-3">
-                    <span className="text-xs font-mono text-ink-soft w-6">{i + 1}</span>
-                    <p className="flex-1 text-sm text-brand truncate">{p.url}</p>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <div className="w-20 h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                        <div className="h-full rounded-full bg-green-500" style={{ width: `${(p.count / max) * 100}%` }} />
-                      </div>
-                      <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-green-50 text-green-700 w-8 text-center">{p.count}×</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── TAB: Setup prompts ────────────────────────────────────────────── */}
-      {tab === "setup" && (
+      {/* ── TAB: Prompts ──────────────────────────────────────────────────── */}
+      {tab === "prompts" && (
         <div className="space-y-6">
 
+          {/* Auto-generate from profile */}
+          {userProfile?.market && (
+            <div className="rounded-2xl border border-brand/30 bg-brand/5 p-5 flex items-start gap-4">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-ink mb-0.5">Générer depuis votre profil</p>
+                <p className="text-xs text-ink-soft">
+                  Marché détecté : <strong className="text-ink">{userProfile.market}</strong>
+                  {userProfile.competitors && userProfile.competitors.length > 0 && (
+                    <> · Concurrents : {userProfile.competitors.slice(0, 3).join(", ")}</>
+                  )}
+                </p>
+              </div>
+              <button onClick={generateFromProfile} disabled={generatingFromProfile}
+                className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark transition disabled:opacity-50">
+                {generatingFromProfile ? (
+                  <><svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Génération…</>
+                ) : (
+                  <>✦ Générer depuis mon profil</>
+                )}
+              </button>
+            </div>
+          )}
+
           {/* Génération depuis mots-clés */}
-          <div className="rounded-2xl border border-brand/30 bg-brand/5 p-6">
-            <h2 className="font-semibold text-sm text-ink mb-1">Générer des prompts depuis des mots-clés</h2>
+          <div className="rounded-2xl border border-hairline bg-white p-6">
+            <h2 className="font-semibold text-sm text-ink mb-1">Générer depuis des mots-clés</h2>
             <p className="text-xs text-ink-soft mb-4">Entrez vos mots-clés (un par ligne ou séparés par virgules) — l&apos;IA génère des questions naturelles à surveiller.</p>
 
             <div className="grid grid-cols-2 gap-3 mb-3">
@@ -911,18 +849,25 @@ export default function CitationsPage() {
                 {generating ? "Génération…" : "Générer"}
               </button>
             </div>
+          </div>
 
-            {generatedPrompts.length > 0 && (
-              <div className="mt-4 space-y-2">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-medium text-ink">{generatedPrompts.length} prompts générés :</p>
+          {/* Generated prompts preview */}
+          {generatedPrompts.length > 0 && (
+            <div className="rounded-2xl border border-hairline bg-white p-6">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-semibold text-ink">{generatedPrompts.length} prompts générés</p>
+                <div className="flex items-center gap-2">
+                  {formError && <p className="text-xs text-red-600">{formError}</p>}
                   <button onClick={saveAllGenerated} disabled={savingAll || !form.tracked_url}
-                    className="rounded-lg bg-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-dark transition disabled:opacity-50">
+                    className="rounded-xl bg-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-dark transition disabled:opacity-50">
                     {savingAll ? "Sauvegarde…" : "Tout sauvegarder"}
                   </button>
                 </div>
+              </div>
+              {!form.tracked_url && <p className="text-xs text-amber-600 mb-3">Renseignez le domaine à tracker ci-dessus avant de sauvegarder.</p>}
+              <div className="space-y-2">
                 {generatedPrompts.map((gp, idx) => (
-                  <div key={idx} className="flex items-start gap-3 rounded-lg bg-white border border-hairline p-3">
+                  <div key={idx} className="flex items-start gap-3 rounded-lg bg-accent/30 border border-hairline p-3">
                     <div className="flex-1 min-w-0">
                       <p className="text-xs text-brand font-medium mb-0.5">{gp.keyword}</p>
                       <p className="text-sm text-ink">{gp.prompt_text}</p>
@@ -933,8 +878,8 @@ export default function CitationsPage() {
                   </div>
                 ))}
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Ajout manuel */}
           <div className="rounded-2xl border border-hairline bg-white p-6">
@@ -1038,6 +983,161 @@ export default function CitationsPage() {
                 ))}
               </div>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* ── TAB: Citations ────────────────────────────────────────────────── */}
+      {tab === "citations" && (
+        <div className="space-y-5">
+          {loading ? <p className="py-12 text-center text-sm text-ink-soft">Chargement…</p>
+          : (
+            <>
+              {/* Pages citées */}
+              <div className="rounded-2xl border border-hairline bg-white">
+                <div className="px-6 py-4 border-b border-hairline">
+                  <h2 className="font-semibold text-sm text-ink">Pages les plus citées</h2>
+                  <p className="text-xs text-ink-soft mt-0.5">URLs de votre site apparaissant en source dans les réponses IA.</p>
+                </div>
+                {!results?.topPages?.length ? (
+                  <div className="p-8 text-center">
+                    <p className="text-sm text-ink-soft mb-2">Aucune citation de page enregistrée.</p>
+                    <p className="text-xs text-ink-soft">Les citations apparaissent quand les LLMs incluent l&apos;URL de votre site dans leurs sources.</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-hairline">
+                    {results.topPages.map((p, i) => {
+                      const max = results.topPages[0]?.count ?? 1;
+                      return (
+                        <div key={p.url} className="flex items-center gap-4 px-6 py-3">
+                          <span className="text-xs font-mono text-ink-soft w-6">{i + 1}</span>
+                          <p className="flex-1 text-sm text-brand truncate">{p.url}</p>
+                          <div className="flex items-center gap-3 shrink-0">
+                            <div className="w-20 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                              <div className="h-full rounded-full bg-green-500" style={{ width: `${(p.count / max) * 100}%` }} />
+                            </div>
+                            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-green-50 text-green-700 w-8 text-center">{p.count}×</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Analyse par prompt */}
+              {!results?.runDetails.length ? (
+                <div className="rounded-2xl border border-dashed border-hairline p-12 text-center">
+                  <p className="text-sm text-ink-soft">Aucun run enregistré sur cette période.</p>
+                  <button onClick={() => setTab("prompts")} className="mt-3 text-xs text-brand hover:underline">
+                    Configurer et lancer des prompts →
+                  </button>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-hairline bg-white overflow-hidden">
+                  <div className="px-6 py-4 border-b border-hairline">
+                    <h2 className="font-semibold text-sm text-ink">Détail par prompt</h2>
+                    <p className="text-xs text-ink-soft mt-0.5">Réponse et statut de citation pour chaque prompt analysé.</p>
+                  </div>
+                  <div className="grid grid-cols-[2fr_3fr_auto_auto_auto] gap-4 px-5 py-3 border-b border-hairline bg-accent/30 text-xs font-semibold text-ink-soft uppercase tracking-wide">
+                    <span>Prompt</span>
+                    <span>Réponse IA</span>
+                    <span>Statut</span>
+                    <span className="text-center">Sources</span>
+                    <span>Plateformes</span>
+                  </div>
+                  {results.prompts.map(prompt => {
+                    const pRuns = byPrompt[prompt.id] ?? [];
+                    if (!pRuns.length) return null;
+                    const cited = pRuns.some(r => r.cited);
+                    const mentioned = pRuns.some(r => r.mentioned);
+                    const isOpen = expandedRow === prompt.id;
+                    const firstRun = pRuns[0]!;
+                    return (
+                      <div key={prompt.id} className="border-b border-hairline last:border-0">
+                        <button onClick={() => setExpandedRow(isOpen ? null : prompt.id)}
+                          className="w-full grid grid-cols-[2fr_3fr_auto_auto_auto] gap-4 px-5 py-4 text-left hover:bg-accent/20 transition-colors">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-ink line-clamp-2">{prompt.prompt_text}</p>
+                            <span className="text-xs text-ink-soft">{prompt.tracked_url}</span>
+                          </div>
+                          <p className="text-xs text-ink-soft line-clamp-3 leading-relaxed self-center">
+                            {firstRun.responseExcerpt || <em>Non disponible</em>}
+                          </p>
+                          <div className="self-center"><CitedBadge cited={cited} mentioned={mentioned} /></div>
+                          <div className="text-sm text-center text-ink-soft self-center">{firstRun.sources.length}</div>
+                          <div className="flex flex-wrap gap-1 self-center">
+                            {pRuns.map(r => (
+                              <span key={r.platform} className="w-2 h-2 rounded-full"
+                                title={`${PLATFORM_CFG[r.platform]?.label}: ${r.cited ? "cité" : r.mentioned ? "mentionné" : "absent"}`}
+                                style={{ backgroundColor: r.cited ? PLATFORM_CFG[r.platform]?.color : r.mentioned ? "#93c5fd" : "#d1d5db" }} />
+                            ))}
+                          </div>
+                        </button>
+                        {isOpen && (
+                          <div className="bg-accent/20 border-t border-hairline divide-y divide-hairline/60">
+                            {pRuns.map(run => (
+                              <div key={run.id} className="px-6 py-4 grid grid-cols-[140px_1fr_auto] gap-4 items-start">
+                                <PlatformBadge platform={run.platform} />
+                                <div>
+                                  {run.responseExcerpt && (
+                                    <p className="text-xs text-ink leading-relaxed mb-2">{run.responseExcerpt}{run.responseExcerpt.length >= 280 ? "…" : ""}</p>
+                                  )}
+                                  {run.sources.length > 0 && (
+                                    <div className="space-y-0.5">
+                                      {run.sources.slice(0, 5).map((s, i) => (
+                                        <p key={i} className={`text-xs truncate ${i === 0 && run.cited ? "text-green-700 font-medium" : "text-ink-soft"}`}>
+                                          {i + 1}. {s}
+                                        </p>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex flex-col items-end gap-1 shrink-0">
+                                  <CitedBadge cited={run.cited} mentioned={run.mentioned} />
+                                  {run.citation_position && <span className="text-xs text-ink-soft">Pos. #{run.citation_position}</span>}
+                                  <span className="text-xs text-ink-soft">{new Date(run.run_at).toLocaleDateString("fr-FR")}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Gaps — prompts sans citation */}
+              {results?.runDetails && results.runDetails.length > 0 && (() => {
+                const gapPrompts = results.prompts.filter(p => {
+                  const pRuns = byPrompt[p.id] ?? [];
+                  return pRuns.length > 0 && !pRuns.some(r => r.cited) && !pRuns.some(r => r.mentioned);
+                });
+                if (!gapPrompts.length) return null;
+                return (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 overflow-hidden">
+                    <div className="px-6 py-4 border-b border-amber-200">
+                      <h2 className="font-semibold text-sm text-amber-800">Opportunités — {gapPrompts.length} prompt{gapPrompts.length > 1 ? "s" : ""} sans visibilité</h2>
+                      <p className="text-xs text-amber-700 mt-0.5">Ces prompts n&apos;ont généré aucune citation ni mention. Optimisez votre contenu pour ces requêtes.</p>
+                    </div>
+                    <div className="divide-y divide-amber-100">
+                      {gapPrompts.map(p => (
+                        <div key={p.id} className="flex items-start gap-4 px-6 py-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-ink">{p.prompt_text}</p>
+                            <span className="text-xs text-amber-700">{p.tracked_url} · {p.intent}</span>
+                          </div>
+                          <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />Absent
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+            </>
           )}
         </div>
       )}
