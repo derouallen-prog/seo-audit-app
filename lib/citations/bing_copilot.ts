@@ -1,28 +1,22 @@
 import type { CitationResult, PlatformConnector } from "./types";
 import { domainMatches, extractHostname, checkMentioned } from "./types";
 
-// Bing Copilot via Azure OpenAI with Bing Search grounding.
-// Required env vars:
-//   AZURE_OPENAI_API_KEY      — Azure OpenAI resource key
-//   AZURE_OPENAI_ENDPOINT     — e.g. https://my-resource.openai.azure.com
-//   AZURE_OPENAI_DEPLOYMENT   — e.g. gpt-4o
-//   BING_SEARCH_API_KEY       — Bing Search v7 API key (for grounding)
+// Bing Copilot via Bing Web Search API v7.
+// We query Bing with the prompt and check whether the tracked domain appears
+// in the top web results — which are the exact sources Copilot grounds itself on.
+// Citations = domain found in result URLs.
+// Mentions  = brand/domain found in result snippets or titles.
+// Required env var: BING_API_KEY (Bing Search v7, free: 1000 req/month)
 
-interface AzureMessage {
-  role: string;
-  content: string;
+interface BingWebPage {
+  url: string;
+  name: string;
+  snippet: string;
+  displayUrl?: string;
 }
 
-interface AzureChoice {
-  message: AzureMessage;
-  context?: {
-    citations?: { url?: string; content?: string }[];
-    messages?: { content?: string }[];
-  };
-}
-
-interface AzureResponse {
-  choices?: AzureChoice[];
+interface BingResponse {
+  webPages?: { value: BingWebPage[] };
   error?: { message: string };
 }
 
@@ -30,78 +24,42 @@ export class BingCopilotConnector implements PlatformConnector {
   readonly platform = "bing_copilot" as const;
 
   async run(promptText: string, trackedDomain: string): Promise<CitationResult> {
-    const apiKey = process.env.AZURE_OPENAI_API_KEY;
-    const endpoint = process.env.AZURE_OPENAI_ENDPOINT?.replace(/\/$/, "");
-    const deployment = process.env.AZURE_OPENAI_DEPLOYMENT ?? "gpt-4o";
-    const bingKey = process.env.BING_SEARCH_API_KEY;
+    const apiKey = process.env.BING_API_KEY;
+    if (!apiKey) throw new Error("BING_API_KEY not configured");
 
-    if (!apiKey || !endpoint) throw new Error("AZURE_OPENAI_API_KEY / AZURE_OPENAI_ENDPOINT not configured");
-    if (!bingKey) throw new Error("BING_SEARCH_API_KEY not configured");
-
-    const url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=2024-05-01-preview`;
-
-    const body: Record<string, unknown> = {
-      messages: [{ role: "user", content: promptText }],
-      max_tokens: 1000,
-      temperature: 0,
-      data_sources: [
-        {
-          type: "bing_search",
-          parameters: {
-            endpoint: "https://api.bing.microsoft.com",
-            authentication: { type: "api_key", key: bingKey },
-            count: 8,
-            strictness: 3,
-            top_n_documents: 5,
-          },
-        },
-      ],
-    };
-
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "api-key": apiKey,
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(30_000),
+    const params = new URLSearchParams({ q: promptText, count: "10", mkt: "fr-FR", responseFilter: "Webpages" });
+    const res = await fetch(`https://api.bing.microsoft.com/v7.0/search?${params}`, {
+      headers: { "Ocp-Apim-Subscription-Key": apiKey },
+      signal: AbortSignal.timeout(15_000),
     });
 
     if (!res.ok) {
       const err = await res.text();
-      throw new Error(`Azure OpenAI Bing Copilot error ${res.status}: ${err.slice(0, 300)}`);
+      throw new Error(`Bing Search API error ${res.status}: ${err.slice(0, 300)}`);
     }
 
-    const data = (await res.json()) as AzureResponse;
-    if (data.error) throw new Error(`Azure OpenAI error: ${data.error.message}`);
+    const data = (await res.json()) as BingResponse;
+    if (data.error) throw new Error(`Bing error: ${data.error.message}`);
 
-    const choice = data.choices?.[0];
-    const responseText = choice?.message?.content ?? "";
+    const pages = data.webPages?.value ?? [];
+    const urls = pages.map(p => p.url);
 
-    // Citations from Azure "on your data" context block
-    const citations: string[] = [];
-    const ctx = choice?.context;
-    if (ctx?.citations) {
-      for (const c of ctx.citations) {
-        if (c.url) citations.push(c.url);
-      }
-    }
+    // Aggregate all text visible to Copilot for mention detection
+    const aggregatedText = pages.map(p => `${p.name} ${p.snippet}`).join(" ");
 
-    const unique = [...new Set(citations)];
-    const citedIdx = unique.findIndex(u => domainMatches(u, trackedDomain));
-    const competitorDomains = unique
+    const citedIdx = urls.findIndex(u => domainMatches(u, trackedDomain));
+    const competitorDomains = urls
       .filter((_, i) => i !== citedIdx)
       .map(extractHostname)
       .filter((v, i, a) => v && a.indexOf(v) === i);
 
     return {
       cited: citedIdx >= 0,
-      mentioned: checkMentioned(responseText, trackedDomain),
+      mentioned: checkMentioned(aggregatedText, trackedDomain),
       citationPosition: citedIdx >= 0 ? citedIdx + 1 : null,
-      citedUrl: citedIdx >= 0 ? (unique[citedIdx] ?? null) : null,
+      citedUrl: citedIdx >= 0 ? (urls[citedIdx] ?? null) : null,
       competitorDomains,
-      responseText: responseText.slice(0, 1000),
+      responseText: aggregatedText.slice(0, 1000),
       rawResponse: data as unknown as Record<string, unknown>,
     };
   }
