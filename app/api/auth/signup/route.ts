@@ -29,11 +29,17 @@ export async function POST(req: NextRequest) {
   );
 
   try {
+    // Use NEXT_PUBLIC_SITE_URL (prod) or VERCEL_URL (preview) before falling back to request origin (dev)
+    const siteOrigin =
+      process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
+      req.nextUrl.origin;
+
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: `${req.nextUrl.origin}/api/auth/callback`,
+        emailRedirectTo: `${siteOrigin}/api/auth/callback`,
       },
     });
 
