@@ -671,6 +671,9 @@ function AssistantPageInner() {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isAtBottomRef = useRef(true);
+  const userScrolledUpRef = useRef(false);
+  const lastScrollTopRef = useRef(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const sessionIdRef = useRef<string | null>(sessionParam);
 
   // Keep ref in sync
@@ -709,20 +712,30 @@ function AssistantPageInner() {
       .catch(() => {});
   }, [sessionParam]);
 
-  // Scroll tracking
+  // Scroll tracking — detect manual scroll-up to pause auto-scroll
   useEffect(() => {
     const el = scrollAreaRef.current;
     if (!el) return;
     const onScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = el;
-      isAtBottomRef.current = scrollHeight - scrollTop - clientHeight < 120;
+      const isAtBottom = scrollHeight - scrollTop - clientHeight < 120;
+      if (scrollTop < lastScrollTopRef.current - 5) {
+        // User scrolled up intentionally
+        userScrolledUpRef.current = true;
+      }
+      if (isAtBottom) {
+        // User scrolled back to bottom — resume auto-scroll
+        userScrolledUpRef.current = false;
+      }
+      lastScrollTopRef.current = scrollTop;
+      isAtBottomRef.current = isAtBottom;
     };
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
 
   useEffect(() => {
-    if (!isAtBottomRef.current) return;
+    if (userScrolledUpRef.current) return;
     const el = scrollAreaRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, loading, streamingContent]);
@@ -892,10 +905,16 @@ function AssistantPageInner() {
       }
     }
 
+    userScrolledUpRef.current = false;
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       const res = await fetch("/api/assistant", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           messages: nextMessages.map(m => ({ role: m.role, content: m.content })),
           ...(auditId ? { auditId } : {}),
@@ -951,13 +970,27 @@ function AssistantPageInner() {
           }
         }
       }
-    } catch {
-      setError("Erreur réseau");
+    } catch (e) {
+      if (e instanceof Error && e.name === "AbortError") {
+        // User stopped generation — save partial content as assistant message
+        if (accumulated) {
+          const partial: ChatMessage[] = [...nextMessages, { role: "assistant", content: accumulated }];
+          setMessages(partial);
+          if (sid) await saveSession(partial, sid, undefined);
+        }
+      } else {
+        setError("Erreur réseau");
+      }
     } finally {
+      abortControllerRef.current = null;
       setLoading(false);
       setStreamingContent("");
       setToolStatus(null);
     }
+  }
+
+  function stopGeneration() {
+    abortControllerRef.current?.abort();
   }
 
   function handleToolClick(tool: Tool) {
@@ -1469,9 +1502,17 @@ function AssistantPageInner() {
                         className="min-h-[52px] flex-1 resize-none bg-transparent px-2 py-2.5 text-sm text-ink placeholder:text-ink-soft/60 focus:outline-none"
                         style={{ maxHeight: "200px" }}
                       />
-                      <button type="submit" disabled={loading || (!input.trim() && pendingFiles.length === 0)} className="h-11 w-11 shrink-0 rounded-xl bg-brand text-white glow-brand hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed grid place-items-center transition-colors">
-                        <IconArrowUp />
-                      </button>
+                      {loading ? (
+                        <button type="button" onClick={stopGeneration} title="Arrêter la génération" className="h-11 w-11 shrink-0 rounded-xl bg-ink text-white hover:bg-ink-soft grid place-items-center transition-colors">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                            <rect x="5" y="5" width="14" height="14" rx="2" />
+                          </svg>
+                        </button>
+                      ) : (
+                        <button type="submit" disabled={!input.trim() && pendingFiles.length === 0} className="h-11 w-11 shrink-0 rounded-xl bg-brand text-white glow-brand hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed grid place-items-center transition-colors">
+                          <IconArrowUp />
+                        </button>
+                      )}
                     </div>
                     <div className="mt-2 flex items-center justify-between text-xs text-ink-soft">
                       <span className="hidden sm:block">Entrée pour envoyer · Maj+Entrée pour un retour à la ligne · Glisser-déposer pour joindre</span>
