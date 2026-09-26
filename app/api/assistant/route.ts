@@ -27,6 +27,8 @@ import { computeScore, formatAuditForAssistant } from "@/lib/score";
 import { generateMarkdown } from "@/lib/generateMarkdown";
 import { generatePdfBuffer } from "@/lib/generatePdf";
 import { loadAuditWithMeta } from "@/lib/auditStore";
+import { runPageSpeed } from "@/lib/pagespeed";
+import { checkStructuredData } from "@/lib/structuredData";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = "claude-sonnet-4-6";
@@ -144,6 +146,14 @@ Pour check_domain_ranking : utilise cet outil dès que l'utilisateur demande à 
 Pour get_kpu_paa : utilise cet outil dès que l'utilisateur demande les questions "People Also Ask" (PAA) ou "Questions posées par les internautes" de Google pour un mot-clé. C'est la source la plus fiable pour alimenter une FAQ SEO ou un plan de contenu en questions réelles. Passe le mot-clé dans la langue du marché cible (country + language : 'fr' pour la France, 'us'/'en' pour les USA). Le résultat est une arborescence de questions Google en profondeur — utilise-la pour enrichir les articles, les FAQ structured data, et le GEO (citabilité par les IA).
 
 Pour get_kpu_suggestions : utilise cet outil dès que l'utilisateur demande des suggestions Google Autocomplete, des mots-clés sémantiques connexes, ou des questions Reddit/Quora sur un sujet. Complémentaire à find_longtail_keywords (FetchSERP) et get_semrush_data mode keyword : KPU donne des suggestions issues de la recherche réelle (Autocomplete) et des communautés (Reddit/Quora), Semrush donne les volumes et la difficulté, FetchSERP donne les variations SERP. Utilise KPU en priorité pour la découverte sémantique et les FAQ conversationnelles.
+
+Pour get_pagespeed_vitals : utilise cet outil dès que l'utilisateur demande les performances d'une page, les Core Web Vitals (LCP, INP, CLS), le score Lighthouse, ou un audit performance. Passe l'URL complète avec https://. La stratégie 'mobile' est prioritaire (Google indexe en mobile-first) — utilise 'desktop' seulement si l'utilisateur le précise. Interprète les résultats en les comparant aux seuils Google : LCP < 2.5s (bon), 2.5-4s (à améliorer), > 4s (mauvais) ; INP < 200ms (bon), 200-500ms (à améliorer), > 500ms (mauvais) ; CLS < 0.1 (bon), 0.1-0.25 (à améliorer), > 0.25 (mauvais). Si la clé API PageSpeed n'est pas configurée, l'outil tente quand même l'appel sans clé (quota anonyme limité — signale à l'utilisateur si ça échoue d'ajouter GOOGLE_PAGESPEED_API_KEY dans son environnement).
+
+Pour check_structured_data : utilise cet outil dès que l'utilisateur demande un audit de données structurées, si une page a des schemas schema.org, si les rich results sont possibles, ou dans le cadre d'un audit technique e-commerce. Pour les pages produit e-commerce, vérifie en priorité : Product (obligatoire), AggregateRating (recommandé pour les rich results), BreadcrumbList (navigation + SERP). Pour les articles de blog : Article ou BlogPosting + BreadcrumbList. Signale toujours les schemas manquants qui sont pertinents selon le type de page.
+
+Pour check_rankings_bulk : utilise cet outil quand l'utilisateur fournit une liste de mots-clés (dans un fichier, un message, ou un tableau) et veut vérifier les positions d'un domaine sur chacun. Maximum 20 mots-clés par appel. Si l'utilisateur colle un CSV ou une liste de mots-clés séparés par des retours à la ligne, parse-les et appelle check_rankings_bulk avec le tableau résultant — n'appelle PAS check_domain_ranking mot-clé par mot-clé, c'est check_rankings_bulk qui gère le bulk en une seule fois.
+
+Pour dataforseo_page_analysis : quand l'utilisateur demande un audit technique sans avoir de crawl complet, guide-le vers une analyse des pages clés (accueil, catégories principales, une fiche produit type) plutôt que de tenter d'analyser tout le site. Pour un e-commerce, les pages prioritaires sont : la page d'accueil, la ou les catégories avec le plus de trafic, et une fiche produit représentative. Si l'utilisateur mentionne avoir un export Screaming Frog (CSV), indique-lui de l'uploader directement dans le chat — tu pourras alors lire les colonnes (URL, Title, Meta Description, H1, Status Code, Indexability, Word Count) et faire une analyse agrégée sans avoir à analyser URL par URL.
 
 Pour check_geo_visibility : utilise cet outil dès que l'utilisateur demande si un site (le sien ou un concurrent) est cité ou mentionné sur Perplexity, ChatGPT, Gemini, les IA, ou les moteurs génératifs pour un mot-clé donné. L'outil interroge RÉELLEMENT Perplexity et Gemini avec la requête, vérifie si le domaine cible apparaît dans leurs citations ou dans le texte de la réponse, et retourne la réponse brute + les sources citées + une synthèse de visibilité GEO. Exemples de déclencheurs : "est-ce que mon site est cité sur Perplexity quand on cherche X ?", "est-ce que laboratoire-roles.fr apparaît sur ChatGPT ou Perplexity pour cette requête ?", "analyse ma visibilité IA sur ce mot-clé". Toujours extraire le keyword exact et le site_url depuis la demande de l'utilisateur avant d'appeler.
 
@@ -678,6 +688,48 @@ const tools: Anthropic.Tool[] = [
         country: { type: "string", description: "Code pays : 'fr', 'us', 'uk', 'de'. Défaut : 'fr'" },
       },
       required: ["keywords"],
+    },
+  },
+  {
+    name: "get_pagespeed_vitals",
+    description: "Analyse les performances d'une page via l'API PageSpeed Insights (Lighthouse) : score performance mobile ou desktop, LCP, INP, CLS, FCP. Utilise cet outil quand l'utilisateur demande les Core Web Vitals, le score Lighthouse, les performances d'une page, ou un audit performance. Seuils Google : LCP < 2.5s (bon), INP < 200ms (bon), CLS < 0.1 (bon).",
+    input_schema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "URL complète de la page à analyser (avec https://)" },
+        strategy: { type: "string", enum: ["mobile", "desktop"], description: "Stratégie d'analyse. Défaut : 'mobile' (Google indexe en mobile-first)." },
+      },
+      required: ["url"],
+    },
+  },
+  {
+    name: "check_structured_data",
+    description: "Extrait et analyse les données structurées (JSON-LD / schema.org) présentes sur une page. Identifie les schemas présents (Product, BreadcrumbList, FAQPage, Article, LocalBusiness, AggregateRating...) et signale ceux qui sont manquants selon le type de page. Utilise cet outil quand l'utilisateur demande un audit de données structurées, si les rich results sont possibles, ou dans le cadre d'un audit technique.",
+    input_schema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "URL complète de la page à analyser (avec https://)" },
+        page_type: { type: "string", enum: ["product", "category", "article", "homepage", "local_business", "other"], description: "Type de page — détermine quels schemas sont attendus et lesquels signaler comme manquants. Défaut : 'other'." },
+      },
+      required: ["url"],
+    },
+  },
+  {
+    name: "check_rankings_bulk",
+    description: "Vérifie la position d'un domaine sur plusieurs mots-clés en une seule requête (max 20). Retourne un tableau de positions. Utilise cet outil quand l'utilisateur fournit une liste de mots-clés (fichier, liste collée, tableau) pour un suivi de positionnement. N'appelle PAS check_domain_ranking mot-clé par mot-clé — utilise check_rankings_bulk pour tout suivi en masse.",
+    input_schema: {
+      type: "object",
+      properties: {
+        keywords: {
+          type: "array",
+          items: { type: "string" },
+          description: "Liste de mots-clés à vérifier (max 20). Si l'utilisateur en fournit plus, prends les 20 premiers et indique-le.",
+        },
+        domain: { type: "string", description: "Domaine à vérifier, sans www ni https (ex: cabaia.fr)" },
+        country: { type: "string", description: "Code pays ISO (ex: fr, us). Défaut : fr" },
+        pages_number: { type: "number", description: "Pages SERP scannées par mot-clé (1 page = 10 résultats). Défaut : 5 = top 50. Réduire à 3 pour accélérer si la liste est longue." },
+      },
+      required: ["keywords", "domain"],
     },
   },
   {
@@ -2031,6 +2083,137 @@ async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: stri
     case "analyze_competitor_backlinks":
       return { terminal: false, result: await analyzeBacklinksForAssistant(toolUse.input as AnalyzeBacklinksParams) };
 
+    case "get_pagespeed_vitals": {
+      const p = toolUse.input as { url: string; strategy?: "mobile" | "desktop" };
+      try {
+        const apiKey = process.env.GOOGLE_PAGESPEED_API_KEY;
+        const data = await runPageSpeed(p.url, apiKey);
+        if (!data) return { terminal: false, result: `Impossible d'analyser les performances de ${p.url}. Vérifiez que l'URL est accessible et que GOOGLE_PAGESPEED_API_KEY est configuré si vous avez dépassé le quota anonyme.` };
+
+        const score = data.performanceScore;
+        const scoreLabel = score == null ? "indisponible" : score >= 90 ? `${score}/100 (Bon)` : score >= 50 ? `${score}/100 (À améliorer)` : `${score}/100 (Mauvais)`;
+
+        const m = data.metrics ?? {};
+        const fmt = (ms?: number, unit = "ms") => ms == null ? "—" : unit === "s" ? `${(ms / 1000).toFixed(2)}s` : `${Math.round(ms)}ms`;
+        const tier = (val: number | undefined, good: number, mid: number) => {
+          if (val == null) return "";
+          return val <= good ? " ✅" : val <= mid ? " ⚠️" : " ❌";
+        };
+
+        const strategy = p.strategy ?? "mobile";
+        const lines = [
+          `## PageSpeed Insights — ${p.url} (${strategy})`,
+          `**Score Lighthouse :** ${scoreLabel}`,
+          "",
+          "### Core Web Vitals",
+          `- **LCP** (Largest Contentful Paint) : ${fmt(m.lcpMs, "s")}${tier(m.lcpMs, 2500, 4000)} — seuil Google : < 2.5s`,
+          `- **INP** (Interaction to Next Paint) : ${fmt(m.inpMs)}${tier(m.inpMs, 200, 500)} — seuil Google : < 200ms`,
+          `- **CLS** (Cumulative Layout Shift) : ${m.cls == null ? "—" : m.cls.toFixed(3)}${tier(m.cls, 0.1, 0.25)} — seuil Google : < 0.1`,
+          `- **FCP** (First Contentful Paint) : ${fmt(m.fcpMs, "s")}`,
+        ];
+        return { terminal: false, result: lines.join("\n") };
+      } catch (e) {
+        return { terminal: false, result: `❌ Erreur PageSpeed Insights : ${e instanceof Error ? e.message : "erreur inconnue"}` };
+      }
+    }
+
+    case "check_structured_data": {
+      const p = toolUse.input as { url: string; page_type?: string };
+      try {
+        const data = await checkStructuredData(p.url);
+        if (data.errors.length && !data.schemasFound.length) {
+          return { terminal: false, result: `❌ Impossible d'analyser les données structurées de ${p.url} : ${data.errors.join(", ")}` };
+        }
+
+        const lines = [`## Données structurées — ${p.url}`, ""];
+
+        if (!data.schemasFound.length) {
+          lines.push("**Aucune donnée structurée JSON-LD détectée sur cette page.**");
+        } else {
+          lines.push(`**${data.schemasFound.length} schema(s) JSON-LD détecté(s) :**`, "");
+          for (const s of data.schemasFound) {
+            lines.push(`### Schema : \`${s.type}\``);
+            const preview = s.preview as Record<string, unknown>;
+            const interesting = Object.entries(preview).filter(([k]) => k !== "@type").slice(0, 5);
+            for (const [k, v] of interesting) {
+              const val = typeof v === "object" ? JSON.stringify(v).slice(0, 80) : String(v).slice(0, 80);
+              lines.push(`- **${k}** : ${val}`);
+            }
+            lines.push("");
+          }
+        }
+
+        // Missing schemas by page type
+        const missing: string[] = [];
+        const pt = p.page_type ?? "other";
+        if (pt === "product") {
+          if (!data.hasProduct) missing.push("Product (obligatoire pour les rich results produit)");
+          if (!data.hasAggregateRating) missing.push("AggregateRating (recommandé : affiche les étoiles dans la SERP)");
+          if (!data.hasBreadcrumb) missing.push("BreadcrumbList (navigation dans la SERP)");
+        } else if (pt === "category" || pt === "homepage") {
+          if (!data.hasBreadcrumb) missing.push("BreadcrumbList");
+        } else if (pt === "article") {
+          if (!data.hasArticle) missing.push("Article ou BlogPosting");
+          if (!data.hasBreadcrumb) missing.push("BreadcrumbList");
+          if (!data.hasFaqPage) missing.push("FAQPage (optionnel — améliore la citabilité IA)");
+        } else if (pt === "local_business") {
+          if (!data.hasLocalBusiness) missing.push("LocalBusiness (ou sous-type : Store, Restaurant...)");
+          if (!data.hasAggregateRating) missing.push("AggregateRating");
+        }
+
+        if (missing.length) {
+          lines.push("### Schemas manquants ou recommandés");
+          for (const m of missing) lines.push(`- ❌ ${m}`);
+        }
+
+        if (data.errors.length) {
+          lines.push("", `_Avertissements : ${data.errors.join(", ")}_`);
+        }
+
+        return { terminal: false, result: lines.join("\n") };
+      } catch (e) {
+        return { terminal: false, result: `❌ Erreur analyse données structurées : ${e instanceof Error ? e.message : "erreur inconnue"}` };
+      }
+    }
+
+    case "check_rankings_bulk": {
+      const p = toolUse.input as { keywords: string[]; domain: string; country?: string; pages_number?: number };
+      const keywords = p.keywords.slice(0, 20);
+      const truncated = p.keywords.length > 20;
+      try {
+        const results = await Promise.all(
+          keywords.map(kw => getDomainRanking(kw, p.domain, p.country ?? "fr", "google", p.pages_number ?? 5))
+        );
+
+        const lines = [
+          `## Suivi de positionnement — ${p.domain} (${(p.country ?? "fr").toUpperCase()})`,
+          truncated ? `\n_Note : ${p.keywords.length} mots-clés fournis — seuls les 20 premiers ont été vérifiés._` : "",
+          "",
+          "| Mot-clé | Position | URL positionnée |",
+          "|---------|----------|-----------------|",
+        ];
+
+        let found = 0;
+        let notFound = 0;
+        for (let i = 0; i < keywords.length; i++) {
+          const r = results[i];
+          if (r && r.position != null) {
+            found++;
+            const url = (r.url ?? "").slice(0, 60) + ((r.url ?? "").length > 60 ? "…" : "");
+            lines.push(`| ${keywords[i]} | **#${r.position}** | ${url} |`);
+          } else {
+            notFound++;
+            lines.push(`| ${keywords[i]} | Non trouvé (top ${(p.pages_number ?? 5) * 10}) | — |`);
+          }
+        }
+
+        lines.push("", `**Résumé :** ${found} mot(s)-clé(s) positionnés / ${notFound} hors top ${(p.pages_number ?? 5) * 10} / ${keywords.length} vérifiés`);
+        return { terminal: false, result: lines.filter(l => l !== "").join("\n") };
+      } catch (e) {
+        return { terminal: false, result: `❌ Erreur suivi de positionnement : ${e instanceof Error ? e.message : "erreur inconnue"}` };
+      }
+    }
+
     case "dataforseo_serp_analysis": {
       const p = toolUse.input as { keyword: string; country?: string };
       if (!process.env.DATAFORSEO_LOGIN) {
@@ -2443,6 +2626,9 @@ const TOOL_LABELS: Record<string, string> = {
   dataforseo_keyword_overview: "Récupération métriques mots-clés DataForSEO…",
   dataforseo_domain_overview: "Analyse domaine DataForSEO (Labs + Backlinks)…",
   dataforseo_page_analysis: "Analyse on-page DataForSEO…",
+  get_pagespeed_vitals: "Analyse des Core Web Vitals (PageSpeed Insights)…",
+  check_structured_data: "Extraction des données structurées (schema.org)…",
+  check_rankings_bulk: "Vérification des positions en masse…",
   google_ads_keyword_ideas: "Récupération métriques Google Ads…",
 };
 
