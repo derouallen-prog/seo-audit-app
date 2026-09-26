@@ -147,7 +147,7 @@ Pour get_kpu_paa : utilise cet outil dès que l'utilisateur demande les question
 
 Pour get_kpu_suggestions : utilise cet outil dès que l'utilisateur demande des suggestions Google Autocomplete, des mots-clés sémantiques connexes, ou des questions Reddit/Quora sur un sujet. Complémentaire à find_longtail_keywords (FetchSERP) et get_semrush_data mode keyword : KPU donne des suggestions issues de la recherche réelle (Autocomplete) et des communautés (Reddit/Quora), Semrush donne les volumes et la difficulté, FetchSERP donne les variations SERP. Utilise KPU en priorité pour la découverte sémantique et les FAQ conversationnelles.
 
-Pour get_pagespeed_vitals : utilise cet outil dès que l'utilisateur demande les performances d'une page, les Core Web Vitals (LCP, INP, CLS), le score Lighthouse, ou un audit performance. Passe l'URL complète avec https://. La stratégie 'mobile' est prioritaire (Google indexe en mobile-first) — utilise 'desktop' seulement si l'utilisateur le précise. Interprète les résultats en les comparant aux seuils Google : LCP < 2.5s (bon), 2.5-4s (à améliorer), > 4s (mauvais) ; INP < 200ms (bon), 200-500ms (à améliorer), > 500ms (mauvais) ; CLS < 0.1 (bon), 0.1-0.25 (à améliorer), > 0.25 (mauvais). Si la clé API PageSpeed n'est pas configurée, l'outil tente quand même l'appel sans clé (quota anonyme limité — signale à l'utilisateur si ça échoue d'ajouter GOOGLE_PAGESPEED_API_KEY dans son environnement).
+Pour get_pagespeed_vitals : utilise cet outil dès que l'utilisateur demande les performances d'une page, les Core Web Vitals (LCP, INP, CLS), le score Lighthouse, ou un audit performance. Passe l'URL complète avec https://. La stratégie 'mobile' est prioritaire (Google indexe en mobile-first) — utilise 'desktop' seulement si l'utilisateur le précise. Interprète les résultats en les comparant aux seuils Google : LCP < 2.5s (bon), 2.5-4s (à améliorer), > 4s (mauvais) ; INP < 200ms (bon), 200-500ms (à améliorer), > 500ms (mauvais) ; CLS < 0.1 (bon), 0.1-0.25 (à améliorer), > 0.25 (mauvais). Si la clé API PageSpeed n'est pas configurée, l'outil tente quand même l'appel sans clé (quota anonyme limité — signale à l'utilisateur si ça échoue d'ajouter PAGESPEED_API_KEY dans son environnement).
 
 Pour check_structured_data : utilise cet outil dès que l'utilisateur demande un audit de données structurées, si une page a des schemas schema.org, si les rich results sont possibles, ou dans le cadre d'un audit technique e-commerce. Pour les pages produit e-commerce, vérifie en priorité : Product (obligatoire), AggregateRating (recommandé pour les rich results), BreadcrumbList (navigation + SERP). Pour les articles de blog : Article ou BlogPosting + BreadcrumbList. Signale toujours les schemas manquants qui sont pertinents selon le type de page.
 
@@ -2086,7 +2086,7 @@ async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: stri
     case "get_pagespeed_vitals": {
       const p = toolUse.input as { url: string; strategy?: "mobile" | "desktop" };
       try {
-        const apiKey = process.env.GOOGLE_PAGESPEED_API_KEY;
+        const apiKey = process.env.PAGESPEED_API_KEY ?? process.env.GOOGLE_PAGESPEED_API_KEY;
         const data = await runPageSpeed(p.url, apiKey);
         if (!data) return { terminal: false, result: `Impossible d'analyser les performances de ${p.url}. Vérifiez que l'URL est accessible et que GOOGLE_PAGESPEED_API_KEY est configuré si vous avez dépassé le quota anonyme.` };
 
