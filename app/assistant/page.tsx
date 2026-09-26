@@ -524,17 +524,77 @@ function ToolTip({ text }: { text: string }) {
 
 // ── Source chips for tool status ──────────────────────────────────────────────
 
-const SOURCE_CHIPS: { match: string; label: string; cls: string }[] = [
-  { match: "DataForSEO", label: "DataForSEO", cls: "bg-orange-100 text-orange-700" },
-  { match: "Google Ads", label: "Google Ads", cls: "bg-blue-100 text-blue-700" },
-  { match: "Search Console", label: "GSC", cls: "bg-green-100 text-green-700" },
-  { match: "Semrush", label: "Semrush", cls: "bg-red-100 text-red-700" },
-  { match: "Reddit", label: "Reddit", cls: "bg-orange-100 text-orange-600" },
-  { match: "Business Profile", label: "GBP", cls: "bg-yellow-100 text-yellow-700" },
-  { match: "LLMs", label: "Perplexity / Gemini", cls: "bg-purple-100 text-purple-700" },
-  { match: "KPU", label: "KPU", cls: "bg-teal-100 text-teal-700" },
-  { match: "WordPress", label: "WordPress", cls: "bg-sky-100 text-sky-700" },
-  { match: "WooCommerce", label: "WooCommerce", cls: "bg-violet-100 text-violet-700" },
+const GoogleIcon = () => (
+  <svg viewBox="0 0 18 18" className="w-3 h-3 shrink-0" aria-hidden>
+    <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/>
+    <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/>
+    <path fill="#FBBC05" d="M3.964 10.707A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z"/>
+    <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.96L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z"/>
+  </svg>
+);
+
+const DataForSEOIcon = () => (
+  <svg viewBox="0 0 20 20" className="w-3 h-3 shrink-0" aria-hidden fill="none">
+    <rect width="20" height="20" rx="4" fill="#FF6B35"/>
+    <text x="3" y="15" fontSize="13" fontWeight="bold" fill="white" fontFamily="sans-serif">D</text>
+  </svg>
+);
+
+const SemrushIcon = () => (
+  <svg viewBox="0 0 20 20" className="w-3 h-3 shrink-0" aria-hidden fill="none">
+    <rect width="20" height="20" rx="4" fill="#FF642D"/>
+    <text x="3" y="15" fontSize="13" fontWeight="bold" fill="white" fontFamily="sans-serif">S</text>
+  </svg>
+);
+
+const RedditIcon = () => (
+  <svg viewBox="0 0 20 20" className="w-3 h-3 shrink-0" aria-hidden>
+    <circle cx="10" cy="10" r="10" fill="#FF4500"/>
+    <path fill="white" d="M16.67 10a1.46 1.46 0 0 0-2.47-1 7.12 7.12 0 0 0-3.85-1.23l.65-3.08 2.13.45a1 1 0 1 0 .14-.63l-2.38-.5a.25.25 0 0 0-.3.19l-.73 3.44a7.14 7.14 0 0 0-3.89 1.23 1.46 1.46 0 1 0-1.61 2.39 2.87 2.87 0 0 0 0 .44c0 2.24 2.61 4.06 5.83 4.06s5.83-1.82 5.83-4.06a2.87 2.87 0 0 0 0-.44 1.46 1.46 0 0 0 .56-1.26zM7.27 11a1 1 0 1 1 1 1 1 1 0 0 1-1-1zm5.58 2.71a3.58 3.58 0 0 1-2.85.87 3.58 3.58 0 0 1-2.85-.87.25.25 0 0 1 .35-.35 3.07 3.07 0 0 0 2.5.71 3.07 3.07 0 0 0 2.5-.71.25.25 0 0 1 .35.35zm-.12-1.71a1 1 0 1 1 1-1 1 1 0 0 1-1 1z"/>
+  </svg>
+);
+
+const WordPressIcon = () => (
+  <svg viewBox="0 0 20 20" className="w-3 h-3 shrink-0" aria-hidden>
+    <circle cx="10" cy="10" r="10" fill="#21759B"/>
+    <path fill="white" d="M2.2 10a7.8 7.8 0 0 0 4.5 7.02L2.73 7.1A7.77 7.77 0 0 0 2.2 10zm13.07-.47c0-1.03-.37-1.74-.69-2.3-.42-.69-.82-1.27-.82-1.96 0-.77.58-1.48 1.4-1.48h.1A7.8 7.8 0 0 0 3.13 6.6h.47c.77 0 1.96-.09 1.96-.09.4-.02.44.56.05.6 0 0-.4.05-.84.07l2.67 7.95 1.6-4.8-1.14-3.15c-.4-.02-.77-.07-.77-.07-.4-.02-.35-.62.05-.6 0 0 1.21.09 1.93.09.77 0 1.96-.09 1.96-.09.4-.02.44.56.05.6 0 0-.4.05-.84.07l2.65 7.88.73-2.44c.32-.97.56-1.67.56-2.27zm-5.14 1.08L8.1 17.1a7.81 7.81 0 0 0 4.8-.12zm6.65-8.76a7.8 7.8 0 0 1 .02 7.73l-3.35-9.16a7.79 7.79 0 0 1 3.33 1.43z"/>
+  </svg>
+);
+
+const WooCommerceIcon = () => (
+  <svg viewBox="0 0 20 20" className="w-3 h-3 shrink-0" aria-hidden>
+    <rect width="20" height="20" rx="4" fill="#7F54B3"/>
+    <text x="2" y="15" fontSize="11" fontWeight="bold" fill="white" fontFamily="sans-serif">Wc</text>
+  </svg>
+);
+
+const PerplexityIcon = () => (
+  <svg viewBox="0 0 20 20" className="w-3 h-3 shrink-0" aria-hidden fill="none">
+    <rect width="20" height="20" rx="4" fill="#6B4EFF"/>
+    <path d="M10 4l2 4h-4l2-4zM6 9h8v1H6zm1 2l-2 5h10l-2-5H7z" fill="white"/>
+  </svg>
+);
+
+const PageSpeedIcon = () => (
+  <svg viewBox="0 0 20 20" className="w-3 h-3 shrink-0" aria-hidden>
+    <rect width="20" height="20" rx="4" fill="#4285F4"/>
+    <path fill="white" d="M10 4a6 6 0 1 0 0 12A6 6 0 0 0 10 4zm.5 3v4l3 1.5-.5.87L10 11.5V7h.5z"/>
+  </svg>
+);
+
+const SOURCE_CHIPS: { match: string; label: string; cls: string; icon: React.ReactNode }[] = [
+  { match: "DataForSEO", label: "DataForSEO", cls: "bg-orange-50 text-orange-700 border border-orange-200", icon: <DataForSEOIcon /> },
+  { match: "Google Ads", label: "Google Ads", cls: "bg-blue-50 text-blue-700 border border-blue-200", icon: <GoogleIcon /> },
+  { match: "Search Console", label: "GSC", cls: "bg-green-50 text-green-700 border border-green-200", icon: <GoogleIcon /> },
+  { match: "Semrush", label: "Semrush", cls: "bg-red-50 text-red-700 border border-red-200", icon: <SemrushIcon /> },
+  { match: "Reddit", label: "Reddit", cls: "bg-orange-50 text-orange-600 border border-orange-200", icon: <RedditIcon /> },
+  { match: "Business Profile", label: "GBP", cls: "bg-yellow-50 text-yellow-700 border border-yellow-200", icon: <GoogleIcon /> },
+  { match: "LLMs", label: "Perplexity / Gemini", cls: "bg-purple-50 text-purple-700 border border-purple-200", icon: <PerplexityIcon /> },
+  { match: "KPU", label: "KPU", cls: "bg-teal-50 text-teal-700 border border-teal-200", icon: <GoogleIcon /> },
+  { match: "WordPress", label: "WordPress", cls: "bg-sky-50 text-sky-700 border border-sky-200", icon: <WordPressIcon /> },
+  { match: "WooCommerce", label: "WooCommerce", cls: "bg-violet-50 text-violet-700 border border-violet-200", icon: <WooCommerceIcon /> },
+  { match: "PageSpeed", label: "PageSpeed Insights", cls: "bg-blue-50 text-blue-700 border border-blue-200", icon: <PageSpeedIcon /> },
+  { match: "Core Web Vitals", label: "Core Web Vitals", cls: "bg-blue-50 text-blue-700 border border-blue-200", icon: <PageSpeedIcon /> },
 ];
 
 function getSourceChips(status: string) {
@@ -1512,7 +1572,8 @@ function AssistantPageInner() {
                           {toolStatus}
                         </p>
                         {getSourceChips(toolStatus).map(chip => (
-                          <span key={chip.label} className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${chip.cls}`}>
+                          <span key={chip.label} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${chip.cls}`}>
+                            {chip.icon}
                             {chip.label}
                           </span>
                         ))}
@@ -1536,7 +1597,8 @@ function AssistantPageInner() {
                       {toolStatus}
                     </p>
                     {getSourceChips(toolStatus).map(chip => (
-                      <span key={chip.label} className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${chip.cls}`}>
+                      <span key={chip.label} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${chip.cls}`}>
+                        {chip.icon}
                         {chip.label}
                       </span>
                     ))}
