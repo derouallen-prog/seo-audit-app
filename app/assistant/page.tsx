@@ -909,6 +909,7 @@ function AssistantPageInner() {
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
+    let accumulated = "";
 
     try {
       const res = await fetch("/api/assistant", {
@@ -931,7 +932,6 @@ function AssistantPageInner() {
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      let accumulated = "";
       let buffer = "";
       let currentEvent = "";
 
