@@ -2,32 +2,59 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Tout ce qui contient @apply doit vivre dans @layer base */
 @layer base {
   :root {
-    /* Thème clair (palette unique de l'app) */
     --background: 0 0% 100%;
-    --foreground: 0 0% 7%;
-    --primary: 256 96% 60%;
+    --foreground: 228 7% 14%;
+    --primary: 250 55% 55%;
     --primary-foreground: 0 0% 100%;
-    --muted: 240 20% 97%;
-    --muted-foreground: 220 9% 46%;
+    --muted: 210 17% 98%;
+    --muted-foreground: 240 4% 24%;
     --border: 220 13% 91%;
+    /* Tokens SearchMind */
+    --ink: 228 7% 14%;        /* #202125 */
+    --ink-soft: 240 4% 24%;   /* #3a3b3f */
+    --hairline: 220 13% 91%;
+    --good: 142 71% 45%;
+    --brand: 250 55% 55%;     /* #614acf */
+    --brand-soft: 250 55% 97%;
+    --accent: 210 17% 97%;
   }
 
-  html, body { height: 100% }
+  html, body { height: 100%; }
 
-  /* ⛔️ Au lieu de @apply border-border (que Tailwind n’a pas encore),
-     on applique directement la couleur via la variable CSS */
   *, ::before, ::after { border-color: hsl(var(--border)); }
 
-  /* idem pour bg/text : on met les valeurs CSS directes */
   body {
-    background-color: hsl(var(--background));
+    background-color: hsl(var(--muted));
     color: hsl(var(--foreground));
+    font-family: var(--font-sans), system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
-  :root { color-scheme: light dark; }
+  :root { color-scheme: light; }
+}
+
+@layer components {
+  /* Fond grille subtile */
+  .grid-bg {
+    background-image:
+      linear-gradient(to right, rgb(0 0 0 / 0.04) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(0 0 0 / 0.04) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+
+  /* Glow violet sur les éléments brand */
+  .glow-brand {
+    box-shadow: 0 0 20px -4px rgb(97 74 207 / 0.40);
+  }
+
+  /* Card élevée SearchMind */
+  .card-elevated {
+    background-color: hsl(var(--background));
+    border: 1px solid hsl(var(--hairline));
+    border-radius: 1rem;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.06), 0 4px 16px rgb(0 0 0 / 0.04);
+  }
 }

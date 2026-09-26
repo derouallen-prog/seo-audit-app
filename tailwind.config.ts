@@ -23,14 +23,30 @@ const config: Config = {
           foreground: "hsl(var(--muted-foreground))",
         },
         brand: {
-          DEFAULT: "#5D34FF",
-          light: "#7B52C7",
-          dark: "#4A29CC",
+          DEFAULT: "#614acf",
+          light: "#7B67D9",
+          dark: "#4A38A8",
+          soft: "#EDEAFF",
+          foreground: "#FFFFFF",
         },
+        ink: {
+          DEFAULT: "hsl(var(--ink))",
+          soft: "hsl(var(--ink-soft))",
+        },
+        hairline: "hsl(var(--hairline))",
+        good: "hsl(var(--good))",
+        accent: "hsl(var(--accent))",
       },
       borderRadius: {
         xl: "0.75rem",
         "2xl": "1rem",
+      },
+      fontFamily: {
+        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
+        display: ["var(--font-display)", "Georgia", "serif"],
+      },
+      backgroundImage: {
+        "brand-radial": "radial-gradient(ellipse at top, color-mix(in srgb, #614acf 15%, transparent), transparent 60%)",
       },
     },
   },
