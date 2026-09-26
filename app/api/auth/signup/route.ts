@@ -44,7 +44,13 @@ export async function POST(req: NextRequest) {
     });
 
     if (error) {
-      return NextResponse.json({ error: error.message || error.code || "Erreur lors de la création du compte." }, { status: 400 });
+      const errObj = error as unknown as Record<string, unknown>;
+      const rawMsg = errObj.message;
+      const msg = (typeof rawMsg === "string" && rawMsg ? rawMsg : null)
+        || (errObj.code as string | undefined)
+        || (errObj.name as string | undefined)
+        || "Erreur lors de la création du compte.";
+      return NextResponse.json({ error: msg }, { status: 400 });
     }
 
     return NextResponse.json({ success: true });
