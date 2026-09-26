@@ -92,6 +92,8 @@ export async function getGoogleAdsKeywordIdeas(
   const languageResource = LANGUAGE_RESOURCE[country.toLowerCase()] ?? "languageConstants/1002";
   const locationResource = LOCATION_RESOURCE[country.toLowerCase()] ?? "geoTargetConstants/2250";
 
+  const loginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID?.replace(/-/g, "") ?? customerId;
+
   const res = await fetch(
     `${BASE_URL}/customers/${customerId}/keywordPlanIdeas:generateKeywordIdeas`,
     {
@@ -99,6 +101,7 @@ export async function getGoogleAdsKeywordIdeas(
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "developer-token": developerToken,
+        "login-customer-id": loginCustomerId,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -114,7 +117,9 @@ export async function getGoogleAdsKeywordIdeas(
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`Google Ads API ${res.status}: ${body.slice(0, 300)}`);
+    let detail = body.slice(0, 500);
+    try { detail = JSON.stringify(JSON.parse(body)?.error ?? body); } catch { /* keep raw */ }
+    throw new Error(`Google Ads API ${res.status} (customer: ${customerId}, login: ${loginCustomerId}): ${detail}`);
   }
 
   const data = await res.json() as GoogleAdsKeywordIdeasRaw;
