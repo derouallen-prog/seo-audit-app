@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 
 interface Props {
   defaultMode?: "login" | "signup";
@@ -47,10 +48,11 @@ export default function AuthModal({ defaultMode = "login", redirectTo = "/dashbo
     setLoading(false);
   }
 
-  return (
+  const content = (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+      style={{ height: "100dvh" }}
       onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
     >
       <div className="relative w-full max-w-sm rounded-2xl border border-hairline bg-background p-8 shadow-xl animate-in fade-in zoom-in-95 duration-150">
@@ -140,4 +142,7 @@ export default function AuthModal({ defaultMode = "login", redirectTo = "/dashbo
       </div>
     </div>
   );
+
+  if (typeof document === "undefined") return null;
+  return createPortal(content, document.body);
 }
