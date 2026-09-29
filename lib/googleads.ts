@@ -1,4 +1,4 @@
-const API_VERSION = "v22";
+const API_VERSION = "v25";
 const BASE_URL = `https://googleads.googleapis.com/${API_VERSION}`;
 
 const LANGUAGE_RESOURCE: Record<string, string> = {
@@ -77,6 +77,7 @@ interface GoogleAdsKeywordIdeasRaw {
       competitionIndex?: number;
       lowTopOfPageBidMicros?: string;
       highTopOfPageBidMicros?: string;
+      monthlySearchVolumes?: Array<{ month?: string; year?: string; monthlySearches?: string }>;
     };
   }>;
   error?: { code: number; message: string; status: string };
@@ -95,7 +96,7 @@ export async function getGoogleAdsKeywordIdeas(
   const loginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID?.replace(/-/g, "") ?? customerId;
 
   const res = await fetch(
-    `${BASE_URL}/customers/${customerId}/keywordPlanIdeas:generateKeywordIdeas`,
+    `${BASE_URL}/customers/${customerId}:generateKeywordIdeas`,
     {
       method: "POST",
       headers: {
@@ -135,9 +136,13 @@ export async function getGoogleAdsKeywordIdeas(
       const m = r.keywordIdeaMetrics!;
       const lowMicros = parseInt(m.lowTopOfPageBidMicros ?? "0", 10);
       const highMicros = parseInt(m.highTopOfPageBidMicros ?? "0", 10);
+      const volumes = m.monthlySearchVolumes ?? [];
+      const avgFromVolumes = volumes.length > 0
+        ? Math.round(volumes.reduce((s, v) => s + parseInt(v.monthlySearches ?? "0", 10), 0) / volumes.length)
+        : 0;
       return {
         keyword: r.text!,
-        avgMonthlySearches: parseInt(m.avgMonthlySearches ?? "0", 10),
+        avgMonthlySearches: parseInt(m.avgMonthlySearches ?? "0", 10) || avgFromVolumes,
         competition: m.competition ?? "UNSPECIFIED",
         competitionIndex: m.competitionIndex ?? 0,
         lowCpc: lowMicros / 1_000_000,
