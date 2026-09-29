@@ -1,4 +1,4 @@
-const API_VERSION = "v17";
+const API_VERSION = "v19";
 const BASE_URL = `https://googleads.googleapis.com/${API_VERSION}`;
 
 const LANGUAGE_RESOURCE: Record<string, string> = {
