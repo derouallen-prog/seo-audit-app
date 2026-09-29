@@ -58,6 +58,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   { href: "/", label: "Audit" },
                   { href: "/assistant", label: "Assistant" },
                   { href: "/citations", label: "Citations IA" },
+                  { href: "/mentions-ia", label: "Mentions IA" },
                   { href: "/dashboard", label: "Mes audits" },
                   { href: "/tarifs", label: "Tarifs" },
                   { href: "/integrations", label: "Intégrations" },
@@ -115,6 +116,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                       { label: "Audit SEO", href: "/" },
                       { label: "Assistant IA", href: "/assistant" },
                       { label: "Citations IA", href: "/citations" },
+                      { label: "Mentions IA", href: "/mentions-ia" },
                       { label: "Intégrations", href: "/integrations" },
                       { label: "Tarifs", href: "/tarifs" },
                     ].map(({ label, href }) => (

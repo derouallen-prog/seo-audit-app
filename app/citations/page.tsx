@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Image from "next/image";
 import type { PromptSet, Intent } from "@/lib/citations/types";
 import { INTENTS, PLATFORMS } from "@/lib/citations/types";
+import type { LLMMentionItem } from "@/lib/dataforseo_llm_mentions";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface RunDetail {
@@ -334,7 +335,7 @@ function WeekPanel({ week, runs, prompts, onClose }: {
 
 // ── Main Page ──────────────────────────────────────────────────────────────
 export default function CitationsPage() {
-  const [tab, setTab] = useState<"visibilite" | "prompts" | "citations">("visibilite");
+  const [tab, setTab] = useState<"visibilite" | "prompts" | "citations" | "base-ia">("visibilite");
   const [results, setResults] = useState<ResultsData | null>(null);
   const [prompts, setPrompts] = useState<PromptSet[]>([]);
   const [loading, setLoading] = useState(true);
@@ -347,6 +348,14 @@ export default function CitationsPage() {
   const [runAllStatus, setRunAllStatus] = useState<{ loading: boolean; ran?: number; errors?: number } | null>(null);
   const [deletingRuns, setDeletingRuns] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // Base IA tab (LLM Mentions)
+  const [baseIAItems, setBaseIAItems] = useState<LLMMentionItem[]>([]);
+  const [baseIATotal, setBaseIATotal] = useState(0);
+  const [baseIALoading, setBaseIALoading] = useState(false);
+  const [baseIAError, setBaseIAError] = useState<string | null>(null);
+  const [baseIALoaded, setBaseIALoaded] = useState(false);
+  const [baseIAPlatform, setBaseIAPlatform] = useState<"" | "chat_gpt" | "google">("");
 
   // User profile (for domain pre-fill)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -395,6 +404,40 @@ export default function CitationsPage() {
   }, [days, language]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  async function loadBaseIA(platform?: "" | "chat_gpt" | "google") {
+    const domain = userProfile?.site_url
+      ? userProfile.site_url.replace(/^https?:\/\//i, "").replace(/^www\./i, "").split(/[/?#]/)[0]
+      : null;
+    if (!domain) return;
+    setBaseIALoading(true);
+    setBaseIAError(null);
+    try {
+      const body: Record<string, unknown> = { domain, language_code: "fr", location_code: 2250, limit: 30 };
+      if (platform) body.platform = platform;
+      const res = await fetch("/api/llm-mentions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json() as { items?: LLMMentionItem[]; total_count?: number; error?: string };
+      if (!res.ok || data.error) throw new Error(data.error ?? "Erreur");
+      setBaseIAItems(data.items ?? []);
+      setBaseIATotal(data.total_count ?? 0);
+      setBaseIALoaded(true);
+    } catch (e) {
+      setBaseIAError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBaseIALoading(false);
+    }
+  }
+
+  // Load Base IA when tab is opened for the first time, once profile is available
+  useEffect(() => {
+    if (tab === "base-ia" && !baseIALoaded && !baseIALoading && userProfile?.site_url) {
+      void loadBaseIA(baseIAPlatform);
+    }
+  }, [tab, userProfile]);
 
   async function createPrompt(e: React.FormEvent) {
     e.preventDefault();
@@ -512,6 +555,7 @@ export default function CitationsPage() {
     { key: "visibilite" as const, label: "Visibilité" },
     { key: "prompts"    as const, label: "Prompts" },
     { key: "citations"  as const, label: "Citations" },
+    { key: "base-ia"    as const, label: "Base IA" },
   ];
 
   const availableLanguages = results?.languages ?? [];
@@ -1241,6 +1285,117 @@ export default function CitationsPage() {
                   </div>
                 );
               })()}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── TAB: Base IA ───────────────────────────────────────────────────── */}
+      {tab === "base-ia" && (
+        <div className="space-y-5">
+          {/* Info strip */}
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800">
+            <strong>Base indexée DataForSEO ·</strong> Questions que ChatGPT et Gemini répondent en mentionnant votre domaine. Données pré-indexées, non en temps réel.
+          </div>
+
+          {/* Platform filter */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-ink">Plateforme :</span>
+            {(["", "chat_gpt", "google"] as const).map(p => (
+              <button key={p} type="button"
+                onClick={() => { setBaseIAPlatform(p); setBaseIALoaded(false); void (async () => { await loadBaseIA(p); })(); }}
+                className={`px-3 py-1 rounded-lg text-xs font-medium border transition-colors ${baseIAPlatform === p ? "border-brand bg-brand/10 text-brand" : "border-hairline text-ink-soft hover:text-ink"}`}>
+                {p === "" ? "Toutes" : p === "chat_gpt" ? "ChatGPT" : "Gemini"}
+              </button>
+            ))}
+            <button
+              onClick={() => { setBaseIALoaded(false); void (async () => { await loadBaseIA(baseIAPlatform); })(); }}
+              className="ml-auto flex items-center gap-1.5 rounded-lg border border-hairline px-3 py-1 text-xs text-ink-soft hover:text-ink transition-colors">
+              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
+              </svg>
+              Actualiser
+            </button>
+          </div>
+
+          {/* Loading */}
+          {baseIALoading && (
+            <div className="flex items-center justify-center py-16">
+              <svg className="h-6 w-6 animate-spin text-brand" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+            </div>
+          )}
+
+          {/* Error */}
+          {baseIAError && !baseIALoading && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {baseIAError}
+            </div>
+          )}
+
+          {/* No profile */}
+          {!baseIALoading && !baseIAError && !userProfile?.site_url && (
+            <div className="rounded-2xl border border-dashed border-hairline bg-white p-12 text-center">
+              <p className="text-sm text-ink-soft">Configurez votre domaine dans le profil pour accéder aux mentions IA.</p>
+            </div>
+          )}
+
+          {/* Results */}
+          {!baseIALoading && baseIALoaded && (
+            <>
+              {baseIAItems.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-hairline bg-white p-12 text-center">
+                  <p className="text-sm text-ink-soft">Aucune mention trouvée dans la base DataForSEO pour votre domaine.</p>
+                  <p className="text-xs text-ink-soft/60 mt-2">La base DataForSEO n&apos;indexe pas encore tous les domaines.</p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs text-ink-soft">{baseIAItems.length} résultat{baseIAItems.length > 1 ? "s" : ""} affichés{baseIATotal > baseIAItems.length ? ` sur ${baseIATotal.toLocaleString("fr-FR")} au total` : ""}</p>
+                  <div className="space-y-4">
+                    {baseIAItems.map((item, i) => (
+                      <div key={i} className="rounded-2xl border border-hairline bg-white p-5 space-y-3">
+                        {/* Header */}
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="text-sm font-semibold text-ink leading-snug">{item.question}</p>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium"
+                              style={{ backgroundColor: item.platform === "chat_gpt" ? "#e6f6f2" : "#eaf1fe", color: item.platform === "chat_gpt" ? "#10a37f" : "#4285f4" }}>
+                              {item.platform === "chat_gpt" ? "ChatGPT" : "Gemini"}
+                            </span>
+                            {item.ai_search_volume ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-accent/50 text-ink-soft">
+                                {item.ai_search_volume.toLocaleString("fr-FR")}/mois
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        {/* Answer excerpt */}
+                        <div className="rounded-xl bg-accent/40 px-4 py-3">
+                          <p className="text-sm text-ink-soft leading-relaxed line-clamp-4">
+                            {item.answer.replace(/[*_#`]/g, "").slice(0, 400)}
+                          </p>
+                        </div>
+
+                        {/* Sources */}
+                        {item.sources.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {item.sources.slice(0, 6).map((s, j) => (
+                              <a key={j} href={s.url} target="_blank" rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs text-ink-soft border border-hairline bg-white hover:border-brand hover:text-brand transition-colors">
+                                <Image src={`https://www.google.com/s2/favicons?domain=${s.domain}&sz=16`} alt="" width={12} height={12} unoptimized className="h-3 w-3 rounded-sm" />
+                                <span className="max-w-[100px] truncate">{s.domain}</span>
+                              </a>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>
