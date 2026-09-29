@@ -714,32 +714,32 @@ function AssistantPageInner() {
       .catch(() => {});
   }, [sessionParam]);
 
-  // Scroll tracking — detect manual scroll-up to pause auto-scroll
+  // Scroll tracking — wheel fires before scroll, avoids race condition with streaming updates
   useEffect(() => {
     const el = scrollAreaRef.current;
     if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY < 0) userScrolledUpRef.current = true;
+    };
     const onScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = el;
-      const isAtBottom = scrollHeight - scrollTop - clientHeight < 120;
-      if (scrollTop < lastScrollTopRef.current - 5) {
-        // User scrolled up intentionally
-        userScrolledUpRef.current = true;
-      }
-      if (isAtBottom) {
-        // User scrolled back to bottom — resume auto-scroll
-        userScrolledUpRef.current = false;
-      }
+      const isAtBottom = scrollHeight - scrollTop - clientHeight < 80;
+      if (isAtBottom) userScrolledUpRef.current = false;
       lastScrollTopRef.current = scrollTop;
       isAtBottomRef.current = isAtBottom;
     };
+    el.addEventListener("wheel", onWheel, { passive: true });
     el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("scroll", onScroll);
+    };
   }, []);
 
   useEffect(() => {
     if (userScrolledUpRef.current) return;
     const el = scrollAreaRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el) requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
   }, [messages, loading, streamingContent]);
 
   function autoResize() {
@@ -1828,13 +1828,21 @@ function AssistantPageInner() {
                 className="min-h-[52px] flex-1 resize-none bg-transparent px-2 py-2.5 text-sm text-ink placeholder:text-ink-soft/60 focus:outline-none"
                 style={{ maxHeight: "200px" }}
               />
-              <button
-                type="submit"
-                disabled={loading || (!input.trim() && pendingFiles.length === 0)}
-                className="h-11 w-11 shrink-0 rounded-xl bg-brand text-white glow-brand hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed grid place-items-center transition-colors"
-              >
-                <IconArrowUp />
-              </button>
+              {loading ? (
+                <button type="button" onClick={stopGeneration} title="Arrêter la génération" className="h-11 w-11 shrink-0 rounded-xl bg-ink text-white hover:bg-ink-soft grid place-items-center transition-colors">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="5" y="5" width="14" height="14" rx="2" />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={!input.trim() && pendingFiles.length === 0}
+                  className="h-11 w-11 shrink-0 rounded-xl bg-brand text-white glow-brand hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed grid place-items-center transition-colors"
+                >
+                  <IconArrowUp />
+                </button>
+              )}
             </div>
             <div className="mt-2 flex items-center justify-between text-xs text-ink-soft">
               <span className="hidden sm:block">Entrée pour envoyer · Maj+Entrée pour un retour à la ligne · Glisser-déposer pour joindre</span>
