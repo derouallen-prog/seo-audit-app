@@ -119,6 +119,7 @@ export async function getGoogleAdsKeywordIdeas(
     const body = await res.text().catch(() => "");
     let detail = body.slice(0, 500);
     try { detail = JSON.stringify(JSON.parse(body)?.error ?? body); } catch { /* keep raw */ }
+    console.error(`[GoogleAds] ${res.status} customer=${customerId} login=${loginCustomerId} body=${body.slice(0, 1000)}`);
     throw new Error(`Google Ads API ${res.status} (customer: ${customerId}, login: ${loginCustomerId}): ${detail}`);
   }
 
