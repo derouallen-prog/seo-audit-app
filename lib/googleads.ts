@@ -151,3 +151,97 @@ export async function getGoogleAdsKeywordIdeas(
     })
     .sort((a, b) => b.avgMonthlySearches - a.avgMonthlySearches);
 }
+
+// ─── Historical Metrics ───────────────────────────────────────────────────────
+
+export interface GoogleAdsKeywordMetric {
+  keyword: string;
+  avgMonthlySearches: number;
+  competition: string;
+  competitionIndex: number;
+  lowCpc: number;
+  highCpc: number;
+  monthlyVolumes: Array<{ month: string; year: string; searches: number }>;
+}
+
+interface GoogleAdsHistoricalRaw {
+  results?: Array<{
+    text?: string;
+    keywordMetrics?: {
+      avgMonthlySearches?: string;
+      competition?: string;
+      competitionIndex?: string | number;
+      lowTopOfPageBidMicros?: string;
+      highTopOfPageBidMicros?: string;
+      monthlySearchVolumes?: Array<{ month?: string; year?: string; monthlySearches?: string }>;
+    };
+  }>;
+  error?: { code: number; message: string; status: string };
+}
+
+export async function getGoogleAdsHistoricalMetrics(
+  keywords: string[],
+  country = "fr",
+): Promise<GoogleAdsKeywordMetric[]> {
+  const { customerId, developerToken, clientId, clientSecret, refreshToken } = getCredentials();
+  const accessToken = await getAccessToken(clientId, clientSecret, refreshToken);
+  const loginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID?.replace(/-/g, "") ?? customerId;
+
+  const languageResource = LANGUAGE_RESOURCE[country.toLowerCase()] ?? "languageConstants/1002";
+  const locationResource = LOCATION_RESOURCE[country.toLowerCase()] ?? "geoTargetConstants/2250";
+
+  const res = await fetch(
+    `${BASE_URL}/customers/${customerId}:generateKeywordHistoricalMetrics`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "developer-token": developerToken,
+        "login-customer-id": loginCustomerId,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        keywords: keywords.slice(0, 20),
+        geoTargetConstants: [locationResource],
+        keywordPlanNetwork: "GOOGLE_SEARCH",
+        language: languageResource,
+      }),
+      signal: AbortSignal.timeout(30000),
+    },
+  );
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    let detail = body.slice(0, 500);
+    try { detail = JSON.stringify(JSON.parse(body)?.error ?? body); } catch { /* keep raw */ }
+    throw new Error(`Google Ads Historical ${res.status}: ${detail}`);
+  }
+
+  const data = await res.json() as GoogleAdsHistoricalRaw;
+  if (data.error) throw new Error(`Google Ads Historical error ${data.error.code}: ${data.error.message}`);
+
+  return (data.results ?? [])
+    .filter((r) => r.text && r.keywordMetrics)
+    .map((r) => {
+      const m = r.keywordMetrics!;
+      const volumes = m.monthlySearchVolumes ?? [];
+      const avgFromVolumes = volumes.length > 0
+        ? Math.round(volumes.reduce((s, v) => s + parseInt(v.monthlySearches ?? "0", 10), 0) / volumes.length)
+        : 0;
+      const lowMicros = parseInt(m.lowTopOfPageBidMicros ?? "0", 10);
+      const highMicros = parseInt(m.highTopOfPageBidMicros ?? "0", 10);
+      return {
+        keyword: r.text!,
+        avgMonthlySearches: parseInt(m.avgMonthlySearches ?? "0", 10) || avgFromVolumes,
+        competition: m.competition ?? "UNSPECIFIED",
+        competitionIndex: typeof m.competitionIndex === "number" ? m.competitionIndex : parseInt(String(m.competitionIndex ?? "0"), 10),
+        lowCpc: lowMicros / 1_000_000,
+        highCpc: highMicros / 1_000_000,
+        monthlyVolumes: volumes.map((v) => ({
+          month: v.month ?? "",
+          year: v.year ?? "",
+          searches: parseInt(v.monthlySearches ?? "0", 10),
+        })),
+      };
+    });
+}

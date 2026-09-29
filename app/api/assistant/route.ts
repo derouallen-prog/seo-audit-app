@@ -18,7 +18,7 @@ import { findPostByUrl, updateYoastMeta, parseCsv } from "@/lib/wpSeo";
 import { getSemrushDomainKeywords, getSemrushDomainTopPages, getSemrushBacklinks, getSemrushKeywordIdeas } from "@/lib/semrush";
 import { getKeKeywordData, getKeKeywordTrends } from "@/lib/keywordsEverywhere";
 import { getDataForSeoSerp, getDataForSeoKeywordOverview, getDataForSeoBacklinks, getDataForSeoDomainOverview, getDataForSeoPageAnalysis } from "@/lib/dataforseo";
-import { getGoogleAdsKeywordIdeas } from "@/lib/googleads";
+import { getGoogleAdsKeywordIdeas, getGoogleAdsHistoricalMetrics } from "@/lib/googleads";
 import { getKpuPeopleAlsoAsk, getKpuSuggestions, formatPaaForAssistant, formatSuggestionsForAssistant } from "@/lib/keywordspeopleuse";
 import { getSerpResults, getLongTailKeywords, getDomainRanking, getBacklinks } from "@/lib/fetchserp";
 import { marked } from "marked";
@@ -684,6 +684,22 @@ const tools: Anthropic.Tool[] = [
           type: "array",
           items: { type: "string" },
           description: "Liste de mots-clés seeds (max 20) pour générer des idées et métriques. Passe-les dans la langue du marché cible.",
+        },
+        country: { type: "string", description: "Code pays : 'fr', 'us', 'uk', 'de'. Défaut : 'fr'" },
+      },
+      required: ["keywords"],
+    },
+  },
+  {
+    name: "google_ads_historical_metrics",
+    description: "Récupère les métriques Google Ads historiques exactes pour une liste de mots-clés précis : volume mensuel exact sur 12 mois, concurrence publicitaire, CPC réel. Contrairement à google_ads_keyword_ideas qui génère des idées, cet outil donne les données pour des mots-clés que tu fournis explicitement. Utilise-le pour valider le volume d'un mot-clé cible, comparer plusieurs mots-clés entre eux, ou afficher la tendance mensuelle.",
+    input_schema: {
+      type: "object",
+      properties: {
+        keywords: {
+          type: "array",
+          items: { type: "string" },
+          description: "Liste de mots-clés exacts dont tu veux les métriques (max 20).",
         },
         country: { type: "string", description: "Code pays : 'fr', 'us', 'uk', 'de'. Défaut : 'fr'" },
       },
@@ -2456,6 +2472,46 @@ async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: stri
       }
     }
 
+    case "google_ads_historical_metrics": {
+      const p = toolUse.input as { keywords: string[]; country?: string };
+      if (!process.env.GOOGLE_ADS_CLIENT_ID) {
+        return { terminal: false, result: "❌ Les credentials Google Ads ne sont pas configurés (GOOGLE_ADS_*)." };
+      }
+      try {
+        const metrics = await getGoogleAdsHistoricalMetrics(p.keywords, p.country ?? "fr");
+        if (!metrics.length) return { terminal: false, result: `Aucune donnée Google Ads pour : ${p.keywords.join(", ")}` };
+
+        const country = (p.country ?? "fr").toUpperCase();
+        const lines: string[] = [
+          `## Google Ads — Métriques historiques (${country})`,
+          "",
+          "| Mot-clé | Vol. moy/mois | Concurrence | CPC bas | CPC haut |",
+          "|---------|--------------|-------------|---------|----------|",
+        ];
+
+        for (const m of metrics) {
+          const compEmoji = m.competition === "LOW" ? "🟢" : m.competition === "MEDIUM" ? "🟡" : m.competition === "HIGH" ? "🔴" : "⚪";
+          lines.push(`| ${m.keyword} | ${m.avgMonthlySearches.toLocaleString("fr")} | ${compEmoji} ${m.competition} | ${m.lowCpc.toFixed(2)}€ | ${m.highCpc.toFixed(2)}€ |`);
+        }
+
+        // Tendance mensuelle pour le premier mot-clé
+        const first = metrics[0];
+        if (first && first.monthlyVolumes.length > 0) {
+          lines.push(`\n### Tendance mensuelle — "${first.keyword}"`);
+          lines.push("| Mois | Recherches |");
+          lines.push("|------|-----------|");
+          const MONTHS: Record<string, string> = { JANUARY: "Jan", FEBRUARY: "Fév", MARCH: "Mar", APRIL: "Avr", MAY: "Mai", JUNE: "Jun", JULY: "Jul", AUGUST: "Août", SEPTEMBER: "Sep", OCTOBER: "Oct", NOVEMBER: "Nov", DECEMBER: "Déc" };
+          for (const v of first.monthlyVolumes.slice(-12)) {
+            lines.push(`| ${MONTHS[v.month] ?? v.month} ${v.year} | ${v.searches.toLocaleString("fr")} |`);
+          }
+        }
+
+        return { terminal: false, result: lines.join("\n") };
+      } catch (e) {
+        return { terminal: false, result: `❌ Erreur Google Ads Historical : ${e instanceof Error ? e.message : "erreur inconnue"}` };
+      }
+    }
+
     case "fetch_google_sheet": {
       const { url, sheet_name } = toolUse.input as { url: string; sheet_name?: string };
       // Security: only allow Google Sheets URLs
@@ -2630,6 +2686,7 @@ const TOOL_LABELS: Record<string, string> = {
   check_structured_data: "Extraction des données structurées (schema.org)…",
   check_rankings_bulk: "Vérification des positions en masse…",
   google_ads_keyword_ideas: "Récupération métriques Google Ads…",
+  google_ads_historical_metrics: "Métriques historiques Google Ads…",
 };
 
 export async function POST(req: NextRequest) {
