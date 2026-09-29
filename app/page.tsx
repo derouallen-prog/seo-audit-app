@@ -446,13 +446,28 @@ function DomainAuditReport({
 function WelcomeBanner() {
   const searchParams = useSearchParams();
   const [show, setShow] = useState(false);
+  const [signedOut, setSignedOut] = useState(false);
 
   useEffect(() => {
     if (searchParams.get("welcome") === "1") {
       setShow(true);
       window.history.replaceState({}, "", "/");
     }
+    if (searchParams.get("signedout") === "1") {
+      setSignedOut(true);
+      window.history.replaceState({}, "", "/");
+      setTimeout(() => setSignedOut(false), 4000);
+    }
   }, [searchParams]);
+
+  if (signedOut) return (
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-xl border border-hairline bg-background px-4 py-3 text-sm text-ink shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-200">
+      <svg viewBox="0 0 24 24" className="h-4 w-4 text-good shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
+      </svg>
+      Compte déconnecté
+    </div>
+  );
 
   if (!show) return null;
 

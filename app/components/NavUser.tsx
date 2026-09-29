@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getAuthUser } from "@/lib/supabaseServer";
 import SignOutButton from "./SignOutButton";
+import LoginButton from "./LoginButton";
 
 export default async function NavUser() {
   const user = await getAuthUser();
@@ -27,10 +28,12 @@ export default async function NavUser() {
   }
 
   return (
-    <Link href="/auth">
-      <button className="inline-flex items-center gap-2 rounded-md bg-ink px-3 py-1.5 text-xs font-medium text-white shadow transition-colors hover:bg-ink/90">
-        Se connecter
-      </button>
-    </Link>
+    <LoginButton
+      defaultMode="login"
+      redirectTo="/dashboard"
+      className="inline-flex items-center gap-2 rounded-md bg-ink px-3 py-1.5 text-xs font-medium text-white shadow transition-colors hover:bg-ink/90"
+    >
+      Se connecter
+    </LoginButton>
   );
 }

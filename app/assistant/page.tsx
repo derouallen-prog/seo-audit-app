@@ -8,6 +8,7 @@ import remarkGfm from "remark-gfm";
 import type { Components } from "react-markdown";
 import { WritingSetupModal, WritingChecklist, EditorToolbar, buildArticlePrompt } from "./WritingPanel";
 import { RedditSetupModal, ProductSetupModal, ContentPlanSetupModal, PublicationCMSModal, WpConnectModal } from "./ToolSetupModals";
+import AuthModal from "@/app/components/AuthModal";
 import type { WritingConfig } from "./WritingPanel";
 
 interface ChatMessage {
@@ -660,6 +661,7 @@ function AssistantPageInner() {
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isAnonymous, setIsAnonymous] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState<"login" | "signup" | null>(null);
 
   // Suggestions contextuelles basées sur le profil compte
   const [contextSuggestions, setContextSuggestions] = useState<{
@@ -1657,10 +1659,21 @@ function AssistantPageInner() {
           {isAnonymous && (
             <div className="mx-4 mb-0 mt-2 flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
               <span>Conversation non sauvegardée. Connectez-vous pour conserver votre historique.</span>
-              <a href="/auth" className="shrink-0 font-medium text-amber-900 underline hover:text-amber-700">
-                Se connecter
-              </a>
+              <button
+                onClick={() => setShowAuthModal("signup")}
+                className="shrink-0 font-medium text-amber-900 underline hover:text-amber-700"
+              >
+                Créer un compte
+              </button>
             </div>
+          )}
+
+          {showAuthModal && (
+            <AuthModal
+              defaultMode={showAuthModal}
+              redirectTo="/assistant"
+              onClose={() => setShowAuthModal(null)}
+            />
           )}
 
           {/* Input form — chat mode (bottom) */}
