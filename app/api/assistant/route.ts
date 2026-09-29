@@ -581,8 +581,8 @@ const tools: Anthropic.Tool[] = [
         site_url: { type: "string", description: "Le site à vérifier (ex: https://laboratoire-roles.fr ou laboratoire-roles.fr)" },
         platforms: {
           type: "array",
-          items: { type: "string", enum: ["perplexity", "gemini", "openai"] },
-          description: "Plateformes à interroger. Défaut : ['perplexity', 'gemini', 'openai']. Utilise les trois sauf si l'utilisateur précise une ou deux plateformes spécifiques.",
+          items: { type: "string", enum: ["gemini", "openai", "claude"] },
+          description: "Plateformes à interroger. Défaut : ['gemini', 'openai', 'claude']. Utilise les trois sauf si l'utilisateur précise une ou deux plateformes spécifiques.",
         },
       },
       required: ["keyword", "site_url"],
