@@ -11,8 +11,9 @@ interface MentionsResult {
   items: LLMMentionItem[];
 }
 
-interface UserProfile {
-  site_url?: string | null;
+interface ActiveSite {
+  label: string;
+  site_url: string;
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -25,7 +26,7 @@ const LANGUAGES = [
 
 const PLATFORM_CFG: Record<string, { label: string; color: string; bg: string }> = {
   chat_gpt: { label: "ChatGPT", color: "#10a37f", bg: "#e6f6f2" },
-  google:   { label: "Gemini",  color: "#4285f4", bg: "#eaf1fe" },
+  google:   { label: "AI Overview", color: "#4285f4", bg: "#eaf1fe" },
 };
 
 function hasTLD(v: string): boolean {
@@ -154,16 +155,15 @@ export default function MentionsIAPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<MentionsResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [activeSite, setActiveSite] = useState<ActiveSite | null>(null);
 
-  // Load user profile to pre-fill domain
   useEffect(() => {
-    fetch("/api/account/profile")
+    fetch("/api/sites")
       .then(r => r.ok ? r.json() : null)
-      .then((data: UserProfile | null) => {
-        if (data?.site_url) {
-          setProfile(data);
-          setDomain(extractDomain(data.site_url));
+      .then((data: { active: ActiveSite | null } | null) => {
+        if (data?.active?.site_url) {
+          setActiveSite(data.active);
+          setDomain(extractDomain(data.active.site_url));
         }
       })
       .catch(() => null);
@@ -204,7 +204,7 @@ export default function MentionsIAPage() {
 
   // Stats
   const chatgptCount = result?.items.filter(i => i.platform === "chat_gpt").length ?? 0;
-  const geminiCount = result?.items.filter(i => i.platform === "google").length ?? 0;
+  const aiOverviewCount = result?.items.filter(i => i.platform === "google").length ?? 0;
   const totalVolume = result?.items.reduce((s, i) => s + (i.ai_search_volume ?? 0), 0) ?? 0;
   const avgVolume = result && result.items.length > 0 ? Math.round(totalVolume / result.items.length) : 0;
 
@@ -215,11 +215,11 @@ export default function MentionsIAPage() {
       <div className="mb-8">
         <div className="inline-flex items-center gap-2 rounded-full border border-hairline bg-accent/30 px-3 py-1 text-xs text-ink-soft mb-3">
           <span className="h-1.5 w-1.5 rounded-full bg-brand" />
-          Données DataForSEO · Base indexée ChatGPT &amp; Gemini
+          Données DataForSEO · Base indexée Google AI Overview &amp; ChatGPT
         </div>
         <h1 className="font-display text-3xl font-bold text-ink">Mentions IA</h1>
         <p className="mt-2 text-sm text-ink-soft max-w-xl">
-          Explorez les questions que ChatGPT et Gemini répondent en mentionnant votre domaine ou un mot-clé. Données issues de la base indexée DataForSEO.
+          Explorez les questions auxquelles Google AI Overview et ChatGPT répondent en mentionnant votre domaine ou un mot-clé. Données issues de la base indexée DataForSEO. Les réponses ChatGPT ne sont disponibles que pour les États-Unis, en anglais.
         </p>
       </div>
 
@@ -288,7 +288,7 @@ export default function MentionsIAPage() {
               {(["", "chat_gpt", "google"] as const).map(p => (
                 <button key={p} type="button" onClick={() => setPlatform(p)}
                   className={`px-3 py-1 rounded-lg text-xs font-medium border transition-colors ${platform === p ? "border-brand bg-brand/10 text-brand" : "border-hairline text-ink-soft hover:text-ink"}`}>
-                  {p === "" ? "Toutes" : p === "chat_gpt" ? "ChatGPT" : "Gemini"}
+                  {p === "" ? "Toutes" : p === "chat_gpt" ? "ChatGPT" : "Google AI Overview"}
                 </button>
               ))}
             </div>
@@ -342,8 +342,8 @@ export default function MentionsIAPage() {
               <p className="text-2xl font-bold text-ink" style={{ color: "#10a37f" }}>{chatgptCount}</p>
             </div>
             <div className="rounded-2xl border border-hairline bg-white p-4">
-              <p className="text-xs text-ink-soft mb-0.5">Gemini</p>
-              <p className="text-2xl font-bold text-ink" style={{ color: "#4285f4" }}>{geminiCount}</p>
+              <p className="text-xs text-ink-soft mb-0.5">Google AI Overview</p>
+              <p className="text-2xl font-bold text-ink" style={{ color: "#4285f4" }}>{aiOverviewCount}</p>
             </div>
             <div className="rounded-2xl border border-hairline bg-white p-4">
               <p className="text-xs text-ink-soft mb-0.5">Volume moy.</p>
@@ -378,11 +378,11 @@ export default function MentionsIAPage() {
           </div>
           <h2 className="text-lg font-semibold text-ink mb-1.5">Trouvez vos mentions dans les IA</h2>
           <p className="text-sm text-ink-soft max-w-sm mx-auto">
-            Entrez votre domaine pour découvrir toutes les questions auxquelles ChatGPT et Gemini répondent en vous mentionnant.
+            Entrez votre domaine pour découvrir les questions auxquelles les IA répondent en vous mentionnant.
           </p>
-          {profile?.site_url && (
+          {activeSite && (
             <p className="mt-3 text-xs text-ink-soft/60">
-              Domaine pré-rempli depuis votre profil : <strong>{extractDomain(profile.site_url)}</strong>
+              Domaine pré-rempli depuis le site actif : <strong>{activeSite.label}</strong>
             </p>
           )}
         </div>

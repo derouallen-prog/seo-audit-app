@@ -346,80 +346,173 @@ function formatRelativeDate(iso: string): string {
 
 // ── Export toolbar ────────────────────────────────────────────────────────────
 
-function ExportBar({ content }: { content: string }) {
-  function downloadMd() {
-    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
+interface ReportBranding {
+  agency_name: string | null;
+  logo_url: string | null;
+  accent_color: string | null;
+  footer_text: string | null;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function stripInlineMarkdown(s: string): string {
+  return s.replace(/\*\*(.*?)\*\*/g, "$1").replace(/__(.*?)__/g, "$1").replace(/`([^`]*)`/g, "$1")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/<br\s*\/?>/gi, " ").trim();
+}
+
+function extractMarkdownTables(md: string): string[][][] {
+  const tables: string[][][] = [];
+  const lines = md.split("\n");
+  let i = 0;
+  while (i < lines.length) {
+    const head = lines[i]?.trim() ?? "";
+    const sep = lines[i + 1]?.trim() ?? "";
+    if (head.startsWith("|") && /^\|?\s*:?-{2,}/.test(sep)) {
+      const rows: string[][] = [];
+      let j = i;
+      for (; j < lines.length && (lines[j]?.trim() ?? "").startsWith("|"); j++) {
+        if (j === i + 1) continue;
+        const cells = (lines[j] ?? "").trim().replace(/^\|/, "").replace(/\|$/, "")
+          .split(/(?<!\\)\|/).map(c => stripInlineMarkdown(c.replace(/\\\|/g, "|")));
+        rows.push(cells);
+      }
+      tables.push(rows);
+      i = j - 1;
+    }
+    i++;
+  }
+  return tables;
+}
+
+function tablesToCsv(tables: string[][][]): string {
+  const cell = (raw: string) => {
+    // "823 000" → 823000 pour que le tableur reconnaisse un nombre
+    const v = /^\d{1,3}([\s  ]\d{3})+$/.test(raw) ? raw.replace(/[\s  ]/g, "") : raw;
+    return /[";\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  };
+  // Séparateur ";" : format attendu par Excel en paramètres régionaux français
+  return "﻿" + tables.map(t => t.map(r => r.map(cell).join(";")).join("\n")).join("\n\n");
+}
+
+async function renderSafeMarkdown(md: string): Promise<string> {
+  const { Marked } = await import("marked");
+  const marked = new Marked({
+    renderer: {
+      // Le HTML brut du modèle (qui peut reprendre du contenu web tiers) est affiché, jamais interprété
+      html(token) { return escapeHtml(token.text); },
+      link(token) {
+        const href = /^(https?:|mailto:|#|\/)/i.test(token.href) ? token.href : "#";
+        return `<a href="${escapeHtml(href)}">${this.parser.parseInline(token.tokens)}</a>`;
+      },
+      image(token) { return escapeHtml(token.text); },
+    },
+  });
+  return marked.parse(md);
+}
+
+function ExportBar({ content, branding, siteLabel }: { content: string; branding: ReportBranding | null; siteLabel: string | null }) {
+  const tables = extractMarkdownTables(content);
+
+  function download(data: string, type: string, filename: string) {
+    const url = URL.createObjectURL(new Blob([data], { type }));
     const a = document.createElement("a");
     a.href = url;
-    a.download = "reponse-mind.md";
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
   }
 
-  function copyText() {
-    navigator.clipboard.writeText(content).catch(() => {});
-  }
+  const slug = (siteLabel ?? "rapport").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-  async function printPdf() {
+  async function printReport() {
     const win = window.open("", "_blank");
     if (!win) return;
-    // Render markdown → HTML dynamically
-    let html = content;
-    try {
-      const { marked } = await import("marked");
-      html = await marked.parse(content);
-    } catch {
-      // fallback: escape and wrap in <pre> if marked fails
-      html = `<pre style="white-space:pre-wrap">${content.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>`;
-    }
-    win.document.write(`<!DOCTYPE html><html><head><title>Export Mind</title><style>
-      body{font-family:system-ui,sans-serif;padding:2.5rem;max-width:820px;margin:auto;color:#111;line-height:1.65}
-      h1{font-size:1.8rem;font-weight:700;margin:0 0 1.5rem;border-bottom:2px solid #e5e7eb;padding-bottom:.75rem}
-      h2{font-size:1.25rem;font-weight:600;margin:2rem 0 .75rem;color:#1a1a2e}
-      h3{font-size:1.05rem;font-weight:600;margin:1.5rem 0 .5rem}
-      p{margin:.5rem 0 1rem}
-      ul,ol{padding-left:1.5rem;margin:.5rem 0 1rem}
-      li{margin:.3rem 0}
-      strong{font-weight:600}
-      pre{background:#f3f4f6;padding:1rem;border-radius:.5rem;overflow-x:auto;white-space:pre-wrap}
-      code{background:#f3f4f6;padding:.1em .3em;border-radius:.2em;font-size:.875em}
-      table{border-collapse:collapse;width:100%;margin:1rem 0}
-      td,th{border:1px solid #e5e7eb;padding:.5rem .75rem;text-align:left}
+    const body = await renderSafeMarkdown(content);
+    const accent = branding?.accent_color && /^#[0-9a-f]{6}$/i.test(branding.accent_color) ? branding.accent_color : "#1f2937";
+    const agency = branding?.agency_name ? escapeHtml(branding.agency_name) : "";
+    const logo = branding?.logo_url && /^https:\/\//i.test(branding.logo_url)
+      ? `<img src="${escapeHtml(branding.logo_url)}" alt="${agency}" style="max-height:44px;max-width:180px;object-fit:contain">`
+      : agency ? `<strong style="font-size:1.1rem;color:${accent}">${agency}</strong>` : "";
+    const date = new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+    const footer = escapeHtml(branding?.footer_text ?? branding?.agency_name ?? "");
+    const title = `Rapport SEO${siteLabel ? ` · ${siteLabel}` : ""}`;
+
+    win.document.write(`<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>
+      *{box-sizing:border-box}
+      body{font-family:system-ui,-apple-system,sans-serif;margin:0;color:#111827;line-height:1.65}
+      .bar{height:6px;background:${accent}}
+      header{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1.25rem 2.5rem;border-bottom:1px solid #e5e7eb}
+      header .date{font-size:.8rem;color:#6b7280}
+      .cover{padding:1.75rem 2.5rem .5rem}
+      .cover .eyebrow{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:#6b7280;margin:0}
+      .cover h1{font-size:1.6rem;margin:.2rem 0 0}
+      main{padding:1rem 2.5rem 2rem;max-width:880px}
+      h1,h2,h3{text-wrap:balance}
+      main h1{font-size:1.4rem;margin:1.6rem 0 .75rem}
+      main h2{font-size:1.2rem;margin:1.8rem 0 .6rem;color:${accent}}
+      main h3{font-size:1.02rem;margin:1.3rem 0 .4rem}
+      p{margin:.45rem 0 .9rem} ul,ol{padding-left:1.4rem} li{margin:.25rem 0}
+      table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.88rem;font-variant-numeric:tabular-nums}
+      td,th{border:1px solid #e5e7eb;padding:.45rem .65rem;text-align:left;vertical-align:top}
       th{background:#f9fafb;font-weight:600}
-      blockquote{border-left:3px solid #6366f1;margin:1rem 0;padding:.5rem 1rem;color:#555;background:#f9f9ff}
-      @media print{body{padding:1rem}}
-    </style></head><body>${html}</body></html>`);
+      code{background:#f3f4f6;padding:.1em .3em;border-radius:.2em;font-size:.86em}
+      pre{background:#f3f4f6;padding:1rem;border-radius:.5rem;white-space:pre-wrap}
+      blockquote{border-left:3px solid ${accent};margin:1rem 0;padding:.4rem 1rem;color:#4b5563;background:#f9fafb}
+      footer{border-top:1px solid #e5e7eb;padding:.9rem 2.5rem;font-size:.75rem;color:#6b7280}
+      @media print{header,.cover,main,footer{padding-left:0;padding-right:0} .bar{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+    </style></head><body>
+      <div class="bar"></div>
+      <header><div>${logo}</div><div class="date">${date}</div></header>
+      <section class="cover"><p class="eyebrow">Rapport SEO</p>${siteLabel ? `<h1>${escapeHtml(siteLabel)}</h1>` : ""}</section>
+      <main>${body}</main>
+      ${footer ? `<footer>${footer}</footer>` : ""}
+    </body></html>`);
     win.document.close();
-    win.print();
+    win.onload = () => win.print();
+    setTimeout(() => { try { win.print(); } catch { /* fenêtre fermée */ } }, 600);
   }
 
+  const btn = "flex items-center gap-1 rounded-md px-2 py-0.5 text-xs text-ink-soft hover:text-ink hover:bg-accent transition";
+
   return (
-    <div className="mt-1.5 flex items-center gap-1.5 pl-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-      <button
-        onClick={copyText}
-        title="Copier le texte"
-        className="flex items-center gap-1 rounded-md px-2 py-0.5 text-xs text-ink-soft hover:text-ink hover:bg-accent transition"
-      >
+    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+      <button onClick={() => navigator.clipboard.writeText(content).catch(() => {})} title="Copier le texte" className={btn}>
         <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
         Copier
       </button>
-      <button
-        onClick={downloadMd}
-        title="Télécharger en Markdown"
-        className="flex items-center gap-1 rounded-md px-2 py-0.5 text-xs text-ink-soft hover:text-ink hover:bg-accent transition"
-      >
+      <button onClick={() => download(content, "text/markdown;charset=utf-8", `${slug}.md`)} title="Télécharger en Markdown" className={btn}>
         <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         .md
       </button>
-      <button
-        onClick={printPdf}
-        title="Exporter en PDF"
-        className="flex items-center gap-1 rounded-md px-2 py-0.5 text-xs text-ink-soft hover:text-ink hover:bg-accent transition"
-      >
+      {tables.length > 0 && (
+        <button onClick={() => download(tablesToCsv(tables), "text/csv;charset=utf-8", `${slug}.csv`)}
+          title={`Exporter ${tables.length > 1 ? `les ${tables.length} tableaux` : "le tableau"} en CSV (Excel, Google Sheets)`} className={btn}>
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
+          CSV
+        </button>
+      )}
+      <button onClick={printReport} title={branding?.agency_name ? `Rapport PDF aux couleurs de ${branding.agency_name}` : "Rapport PDF (configurez votre marque dans Paramètres > Marque blanche)"} className={btn}>
         <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></svg>
-        PDF
+        {branding?.agency_name ? "Rapport client" : "PDF"}
       </button>
+    </div>
+  );
+}
+
+type AssistantMode = "simple" | "expert";
+
+function ModeToggle({ mode, onChange }: { mode: AssistantMode; onChange: (m: AssistantMode) => void }) {
+  return (
+    <div className="flex items-center gap-1 rounded-lg bg-accent/70 p-0.5" role="radiogroup" aria-label="Niveau des réponses">
+      {(["simple", "expert"] as const).map(m => (
+        <button key={m} type="button" role="radio" aria-checked={mode === m} onClick={() => onChange(m)}
+          title={m === "simple" ? "Réponses sans jargon, centrées sur les décisions" : "Réponses techniques, avec sources et données brutes"}
+          className={`rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors ${mode === m ? "bg-white text-ink shadow-sm" : "text-ink-soft hover:text-ink"}`}>
+          {m === "simple" ? "Simple" : "Expert"}
+        </button>
+      ))}
     </div>
   );
 }
@@ -590,7 +683,7 @@ const SOURCE_CHIPS: { match: string; label: string; cls: string; icon: React.Rea
   { match: "Semrush", label: "Semrush", cls: "bg-red-50 text-red-700 border border-red-200", icon: <SemrushIcon /> },
   { match: "Reddit", label: "Reddit", cls: "bg-orange-50 text-orange-600 border border-orange-200", icon: <RedditIcon /> },
   { match: "Business Profile", label: "GBP", cls: "bg-yellow-50 text-yellow-700 border border-yellow-200", icon: <GoogleIcon /> },
-  { match: "LLMs", label: "Perplexity / Gemini", cls: "bg-purple-50 text-purple-700 border border-purple-200", icon: <PerplexityIcon /> },
+  { match: "LLMs", label: "ChatGPT / Gemini / Claude", cls: "bg-purple-50 text-purple-700 border border-purple-200", icon: <PerplexityIcon /> },
   { match: "KPU", label: "KPU", cls: "bg-teal-50 text-teal-700 border border-teal-200", icon: <GoogleIcon /> },
   { match: "WordPress", label: "WordPress", cls: "bg-sky-50 text-sky-700 border border-sky-200", icon: <WordPressIcon /> },
   { match: "WooCommerce", label: "WooCommerce", cls: "bg-violet-50 text-violet-700 border border-violet-200", icon: <WooCommerceIcon /> },
@@ -613,6 +706,31 @@ function AssistantPageInner() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<AssistantMode>("expert");
+  const [branding, setBranding] = useState<ReportBranding | null>(null);
+  const [activeSiteLabel, setActiveSiteLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    let stored: string | null = null;
+    try { stored = localStorage.getItem("sm_assistant_mode"); } catch { /* stockage indisponible */ }
+    if (stored === "simple" || stored === "expert") {
+      setMode(stored);
+    } else {
+      fetch("/api/account/profile").then(r => r.ok ? r.json() : null)
+        .then((d: { profile?: { seo_level?: string } | null } | null) => {
+          if (d?.profile?.seo_level === "débutant") setMode("simple");
+        }).catch(() => {});
+    }
+    fetch("/api/account/branding").then(r => r.ok ? r.json() : null)
+      .then((d: { branding: ReportBranding | null } | null) => setBranding(d?.branding ?? null)).catch(() => {});
+    fetch("/api/sites").then(r => r.ok ? r.json() : null)
+      .then((d: { active: { label: string } | null } | null) => setActiveSiteLabel(d?.active?.label ?? null)).catch(() => {});
+  }, []);
+
+  function changeMode(m: AssistantMode) {
+    setMode(m);
+    try { localStorage.setItem("sm_assistant_mode", m); } catch { /* stockage indisponible */ }
+  }
   const [streamingContent, setStreamingContent] = useState("");
   const [toolStatus, setToolStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -920,6 +1038,7 @@ function AssistantPageInner() {
         signal: controller.signal,
         body: JSON.stringify({
           messages: nextMessages.map(m => ({ role: m.role, content: m.content })),
+          mode,
           ...(auditId ? { auditId } : {}),
           ...(imageFiles.length > 0 ? { images: imageFiles.map(f => ({ name: f.name, dataUrl: f.dataUrl! })) } : {}),
         }),
@@ -1519,7 +1638,7 @@ function AssistantPageInner() {
                     <div className="mt-2 flex items-center justify-between text-xs text-ink-soft">
                       <span className="hidden sm:block">Entrée pour envoyer · Maj+Entrée pour un retour à la ligne · Glisser-déposer pour joindre</span>
                       <span className="sm:hidden">Maj+Entrée pour un retour à la ligne</span>
-                      <span className="font-mono hidden sm:block">mind-agent · Claude</span>
+                      <ModeToggle mode={mode} onChange={changeMode} />
                     </div>
                   </form>
                 </div>
@@ -1576,7 +1695,7 @@ function AssistantPageInner() {
                             {m.content}
                           </ReactMarkdown>
                         </div>
-                        <ExportBar content={m.content} />
+                        <ExportBar content={m.content} branding={branding} siteLabel={activeSiteLabel} />
                       </>
                     )}
                   </div>
@@ -1614,7 +1733,7 @@ function AssistantPageInner() {
                           <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse shrink-0" />
                           {toolStatus}
                         </p>
-                        {getSourceChips(toolStatus).map(chip => (
+                        {mode === "expert" && getSourceChips(toolStatus).map(chip => (
                           <span key={chip.label} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${chip.cls}`}>
                             {chip.icon}
                             {chip.label}
@@ -1639,7 +1758,7 @@ function AssistantPageInner() {
                       <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse shrink-0" />
                       {toolStatus}
                     </p>
-                    {getSourceChips(toolStatus).map(chip => (
+                    {mode === "expert" && getSourceChips(toolStatus).map(chip => (
                       <span key={chip.label} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${chip.cls}`}>
                         {chip.icon}
                         {chip.label}
@@ -1847,7 +1966,7 @@ function AssistantPageInner() {
             <div className="mt-2 flex items-center justify-between text-xs text-ink-soft">
               <span className="hidden sm:block">Entrée pour envoyer · Maj+Entrée pour un retour à la ligne · Glisser-déposer pour joindre</span>
               <span className="sm:hidden">Maj+Entrée pour un retour à la ligne</span>
-              <span className="font-mono hidden sm:block">mind-agent · Claude</span>
+              <ModeToggle mode={mode} onChange={changeMode} />
             </div>
           </div>{/* end centered wrapper */}
           </form>

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import SiteSwitcher from "./SiteSwitcher";
 
 const NAV_LINKS = [
   {
@@ -86,7 +87,7 @@ export default function MobileMenu() {
   }, [open]);
 
   return (
-    <div className="md:hidden">
+    <div className="lg:hidden">
       <button
         onClick={() => setOpen((v) => !v)}
         className="flex h-9 w-9 items-center justify-center rounded-lg border border-hairline text-ink-soft transition-colors hover:bg-accent"
@@ -113,6 +114,7 @@ export default function MobileMenu() {
 
           {/* Drawer */}
           <div className="fixed inset-x-0 top-16 z-50 border-b border-hairline bg-background shadow-xl">
+            <div className="px-3 pt-3 sm:hidden"><SiteSwitcher /></div>
             <nav className="flex flex-col gap-1 p-3">
               {NAV_LINKS.map(({ href, label, icon }) => {
                 const active = href === "/" ? pathname === "/" : pathname.startsWith(href);

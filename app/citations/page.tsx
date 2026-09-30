@@ -356,6 +356,13 @@ export default function CitationsPage() {
   const [baseIAError, setBaseIAError] = useState<string | null>(null);
   const [baseIALoaded, setBaseIALoaded] = useState(false);
   const [baseIAPlatform, setBaseIAPlatform] = useState<"" | "chat_gpt" | "google">("");
+  const [activeDomain, setActiveDomain] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/sites").then(r => r.ok ? r.json() : null)
+      .then((d: { active: { site_url: string } | null } | null) => { if (d?.active?.site_url) setActiveDomain(d.active.site_url); })
+      .catch(() => {});
+  }, []);
 
   // User profile (for domain pre-fill)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -406,9 +413,8 @@ export default function CitationsPage() {
   useEffect(() => { loadData(); }, [loadData]);
 
   async function loadBaseIA(platform?: "" | "chat_gpt" | "google") {
-    const domain = userProfile?.site_url
-      ? userProfile.site_url.replace(/^https?:\/\//i, "").replace(/^www\./i, "").split(/[/?#]/)[0]
-      : null;
+    const source = activeDomain ?? userProfile?.site_url ?? null;
+    const domain = source ? source.replace(/^https?:\/\//i, "").replace(/^www\./i, "").split(/[/?#]/)[0] : null;
     if (!domain) return;
     setBaseIALoading(true);
     setBaseIAError(null);
@@ -434,10 +440,10 @@ export default function CitationsPage() {
 
   // Load Base IA when tab is opened for the first time, once profile is available
   useEffect(() => {
-    if (tab === "base-ia" && !baseIALoaded && !baseIALoading && userProfile?.site_url) {
+    if (tab === "base-ia" && !baseIALoaded && !baseIALoading && (activeDomain || userProfile?.site_url)) {
       void loadBaseIA(baseIAPlatform);
     }
-  }, [tab, userProfile]);
+  }, [tab, userProfile, activeDomain]);
 
   async function createPrompt(e: React.FormEvent) {
     e.preventDefault();
@@ -1295,7 +1301,7 @@ export default function CitationsPage() {
         <div className="space-y-5">
           {/* Info strip */}
           <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800">
-            <strong>Base indexée DataForSEO ·</strong> Questions que ChatGPT et Gemini répondent en mentionnant votre domaine. Données pré-indexées, non en temps réel.
+            <strong>Base indexée DataForSEO ·</strong> Questions auxquelles Google AI Overview et ChatGPT répondent en mentionnant {activeDomain ?? "votre domaine"}. Données pré-indexées, non en temps réel. ChatGPT n&apos;est couvert que pour les États-Unis, en anglais.
           </div>
 
           {/* Platform filter */}
@@ -1305,7 +1311,7 @@ export default function CitationsPage() {
               <button key={p} type="button"
                 onClick={() => { setBaseIAPlatform(p); setBaseIALoaded(false); void (async () => { await loadBaseIA(p); })(); }}
                 className={`px-3 py-1 rounded-lg text-xs font-medium border transition-colors ${baseIAPlatform === p ? "border-brand bg-brand/10 text-brand" : "border-hairline text-ink-soft hover:text-ink"}`}>
-                {p === "" ? "Toutes" : p === "chat_gpt" ? "ChatGPT" : "Gemini"}
+                {p === "" ? "Toutes" : p === "chat_gpt" ? "ChatGPT" : "Google AI Overview"}
               </button>
             ))}
             <button
@@ -1336,7 +1342,7 @@ export default function CitationsPage() {
           )}
 
           {/* No profile */}
-          {!baseIALoading && !baseIAError && !userProfile?.site_url && (
+          {!baseIALoading && !baseIAError && !activeDomain && !userProfile?.site_url && (
             <div className="rounded-2xl border border-dashed border-hairline bg-white p-12 text-center">
               <p className="text-sm text-ink-soft">Configurez votre domaine dans le profil pour accéder aux mentions IA.</p>
             </div>
@@ -1362,7 +1368,7 @@ export default function CitationsPage() {
                           <div className="flex items-center gap-2 shrink-0">
                             <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium"
                               style={{ backgroundColor: item.platform === "chat_gpt" ? "#e6f6f2" : "#eaf1fe", color: item.platform === "chat_gpt" ? "#10a37f" : "#4285f4" }}>
-                              {item.platform === "chat_gpt" ? "ChatGPT" : "Gemini"}
+                              {item.platform === "chat_gpt" ? "ChatGPT" : "AI Overview"}
                             </span>
                             {item.ai_search_volume ? (
                               <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-accent/50 text-ink-soft">

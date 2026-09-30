@@ -70,7 +70,7 @@ export async function searchLLMMentions(params: LLMMentionsParams): Promise<LLMM
     target.push({
       domain,
       search_filter: "include",
-      search_scope: "any",
+      search_scope: ["any"],
       include_subdomains: true,
     });
   }
@@ -78,7 +78,7 @@ export async function searchLLMMentions(params: LLMMentionsParams): Promise<LLMM
     target.push({
       keyword,
       search_filter: "include",
-      search_scope: "any",
+      search_scope: ["any"],
       match_type: "partial_match",
     });
   }
@@ -131,4 +131,76 @@ export async function searchLLMMentions(params: LLMMentionsParams): Promise<LLMM
     items_count: result?.items_count ?? 0,
     items: result?.items ?? [],
   };
+}
+
+// ─── Target Metrics : volume de mentions agrégé par domaine (score de visibilité IA) ──
+
+export interface LLMGroupMetric { key: string; mentions: number; ai_search_volume: number }
+
+export interface LLMTargetMetrics {
+  domain: string;
+  mentions: number;
+  aiSearchVolume: number;
+  byPlatform: LLMGroupMetric[];
+  topSourceDomains: LLMGroupMetric[];
+}
+
+interface TargetMetricsRaw {
+  tasks?: {
+    status_code?: number;
+    status_message?: string;
+    result?: {
+      aggregated_metrics?: {
+        platform?: LLMGroupMetric[];
+        sources_domain?: LLMGroupMetric[];
+        total?: { mentions?: number; ai_search_volume?: number } | { mentions?: number; ai_search_volume?: number }[];
+      };
+    }[];
+  }[];
+}
+
+// Un appel par domaine : target_metrics agrège toutes les entités du tableau `target` ensemble,
+// il faut donc des requêtes séparées pour comparer plusieurs domaines. Coût constaté : ~0,10 $ par appel.
+export async function getLLMTargetMetrics(
+  domains: string[],
+  opts: { platform?: "chat_gpt" | "google"; language_code?: string; location_code?: number } = {},
+): Promise<LLMTargetMetrics[]> {
+  const { platform, language_code = "fr", location_code = 2250 } = opts;
+  const auth = dfsAuth();
+
+  return Promise.all(domains.slice(0, 4).map(async (raw) => {
+    const domain = raw.replace(/^https?:\/\//i, "").replace(/^www\./i, "").split(/[/?#]/)[0] ?? raw;
+    const body: Record<string, unknown> = {
+      target: [{ domain, search_filter: "include", search_scope: ["any"], include_subdomains: true }],
+      language_code,
+      location_code,
+      internal_list_limit: 10,
+    };
+    if (platform) body.platform = platform;
+
+    const res = await fetch("https://api.dataforseo.com/v3/ai_optimization/llm_mentions/target_metrics/live", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Basic ${auth}` },
+      body: JSON.stringify([body]),
+      signal: AbortSignal.timeout(120_000),
+    });
+    if (!res.ok) throw new Error(`DataForSEO LLM Target Metrics ${res.status}: ${(await res.text()).slice(0, 200)}`);
+
+    const data = await res.json() as TargetMetricsRaw;
+    const task = data.tasks?.[0];
+    if (task?.status_code && task.status_code !== 20000) {
+      throw new Error(`DataForSEO task error ${task.status_code}: ${task.status_message}`);
+    }
+    const am = task?.result?.[0]?.aggregated_metrics;
+    // Le total est documenté au niveau du résultat mais renvoyé dans aggregated_metrics, parfois sous forme de tableau
+    const rawTotal = Array.isArray(am?.total) ? am?.total[0] : am?.total;
+    const byPlatform = am?.platform ?? [];
+    return {
+      domain,
+      mentions: rawTotal?.mentions ?? byPlatform.reduce((s, p) => s + p.mentions, 0),
+      aiSearchVolume: rawTotal?.ai_search_volume ?? byPlatform.reduce((s, p) => s + p.ai_search_volume, 0),
+      byPlatform,
+      topSourceDomains: (am?.sources_domain ?? []).slice(0, 10),
+    };
+  }));
 }

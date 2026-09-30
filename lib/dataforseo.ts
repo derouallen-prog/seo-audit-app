@@ -499,3 +499,147 @@ export async function getDataForSeoDomainOverview(
     rank: 0,
   };
 }
+
+// ─── Ranked Keywords (mots-clés sur lesquels un domaine est réellement positionné) ──
+
+export interface DfsRankedKeyword {
+  keyword: string;
+  position: number;
+  url: string;
+  searchVolume: number;
+  difficulty: number | null;
+  intent: string | null;
+  etv: number;
+}
+
+export interface DfsRankedKeywords {
+  domain: string;
+  totalCount: number;
+  items: DfsRankedKeyword[];
+}
+
+interface DfsRankedRaw {
+  tasks?: Array<{
+    status_code: number;
+    status_message?: string;
+    result?: Array<{
+      total_count?: number;
+      items?: Array<{
+        keyword_data?: {
+          keyword?: string;
+          keyword_info?: { search_volume?: number };
+          keyword_properties?: { keyword_difficulty?: number };
+          search_intent_info?: { main_intent?: string };
+        };
+        ranked_serp_element?: {
+          serp_item?: { rank_group?: number; rank_absolute?: number; url?: string; etv?: number };
+        };
+      }>;
+    }>;
+  }>;
+}
+
+export async function getDataForSeoRankedKeywords(
+  domain: string,
+  country = "fr",
+  opts: { minPosition?: number; maxPosition?: number; limit?: number } = {},
+): Promise<DfsRankedKeywords> {
+  const target = domain.replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/$/, "");
+  const { minPosition = 1, maxPosition = 100, limit = 50 } = opts;
+
+  const raw = await dfsPost<DfsRankedRaw>("/v3/dataforseo_labs/google/ranked_keywords/live", [
+    {
+      target,
+      location_code: getLocationCode(country),
+      language_code: getLanguageCode(country),
+      limit: Math.min(limit, 1000),
+      filters: [
+        ["ranked_serp_element.serp_item.rank_group", ">=", minPosition],
+        "and",
+        ["ranked_serp_element.serp_item.rank_group", "<=", maxPosition],
+      ],
+      order_by: ["keyword_data.keyword_info.search_volume,desc"],
+    },
+  ]);
+
+  const task = raw.tasks?.[0];
+  if (!task || task.status_code !== 20000) throw new Error(task?.status_message ?? "Réponse DataForSEO invalide");
+  const result = task.result?.[0];
+
+  return {
+    domain: target,
+    totalCount: result?.total_count ?? 0,
+    items: (result?.items ?? []).map(it => ({
+      keyword: it.keyword_data?.keyword ?? "",
+      position: it.ranked_serp_element?.serp_item?.rank_group ?? 0,
+      url: it.ranked_serp_element?.serp_item?.url ?? "",
+      searchVolume: it.keyword_data?.keyword_info?.search_volume ?? 0,
+      difficulty: it.keyword_data?.keyword_properties?.keyword_difficulty ?? null,
+      intent: it.keyword_data?.search_intent_info?.main_intent ?? null,
+      etv: it.ranked_serp_element?.serp_item?.etv ?? 0,
+    })).filter(k => k.keyword),
+  };
+}
+
+// ─── Concurrents organiques (domaines qui partagent le plus de mots-clés) ──
+
+export interface DfsCompetitor {
+  domain: string;
+  sharedKeywords: number;
+  avgPosition: number | null;
+  organicKeywords: number | null;
+  organicEtv: number | null;
+}
+
+interface DfsCompetitorsRaw {
+  tasks?: Array<{
+    status_code: number;
+    status_message?: string;
+    result?: Array<{
+      items?: Array<{
+        domain?: string;
+        avg_position?: number;
+        intersections?: number;
+        keywords_count?: number;
+        full_domain_metrics?: { organic?: { count?: number; etv?: number } };
+      }>;
+    }>;
+  }>;
+}
+
+// Sans mots-clés : competitors_domain (chevauchement sur tout le périmètre du domaine).
+// Avec mots-clés : serp_competitors (domaines les plus présents sur ces SERP).
+export async function getDataForSeoCompetitors(
+  domain: string | undefined,
+  country = "fr",
+  keywords: string[] = [],
+  limit = 15,
+): Promise<DfsCompetitor[]> {
+  const location_code = getLocationCode(country);
+  const language_code = getLanguageCode(country);
+  const target = domain?.replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/$/, "");
+
+  const useSerp = keywords.length > 0;
+  if (!useSerp && !target) throw new Error("Un domaine ou une liste de mots-clés est requis");
+
+  const raw = await dfsPost<DfsCompetitorsRaw>(
+    useSerp ? "/v3/dataforseo_labs/google/serp_competitors/live" : "/v3/dataforseo_labs/google/competitors_domain/live",
+    [useSerp
+      ? { keywords: keywords.slice(0, 200), location_code, language_code, limit: limit + 1 }
+      : { target, location_code, language_code, limit: limit + 1, exclude_top_domains: true }],
+  );
+
+  const task = raw.tasks?.[0];
+  if (!task || task.status_code !== 20000) throw new Error(task?.status_message ?? "Réponse DataForSEO invalide");
+
+  return (task.result?.[0]?.items ?? [])
+    .filter(it => it.domain && it.domain !== target)
+    .slice(0, limit)
+    .map(it => ({
+      domain: it.domain!,
+      sharedKeywords: it.intersections ?? it.keywords_count ?? 0,
+      avgPosition: it.avg_position != null ? Math.round(it.avg_position * 10) / 10 : null,
+      organicKeywords: it.full_domain_metrics?.organic?.count ?? null,
+      organicEtv: it.full_domain_metrics?.organic?.etv ?? null,
+    }));
+}

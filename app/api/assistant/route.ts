@@ -9,6 +9,7 @@ import { createDraftPost, createDraftPage } from "@/lib/wpPublish";
 import { getWcConnection } from "@/lib/wcConnections";
 import { formatProfileForPrompt } from "@/lib/wcSiteProfile";
 import { formatUserSiteProfileForPrompt } from "@/lib/userSiteProfile";
+import { ACTIVE_SITE_COOKIE, getActiveSite, getServiceSupabase, cleanDomain } from "@/lib/activeSite";
 import { getAuthUser } from "@/lib/supabaseServer";
 import { buildLinkGraphWithSignals } from "@/lib/linkGraph";
 import { fetchWpContentForUrls } from "@/lib/wpContent";
@@ -17,10 +18,11 @@ import { listGbpLocations, getGbpInsightsForLocation } from "@/lib/gbp";
 import { findPostByUrl, updateYoastMeta, parseCsv } from "@/lib/wpSeo";
 import { getSemrushDomainKeywords, getSemrushDomainTopPages, getSemrushBacklinks, getSemrushKeywordIdeas } from "@/lib/semrush";
 import { getKeKeywordData, getKeKeywordTrends } from "@/lib/keywordsEverywhere";
-import { getDataForSeoSerp, getDataForSeoKeywordOverview, getDataForSeoBacklinks, getDataForSeoDomainOverview, getDataForSeoPageAnalysis } from "@/lib/dataforseo";
+import { getDataForSeoSerp, getDataForSeoKeywordOverview, getDataForSeoBacklinks, getDataForSeoDomainOverview, getDataForSeoRankedKeywords, getDataForSeoCompetitors, getDataForSeoPageAnalysis } from "@/lib/dataforseo";
 import { getGoogleAdsKeywordIdeas, getGoogleAdsHistoricalMetrics } from "@/lib/googleads";
+import { searchLLMMentions, getLLMTargetMetrics } from "@/lib/dataforseo_llm_mentions";
 import { getKpuPeopleAlsoAsk, getKpuSuggestions, formatPaaForAssistant, formatSuggestionsForAssistant } from "@/lib/keywordspeopleuse";
-import { getSerpResults, getLongTailKeywords, getDomainRanking, getBacklinks } from "@/lib/fetchserp";
+import { getLongTailKeywords, getDomainRanking, getBacklinks } from "@/lib/fetchserp";
 import { marked } from "marked";
 import { loadAudit } from "@/lib/auditStore";
 import { computeScore, formatAuditForAssistant } from "@/lib/score";
@@ -111,7 +113,7 @@ Principes méthodologiques à respecter dans toutes tes recommandations et tous 
 - Hiérarchise toujours tes recommandations entre quick wins (impact rapide, effort faible) et actions structurantes (impact fort, effort élevé/long terme)
 - Quand c'est pertinent, donne un ordre de priorité explicite plutôt qu'une liste plate
 
-Tu réponds en français, de façon claire et actionnable. Tu peux discuter de stratégie SEO, répondre à des questions techniques, donner des recommandations, et exécuter quatre actions concrètes quand on te le demande :
+Tu réponds en français, de façon claire et actionnable. Tu peux discuter de stratégie SEO, répondre à des questions techniques, donner des recommandations, et exécuter les actions concrètes suivantes quand on te le demande :
 - générer un article de blog optimisé SEO et GEO
 - générer une fiche produit e-commerce optimisée SEO
 - générer un plan de contenu structuré (page pilier + articles satellites)
@@ -129,15 +131,11 @@ Pour generate_seo_report : utilise cet outil dès que l'utilisateur demande "rap
 
 Pour le plan d'action stratégique (generate_strategy_action_plan), si l'utilisateur a une Search Console connectée et mentionne un domaine, transmets-le à l'outil pour ancrer le plan dans des données réelles plutôt que des recommandations génériques — c'est particulièrement déterminant pour l'axe maillage interne, où les vraies requêtes/pages permettent de proposer des liens internes précis et justifiés plutôt que des principes abstraits. Si l'utilisateur cible une thématique précise (ex: "maillage interne pour le curry"), transmets-la aussi dans le paramètre thematique — pour l'axe maillage_interne, cela permet en plus de crawler réellement les pages de cette thématique pour vérifier quels liens existent déjà. Important : generate_strategy_action_plan récupère lui-même les données Search Console nécessaires si tu lui passes le paramètre domaine — n'appelle PAS get_search_console_data séparément avant, ce serait redondant.
 
-Pour get_keyword_trends : utilise cet outil dès que l'utilisateur veut voir les tendances de recherche d'un ou plusieurs mots-clés, comparer leur saisonnalité, ou vérifier leur volume mensuel et CPC via Keywords Everywhere. Passe jusqu'à 10 mots-clés par appel. Le paramètre country prend le code pays ISO ('fr', 'us', 'uk', 'de' — défaut 'fr').
-
 Pour get_semrush_data : utilise cet outil dans deux situations — (1) l'utilisateur mentionne un domaine spécifique mais n'a pas de Search Console connectée → mode 'domain' pour récupérer les mots-clés positionnés, top pages et backlinks ; (2) l'utilisateur demande des idées de mots-clés, une étude thématique, ou des opportunités de contenu autour d'un sujet → mode 'keyword' pour obtenir les mots-clés connexes et questions Semrush. Ce tool est complémentaire à get_search_console_data : GSC donne les vraies données du site, Semrush donne le potentiel du marché et les mots-clés concurrentiels. En mode 'keyword', utilise toujours un terme seed court (1-3 mots), pas une phrase longue — Semrush indexe des keywords courts, pas des requêtes conversationnelles. Pour la base 'fr', utilise le français (ex: 'curry', 'épices indiennes') ; pour 'us'/'uk', l'anglais.
 
 Pour get_gbp_insights : utilise cet outil dès que l'utilisateur demande une analyse de sa fiche Google Business Profile, les mots-clés locaux qui génèrent des impressions, les performances de sa fiche (vues, appels, itinéraires), ou un audit SEO local. Si le compte GBP n'a pas le bon scope, l'outil indiquera à l'utilisateur de se reconnecter — ne lui dis pas de le faire avant d'avoir appelé l'outil, car il se peut que la connexion soit déjà valide. Pour le plan d'action SEO local (generate_strategy_action_plan axe seo_local), tu peux appeler get_gbp_insights en premier puis passer les données GBP dans le contexte de generate_strategy_action_plan, ou appeler generate_strategy_action_plan directement — il récupérera lui-même les données GSC.
 
 Pour reddit_research : utilise cet outil dès que l'utilisateur demande d'analyser des discussions Reddit, trouver des opportunités de ninja linking, identifier des mentions de marque sur Reddit, ou découvrir des sujets/mots-clés depuis les forums. Choisis le mode approprié — semantic_research pour enrichir la sémantique et les intentions de recherche, ninja_linking pour les opportunités de liens/mentions de marque, topic_discovery pour les idées de contenu depuis les discussions. IMPORTANT : traduis toujours le sujet en anglais avant de passer le paramètre sujet (Reddit est quasi exclusivement en anglais). Si l'utilisateur ne précise pas de subreddits, effectue une recherche globale — mais pour les thématiques de niche, suggère aussi des subreddits pertinents dans ta réponse finale.
-
-Pour analyze_serp : N'UTILISE PAS cet outil pour les analyses SERP — utilise TOUJOURS dataforseo_serp_analysis à la place, qui est plus complet et plus fiable. analyze_serp (FetchSERP) est désactivé pour les analyses SERP.
 
 Pour find_longtail_keywords : utilise cet outil dès que l'utilisateur demande des mots-clés longue traîne, des variations autour d'un sujet, des idées de requêtes peu concurrentielles, ou des opportunités de contenu depuis les données SERP réelles. Passe le mot-clé seed court (1-3 mots). Complémentaire à get_semrush_data : FetchSERP génère des suggestions à partir des recherches réelles sur la SERP, Semrush donne les volumes et la difficulté — utilise les deux quand disponibles.
 
@@ -155,11 +153,11 @@ Pour check_rankings_bulk : utilise cet outil quand l'utilisateur fournit une lis
 
 Pour dataforseo_page_analysis : quand l'utilisateur demande un audit technique sans avoir de crawl complet, guide-le vers une analyse des pages clés (accueil, catégories principales, une fiche produit type) plutôt que de tenter d'analyser tout le site. Pour un e-commerce, les pages prioritaires sont : la page d'accueil, la ou les catégories avec le plus de trafic, et une fiche produit représentative. Si l'utilisateur mentionne avoir un export Screaming Frog (CSV), indique-lui de l'uploader directement dans le chat — tu pourras alors lire les colonnes (URL, Title, Meta Description, H1, Status Code, Indexability, Word Count) et faire une analyse agrégée sans avoir à analyser URL par URL.
 
-Pour check_geo_visibility : utilise cet outil dès que l'utilisateur demande si un site (le sien ou un concurrent) est cité ou mentionné sur Perplexity, ChatGPT, Gemini, les IA, ou les moteurs génératifs pour un mot-clé donné. L'outil interroge RÉELLEMENT Perplexity et Gemini avec la requête, vérifie si le domaine cible apparaît dans leurs citations ou dans le texte de la réponse, et retourne la réponse brute + les sources citées + une synthèse de visibilité GEO. Exemples de déclencheurs : "est-ce que mon site est cité sur Perplexity quand on cherche X ?", "est-ce que laboratoire-roles.fr apparaît sur ChatGPT ou Perplexity pour cette requête ?", "analyse ma visibilité IA sur ce mot-clé". Toujours extraire le keyword exact et le site_url depuis la demande de l'utilisateur avant d'appeler.
+Pour check_geo_visibility : utilise cet outil dès que l'utilisateur demande si un site (le sien ou un concurrent) est cité ou mentionné sur ChatGPT, Gemini, Claude, les IA, ou les moteurs génératifs pour un mot-clé donné. L'outil interroge RÉELLEMENT ChatGPT, Gemini et Claude (recherche web activée) avec la requête, vérifie si le domaine cible apparaît dans leurs citations ou dans le texte de la réponse, et retourne la réponse brute + les sources citées + une synthèse de visibilité GEO. Exemples de déclencheurs : "est-ce que mon site est cité sur ChatGPT quand on cherche X ?", "est-ce que laboratoire-roles.fr apparaît sur ChatGPT ou Gemini pour cette requête ?", "analyse ma visibilité IA sur ce mot-clé". Toujours extraire le keyword exact et le site_url depuis la demande de l'utilisateur avant d'appeler.
 
 Pour analyze_competitor_backlinks : utilise cet outil dès que l'utilisateur veut analyser les backlinks d'un concurrent, identifier des sources de liens à dupliquer, ou auditer le profil de netlinking d'un domaine tiers. Transmets le domaine cible sans www. Complémentaire à get_semrush_data mode domain qui donne aussi un aperçu des backlinks — FetchSERP fournit une liste détaillée avec ancres.
 
-Pour dataforseo_serp_analysis : c'est l'outil principal pour toute analyse SERP. Utilise-le dès que l'utilisateur demande d'analyser la SERP, le top 10, les concurrents sur un mot-clé, les features SERP (AI Overview, featured snippet, shopping, local pack, vidéos, PAA…). N'utilise JAMAIS analyze_serp (FetchSERP) pour une analyse SERP — dataforseo_serp_analysis est systématiquement préférable car il retourne les features SERP enrichies, les People Also Ask, et les requêtes associées en un seul appel.
+Pour dataforseo_serp_analysis : c'est l'outil principal pour toute analyse SERP. Utilise-le dès que l'utilisateur demande d'analyser la SERP, le top 10, les concurrents sur un mot-clé, les features SERP (AI Overview, featured snippet, shopping, local pack, vidéos, PAA…). Il retourne les features SERP enrichies, les People Also Ask et les requêtes associées en un seul appel.
 
 Pour dataforseo_keyword_overview : utilise cet outil dès que l'utilisateur veut des métriques précises sur des mots-clés (volume, difficulté SEO, CPC, intention de recherche). Peut traiter jusqu'à 10 mots-clés en une seule requête. Complémentaire à get_semrush_data (mode keyword) : DataForSEO est idéal pour valider/comparer des mots-clés cibles avec volume + difficulté + intention en un seul appel.
 
@@ -168,6 +166,23 @@ Pour dataforseo_domain_overview : utilise cet outil quand l'utilisateur demande 
 Pour dataforseo_page_analysis : utilise cet outil dès que l'utilisateur fournit une URL et demande une analyse on-page, un audit de page, ou veut vérifier les éléments techniques d'une page spécifique (title, meta, H1, canonical, liens, images, temps de chargement). C'est le seul outil qui fait une analyse on-page réelle d'une URL — utilise-le en priorité sur les autres pour ce cas d'usage.
 
 Pour google_ads_keyword_ideas : utilise cet outil quand l'utilisateur veut des données Google Ads officielles sur des mots-clés : volume exact, CPC (enchères Top Of Page bas/haut), niveau de concurrence publicitaire. C'est la source la plus fiable pour les CPC réels car c'est directement l'API Google. Complémentaire à dataforseo_keyword_overview (qui donne la difficulté SEO et l'intention) et get_semrush_data (qui donne le positionnement organique). Idéal pour du cross-data : appelle dataforseo_keyword_overview ET google_ads_keyword_ideas en parallèle quand l'utilisateur veut une analyse complète d'un mot-clé.
+
+Pour dataforseo_ranked_keywords : c'est l'outil des quick wins. "Mes mots-clés en page 2", "où je peux gagner vite", "sur quoi je suis presque en première page" → min_position 4 et max_position 10 (ou 11 à 20 pour la page 2). Présente le résultat priorisé par potentiel (volume élevé, difficulté faible, position proche du top 3) et relie chaque mot-clé à la page positionnée. Pour le site de l'utilisateur, si la Search Console est connectée, croise avec get_search_console_data qui donne les clics réels.
+
+Pour dataforseo_competitors : utilise-le dès que l'utilisateur demande qui sont ses concurrents SEO, qui le dépasse, ou quand la liste de concurrents du profil est vide ou semble incomplète. Distingue clairement les concurrents business (profil) des concurrents organiques (données) : ce ne sont pas toujours les mêmes, et le signaler est une information utile.
+
+Pour llm_mentions_metrics et llm_mentions_search : ce sont des mesures issues d'une base de réponses IA déjà collectées, larges et peu coûteuses. check_geo_visibility teste un prompt précis en direct, plus cher et plus lent. Règle : "ma visibilité IA", "part de voix IA vs concurrents", "les IA parlent-elles de moi" → llm_mentions_metrics (avec les concurrents du profil pour comparer) ; "sur quelles questions" → llm_mentions_search ; "est-ce que ChatGPT me cite quand on tape exactement X" → check_geo_visibility. Précise toujours que les données ChatGPT de la base ne couvrent que les États-Unis en anglais ; pour la France, la base couvre Google AI Overview.
+
+## Source de référence par métrique
+
+Plusieurs outils renvoient des métriques proches avec des valeurs différentes. Ne présente jamais deux chiffres contradictoires sans arbitrer. Source de référence par métrique :
+- Clics, impressions, CTR, position réelle du site de l'utilisateur : Search Console, toujours prioritaire sur toute estimation.
+- Volume de recherche et CPC : Google Ads (google_ads_historical_metrics). DataForSEO et Semrush ne servent que si Google Ads est indisponible.
+- Difficulté SEO et intention de recherche : DataForSEO (dataforseo_keyword_overview).
+- Mots-clés positionnés, trafic estimé et concurrents d'un domaine tiers : DataForSEO Labs.
+- Backlinks et domaines référents : DataForSEO Backlinks. Semrush et FetchSERP en complément uniquement.
+- Visibilité dans les IA : DataForSEO LLM Mentions pour la tendance, check_geo_visibility et Citations IA pour un prompt précis.
+Si une deuxième source diverge fortement de la source de référence, affiche la source de référence et mentionne l'écart en une phrase ("Semrush estime 30 % de moins"). Indique la fraîcheur des données quand elle compte : Search Console a 2 à 3 jours de décalage, DataForSEO Labs est mis à jour chaque semaine, les analyses SERP et check_geo_visibility sont en direct.
 
 Règle générale impérative pour tous les outils : quand tu décides d'appeler un outil, appelle-le immédiatement dans le même tour de réponse. N'écris jamais de message d'annonce du type "je lance la génération" ou "un instant, je récupère les données" sans appeler l'outil dans la même réponse — ce serait une réponse vide qui n'aboutit à rien. Soit tu appelles l'outil tout de suite, soit tu réponds directement en texte.
 
@@ -505,19 +520,6 @@ const tools: Anthropic.Tool[] = [
     },
   },
   {
-    name: "analyze_serp",
-    description: "DÉPRÉCIÉ — N'utilise PAS cet outil. Utilise dataforseo_serp_analysis à la place, qui est plus complet et fiable. Cet outil est désactivé.",
-    input_schema: {
-      type: "object",
-      properties: {
-        query: { type: "string", description: "Requête de recherche à analyser sur la SERP (dans la langue du marché cible)" },
-        country: { type: "string", description: "Code pays ISO (ex: fr, us, uk, de). Défaut : fr" },
-        search_engine: { type: "string", description: "Moteur de recherche : google, bing, duckduckgo. Défaut : google" },
-      },
-      required: ["query"],
-    },
-  },
-  {
     name: "find_longtail_keywords",
     description: "Génère des mots-clés longue traîne autour d'un sujet ou mot-clé principal à partir des données SERP réelles. Utilise cet outil quand l'utilisateur demande des variations longue traîne, des idées de requêtes peu concurrentielles, ou des opportunités de contenu.",
     input_schema: {
@@ -573,11 +575,11 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: "check_geo_visibility",
-    description: "Interroge directement Perplexity et Gemini (avec recherche web activée) pour vérifier si un site est cité ou mentionné dans leurs réponses à une requête donnée. Utilise cet outil quand l'utilisateur demande si son site (ou un concurrent) apparaît sur Perplexity, ChatGPT, Gemini, ou les IA en général pour un mot-clé. Retourne la réponse réelle du LLM, la position de citation, les sources concurrentes citées, et une synthèse de visibilité GEO.",
+    description: "Interroge directement ChatGPT, Gemini et Claude (avec recherche web activée) pour vérifier si un site est cité ou mentionné dans leurs réponses à une requête donnée. Utilise cet outil quand l'utilisateur demande si son site (ou un concurrent) apparaît sur ChatGPT, Gemini, Claude ou les IA en général pour un mot-clé. Retourne la réponse réelle du LLM, la position de citation, les sources concurrentes citées, et une synthèse de visibilité GEO.",
     input_schema: {
       type: "object",
       properties: {
-        keyword: { type: "string", description: "La requête à taper — exactement comme l'utilisateur la formulerait sur Perplexity ou Gemini (ex: 'laboratoire de prothèse dentaire à Paris')" },
+        keyword: { type: "string", description: "La requête à taper — exactement comme l'utilisateur la formulerait sur ChatGPT ou Gemini (ex: 'laboratoire de prothèse dentaire à Paris')" },
         site_url: { type: "string", description: "Le site à vérifier (ex: https://laboratoire-roles.fr ou laboratoire-roles.fr)" },
         platforms: {
           type: "array",
@@ -625,7 +627,7 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: "dataforseo_serp_analysis",
-    description: "Analyse la SERP Google via DataForSEO : top 10 organique avec titres/descriptions, featured snippet, People Also Ask, requêtes associées, et types de features SERP détectés (AI Overview, images, vidéos, shopping, local pack…). Plus complet que analyze_serp (FetchSERP) car inclut les features SERP enrichies et les PAA directement. Utilise cet outil quand l'utilisateur demande une analyse SERP approfondie, souhaite identifier les features qui dominent sur un mot-clé, ou veut comprendre l'environnement concurrentiel complet d'une requête.",
+    description: "Analyse la SERP Google via DataForSEO : top 10 organique avec titres/descriptions, featured snippet, People Also Ask, requêtes associées, et types de features SERP détectés (AI Overview, images, vidéos, shopping, local pack…). Utilise cet outil quand l'utilisateur demande une analyse SERP approfondie, souhaite identifier les features qui dominent sur un mot-clé, ou veut comprendre l'environnement concurrentiel complet d'une requête.",
     input_schema: {
       type: "object",
       properties: {
@@ -637,7 +639,7 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: "dataforseo_keyword_overview",
-    description: "Récupère les métriques SEO complètes pour 1 à 10 mots-clés via DataForSEO : volume de recherche mensuel, difficulté (0-100), CPC, niveau de concurrence, intention de recherche principale (informational/commercial/transactional/navigational), tendance mensuelle sur 12 mois, et features SERP présentes. Utilise cet outil quand l'utilisateur veut des données chiffrées précises sur des mots-clés (volume, difficulté, CPC, intention), valider un mot-clé cible, ou comparer plusieurs mots-clés entre eux. Complémentaire à get_semrush_data et get_keyword_trends (Keywords Everywhere).",
+    description: "Récupère les métriques SEO complètes pour 1 à 10 mots-clés via DataForSEO : volume de recherche mensuel, difficulté (0-100), CPC, niveau de concurrence, intention de recherche principale (informational/commercial/transactional/navigational), tendance mensuelle sur 12 mois, et features SERP présentes. Utilise cet outil quand l'utilisateur veut des données chiffrées précises sur des mots-clés (volume, difficulté, CPC, intention), valider un mot-clé cible, ou comparer plusieurs mots-clés entre eux. Complémentaire à get_semrush_data et google_ads_historical_metrics.",
     input_schema: {
       type: "object",
       properties: {
@@ -672,6 +674,62 @@ const tools: Anthropic.Tool[] = [
         url: { type: "string", description: "URL complète de la page à analyser (avec https://)" },
       },
       required: ["url"],
+    },
+  },
+  {
+    name: "dataforseo_ranked_keywords",
+    description: "Liste les mots-clés sur lesquels un domaine est RÉELLEMENT positionné dans Google (DataForSEO Labs, base mise à jour chaque semaine), avec position, URL positionnée, volume, difficulté et intention. Filtrable par tranche de positions. Utilise-le pour les quick wins (positions 4 à 10 ou 11 à 20), le portefeuille de mots-clés d'un concurrent, ou 'sur quoi mon site ressort'. Pour les performances réelles du site de l'utilisateur (clics, impressions), la Search Console reste prioritaire quand elle est connectée.",
+    input_schema: {
+      type: "object",
+      properties: {
+        domain: { type: "string", description: "Domaine sans www ni https (ex: exemple.fr)" },
+        min_position: { type: "number", description: "Position minimale incluse. Défaut : 1. Quick wins : 4." },
+        max_position: { type: "number", description: "Position maximale incluse. Défaut : 100. Quick wins : 10 ou 20." },
+        limit: { type: "number", description: "Nombre de mots-clés, triés par volume décroissant. Défaut : 50, maximum : 200." },
+        country: { type: "string", description: "Code pays : 'fr', 'us', 'uk', 'de'. Défaut : 'fr'" },
+      },
+      required: ["domain"],
+    },
+  },
+  {
+    name: "dataforseo_competitors",
+    description: "Identifie les vrais concurrents organiques. Avec un domaine seul : domaines qui partagent le plus de mots-clés positionnés avec lui (DataForSEO Labs competitors_domain). Avec une liste de mots-clés : domaines les plus présents sur ces SERP (serp_competitors). Utilise-le pour 'qui sont mes concurrents', 'qui me passe devant', ou pour compléter la liste de concurrents du profil par des données plutôt que par intuition.",
+    input_schema: {
+      type: "object",
+      properties: {
+        domain: { type: "string", description: "Domaine de référence sans www ni https. Requis si aucun mot-clé n'est fourni." },
+        keywords: { type: "array", items: { type: "string" }, description: "Mots-clés dont on veut connaître les domaines dominants (max 200). Optionnel." },
+        country: { type: "string", description: "Code pays : 'fr', 'us', 'uk', 'de'. Défaut : 'fr'" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "llm_mentions_metrics",
+    description: "Mesure la visibilité d'un ou plusieurs domaines dans les réponses des IA à partir de la base indexée DataForSEO LLM Mentions : nombre total de mentions, volume de recherche IA associé, répartition par plateforme et domaines sources les plus cités autour de la cible. Jusqu'à 4 domaines par appel (coût d'environ 0,10 $ par domaine : ne compare que les concurrents utiles). Plateformes : 'google' = Google AI Overview ; 'chat_gpt' = ChatGPT, disponible uniquement pour les États-Unis en anglais. Pour la France, utilise google. Moins cher et plus large que check_geo_visibility, qui teste un seul prompt en direct.",
+    input_schema: {
+      type: "object",
+      properties: {
+        domains: { type: "array", items: { type: "string" }, description: "Domaines à mesurer (1 à 4), sans www ni https. Mets le domaine de l'utilisateur en premier." },
+        platform: { type: "string", enum: ["google", "chat_gpt"], description: "Plateforme. Défaut : google pour la France. chat_gpt impose country 'us'." },
+        country: { type: "string", description: "'fr' (défaut) ou 'us'." },
+      },
+      required: ["domains"],
+    },
+  },
+  {
+    name: "llm_mentions_search",
+    description: "Retrouve dans la base DataForSEO LLM Mentions les questions réelles auxquelles les IA ont répondu en mentionnant un domaine ou un mot-clé : question, extrait de réponse, sources citées, volume de recherche IA. Utilise-le pour 'sur quelles questions les IA parlent de moi', 'que disent les IA de ma marque', ou pour trouver des angles de contenu GEO. Mêmes contraintes de plateforme que llm_mentions_metrics.",
+    input_schema: {
+      type: "object",
+      properties: {
+        domain: { type: "string", description: "Domaine sans www ni https. Optionnel si keyword est fourni." },
+        keyword: { type: "string", description: "Mot-clé ou marque. Optionnel si domain est fourni." },
+        platform: { type: "string", enum: ["google", "chat_gpt"], description: "Défaut : google pour la France." },
+        country: { type: "string", description: "'fr' (défaut) ou 'us'." },
+        limit: { type: "number", description: "Nombre de questions (défaut 15, max 50)." },
+      },
+      required: [],
     },
   },
   {
@@ -1733,12 +1791,6 @@ async function generateStrategyActionPlan(sessionId: string | undefined, p: Stra
   return block && block.type === "text" ? block.text : "Désolé, je n'ai pas pu générer ce plan d'action.";
 }
 
-interface AnalyzeSerpParams {
-  query: string;
-  country?: string;
-  search_engine?: string;
-}
-
 interface FindLongtailParams {
   keyword: string;
   count?: number;
@@ -1757,52 +1809,6 @@ interface AnalyzeBacklinksParams {
   domain: string;
   country?: string;
   pages_number?: number;
-}
-
-async function analyzeSerpForAssistant(p: AnalyzeSerpParams): Promise<string> {
-  if (!process.env.FETCHSERP_API_TOKEN) return "La clé API FetchSERP (FETCHSERP_API_TOKEN) n'est pas configurée.";
-  const data = await getSerpResults(p.query, p.country ?? "fr", p.search_engine ?? "google");
-  if (!data || !data.results.length) return `Aucun résultat SERP trouvé pour "${p.query}".`;
-
-  const lines: string[] = [
-    `## SERP Google — "${p.query}" (${(p.country ?? "fr").toUpperCase()})`,
-    `Résultats estimés : ${data.totalResults}`,
-    "",
-    "### Top 10 résultats organiques",
-    "| Pos. | Domaine | Titre | URL |",
-    "|------|---------|-------|-----|",
-  ];
-
-  for (const r of data.results) {
-    const title = r.title.slice(0, 60) + (r.title.length > 60 ? "…" : "");
-    const url = r.url.slice(0, 60) + (r.url.length > 60 ? "…" : "");
-    lines.push(`| ${r.position} | ${r.domain} | ${title} | ${url} |`);
-  }
-
-  if (data.featuredSnippet) {
-    lines.push("", "### Featured Snippet");
-    lines.push(`**${data.featuredSnippet.title}**`);
-    lines.push(data.featuredSnippet.description);
-    lines.push(`Source : ${data.featuredSnippet.url}`);
-  }
-
-  if (data.relatedSearches.length) {
-    lines.push("", "### Requêtes associées");
-    lines.push(data.relatedSearches.slice(0, 8).map(q => `- ${q}`).join("\n"));
-  }
-
-  // Deduplicate domains to identify dominance
-  const domainCounts = data.results.reduce<Record<string, number>>((acc, r) => {
-    acc[r.domain] = (acc[r.domain] ?? 0) + 1;
-    return acc;
-  }, {});
-  const dominant = Object.entries(domainCounts).filter(([, c]) => c > 1);
-  if (dominant.length) {
-    lines.push("", "### Domaines multi-positionnés");
-    lines.push(dominant.map(([d, c]) => `- ${d} : ${c} résultats dans le top 10`).join("\n"));
-  }
-
-  return lines.join("\n");
 }
 
 async function findLongtailForAssistant(p: FindLongtailParams): Promise<string> {
@@ -2018,7 +2024,7 @@ async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: stri
     case "reddit_research":
       return { terminal: true, reply: await generateRedditResearch(toolUse.input as RedditResearchParams) };
     case "check_geo_visibility": {
-      const p = toolUse.input as { keyword: string; site_url: string; platforms?: ("perplexity" | "gemini" | "openai")[] };
+      const p = toolUse.input as { keyword: string; site_url: string; platforms?: ("gemini" | "openai" | "claude")[] };
       try {
         return { terminal: true, reply: await checkGeoVisibility(p) };
       } catch (e) {
@@ -2090,8 +2096,6 @@ async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: stri
       return { terminal: false, result: await getGbpInsightsForAssistant(sessionId, toolUse.input as GbpInsightsParams) };
     case "get_keyword_trends":
       return { terminal: false, result: await getKeywordTrendsForAssistant(toolUse.input as KeywordTrendsParams) };
-    case "analyze_serp":
-      return { terminal: false, result: await analyzeSerpForAssistant(toolUse.input as AnalyzeSerpParams) };
     case "find_longtail_keywords":
       return { terminal: false, result: await findLongtailForAssistant(toolUse.input as FindLongtailParams) };
     case "check_domain_ranking":
@@ -2472,6 +2476,107 @@ async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: stri
       }
     }
 
+    case "dataforseo_ranked_keywords": {
+      const p = toolUse.input as { domain: string; min_position?: number; max_position?: number; limit?: number; country?: string };
+      try {
+        const r = await getDataForSeoRankedKeywords(p.domain, p.country ?? "fr", {
+          minPosition: p.min_position ?? 1,
+          maxPosition: p.max_position ?? 100,
+          limit: Math.min(p.limit ?? 50, 200),
+        });
+        if (!r.items.length) return { terminal: false, result: `Aucun mot-clé positionné entre les positions ${p.min_position ?? 1} et ${p.max_position ?? 100} pour ${r.domain} dans la base DataForSEO Labs.` };
+        const rows = r.items.map(k =>
+          `| ${k.keyword} | ${k.position} | ${k.searchVolume.toLocaleString("fr")} | ${k.difficulty ?? "-"} | ${k.intent ?? "-"} | ${k.url.replace(/^https?:\/\/[^/]+/, "") || "/"} |`);
+        return { terminal: false, result: [
+          `## DataForSEO Labs : mots-clés positionnés de ${r.domain} (positions ${p.min_position ?? 1} à ${p.max_position ?? 100})`,
+          `Source : base DataForSEO Labs, mise à jour hebdomadaire. ${r.totalCount.toLocaleString("fr")} mots-clés au total dans cette tranche, ${r.items.length} affichés par volume décroissant.`,
+          "",
+          "| Mot-clé | Position | Volume/mois | Difficulté | Intention | Page positionnée |",
+          "|---|---|---|---|---|---|",
+          ...rows,
+        ].join("\n") };
+      } catch (e) {
+        return { terminal: false, result: `❌ Erreur DataForSEO Ranked Keywords : ${e instanceof Error ? e.message : "erreur inconnue"}` };
+      }
+    }
+
+    case "dataforseo_competitors": {
+      const p = toolUse.input as { domain?: string; keywords?: string[]; country?: string };
+      try {
+        const list = await getDataForSeoCompetitors(p.domain, p.country ?? "fr", p.keywords ?? []);
+        if (!list.length) return { terminal: false, result: "Aucun concurrent organique trouvé dans la base DataForSEO Labs pour ces paramètres." };
+        const mode = p.keywords?.length ? `domaines dominants sur ${p.keywords.length} SERP` : `domaines partageant le plus de mots-clés avec ${p.domain}`;
+        return { terminal: false, result: [
+          `## DataForSEO Labs : concurrents organiques (${mode})`,
+          "Source : base DataForSEO Labs, mise à jour hebdomadaire.",
+          "",
+          "| Domaine | Mots-clés communs | Position moyenne | Mots-clés organiques | Trafic estimé/mois |",
+          "|---|---|---|---|---|",
+          ...list.map(c => `| ${c.domain} | ${c.sharedKeywords.toLocaleString("fr")} | ${c.avgPosition ?? "-"} | ${c.organicKeywords?.toLocaleString("fr") ?? "-"} | ${c.organicEtv != null ? Math.round(c.organicEtv).toLocaleString("fr") : "-"} |`),
+        ].join("\n") };
+      } catch (e) {
+        return { terminal: false, result: `❌ Erreur DataForSEO Competitors : ${e instanceof Error ? e.message : "erreur inconnue"}` };
+      }
+    }
+
+    case "llm_mentions_metrics": {
+      const p = toolUse.input as { domains: string[]; platform?: "google" | "chat_gpt"; country?: string };
+      const us = p.platform === "chat_gpt" || p.country === "us";
+      try {
+        const metrics = await getLLMTargetMetrics(p.domains, {
+          platform: p.platform ?? (us ? undefined : "google"),
+          language_code: us ? "en" : "fr",
+          location_code: us ? 2840 : 2250,
+        });
+        const total = metrics.reduce((s, m) => s + m.mentions, 0);
+        const lines = [
+          `## DataForSEO LLM Mentions : visibilité IA (${us ? "États-Unis, anglais" : "France, Google AI Overview"})`,
+          "Source : base indexée DataForSEO LLM Mentions (réponses IA collectées en continu, pas un test en direct).",
+          "",
+          "| Domaine | Mentions | Part de voix | Volume de recherche IA |",
+          "|---|---|---|---|",
+          ...metrics.map(m => `| ${m.domain} | ${m.mentions.toLocaleString("fr")} | ${total ? Math.round((m.mentions / total) * 100) : 0} % | ${m.aiSearchVolume.toLocaleString("fr")} |`),
+        ];
+        const first = metrics[0];
+        if (first?.topSourceDomains.length) {
+          lines.push("", `### Sources les plus citées autour de ${first.domain}`, first.topSourceDomains.map(d => `${d.key} (${d.mentions})`).join(", "));
+        }
+        return { terminal: false, result: lines.join("\n") };
+      } catch (e) {
+        return { terminal: false, result: `❌ Erreur DataForSEO LLM Mentions : ${e instanceof Error ? e.message : "erreur inconnue"}` };
+      }
+    }
+
+    case "llm_mentions_search": {
+      const p = toolUse.input as { domain?: string; keyword?: string; platform?: "google" | "chat_gpt"; country?: string; limit?: number };
+      const us = p.platform === "chat_gpt" || p.country === "us";
+      try {
+        const r = await searchLLMMentions({
+          domain: p.domain, keyword: p.keyword,
+          platform: p.platform ?? (us ? undefined : "google"),
+          language_code: us ? "en" : "fr",
+          location_code: us ? 2840 : 2250,
+          limit: Math.min(p.limit ?? 15, 50),
+        });
+        if (!r.items.length) return { terminal: false, result: "Aucune mention trouvée dans la base DataForSEO LLM Mentions pour ces paramètres." };
+        const lines = [
+          `## DataForSEO LLM Mentions : questions où ${p.domain ?? p.keyword} apparaît`,
+          `${r.total_count.toLocaleString("fr")} réponses IA au total, ${r.items.length} affichées par volume de recherche IA.`,
+          "",
+        ];
+        for (const it of r.items) {
+          lines.push(`### ${it.question}`);
+          lines.push(`Plateforme : ${it.platform === "google" ? "Google AI Overview" : "ChatGPT"} · Volume IA : ${it.ai_search_volume ?? "-"}`);
+          lines.push(`Extrait : ${it.answer.replace(/\s+/g, " ").slice(0, 300)}…`);
+          if (it.sources.length) lines.push(`Sources : ${it.sources.slice(0, 6).map(s => s.domain).join(", ")}`);
+          lines.push("");
+        }
+        return { terminal: false, result: lines.join("\n") };
+      } catch (e) {
+        return { terminal: false, result: `❌ Erreur DataForSEO LLM Mentions : ${e instanceof Error ? e.message : "erreur inconnue"}` };
+      }
+    }
+
     case "google_ads_historical_metrics": {
       const p = toolUse.input as { keywords: string[]; country?: string };
       if (!process.env.GOOGLE_ADS_CLIENT_ID) {
@@ -2657,7 +2762,6 @@ const TOOL_LABELS: Record<string, string> = {
   get_keyword_trends: "Analyse des tendances de mots-clés…",
   get_kpu_paa: "Extraction des questions People Also Ask (KPU)…",
   get_kpu_suggestions: "Récupération des suggestions KPU (Autocomplete + sémantique)…",
-  analyze_serp: "Analyse de la SERP…",
   find_longtail_keywords: "Recherche de mots-clés longue traîne…",
   check_domain_ranking: "Vérification du ranking du domaine…",
   analyze_competitor_backlinks: "Analyse des backlinks concurrents…",
@@ -2666,7 +2770,7 @@ const TOOL_LABELS: Record<string, string> = {
   generate_content_plan: "Construction du plan de contenu…",
   generate_strategy_action_plan: "Élaboration du plan stratégique…",
   reddit_research: "Recherche Reddit en cours…",
-  check_geo_visibility: "Interrogation des LLMs (Perplexity & Gemini)…",
+  check_geo_visibility: "Interrogation des LLMs (ChatGPT, Gemini, Claude)…",
   inject_wp_script: "Envoi du script via Mind Bridge…",
   search_woocommerce: "Recherche dans la boutique WooCommerce…",
   get_woocommerce_product: "Lecture de la fiche produit et de ses champs…",
@@ -2687,17 +2791,21 @@ const TOOL_LABELS: Record<string, string> = {
   check_rankings_bulk: "Vérification des positions en masse…",
   google_ads_keyword_ideas: "Récupération métriques Google Ads…",
   google_ads_historical_metrics: "Métriques historiques Google Ads…",
+  dataforseo_ranked_keywords: "Mots-clés positionnés DataForSEO Labs…",
+  dataforseo_competitors: "Identification des concurrents DataForSEO Labs…",
+  llm_mentions_metrics: "Visibilité IA DataForSEO LLM Mentions…",
+  llm_mentions_search: "Recherche des mentions IA DataForSEO…",
 };
 
 export async function POST(req: NextRequest) {
-  let body: { messages?: { role: "user" | "assistant"; content: string }[]; auditId?: string; images?: { name: string; dataUrl: string }[] };
+  let body: { messages?: { role: "user" | "assistant"; content: string }[]; auditId?: string; images?: { name: string; dataUrl: string }[]; mode?: "simple" | "expert" };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Corps de requête invalide" }, { status: 400 });
   }
 
-  const { messages, auditId, images } = body;
+  const { messages, auditId, images, mode } = body;
   if (!messages || messages.length === 0) {
     return NextResponse.json({ error: "Messages manquants" }, { status: 400 });
   }
@@ -2717,22 +2825,48 @@ export async function POST(req: NextRequest) {
     } catch { /* non bloquant */ }
   }
 
-  // Profil compte utilisateur (site_url, marché, concurrents, positionnement…)
+  // Site actif (site principal ou site client choisi dans le sélecteur), niveau SEO et alertes non lues
   let userSiteProfileBlock = "";
+  let alertsBlock = "";
+  let seoLevel: string | undefined;
   if (userId) {
     try {
-      const { createServerClient } = await import("@supabase/ssr");
-      const { cookies } = await import("next/headers");
-      const cookieStore = await cookies();
-      const sb = createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
-        { cookies: { getAll() { return cookieStore.getAll(); }, setAll(c) { try { c.forEach(({ name, value, options }) => cookieStore.set(name, value, options)); } catch {} } } }
-      );
-      const { data } = await sb.from("user_site_profile").select("site_url,positioning,categories,market,target_zones,competitors").eq("user_id", userId).single();
-      if (data) userSiteProfileBlock = formatUserSiteProfileForPrompt(data);
+      const site = await getActiveSite(userId, req.cookies.get(ACTIVE_SITE_COOKIE)?.value);
+      if (site) {
+        userSiteProfileBlock = formatUserSiteProfileForPrompt(site);
+        if (!site.isPrimary) {
+          userSiteProfileBlock += `\n\nL'utilisateur travaille actuellement pour son client **${site.label}** (${site.site_url}). Quand il dit "mon site", "le site" ou "notre site", il parle de ce client. Formule les livrables comme destinés à ce client.`;
+        }
+        const sb = getServiceSupabase();
+        const [{ data: prof }, { data: alerts }] = await Promise.all([
+          sb.from("user_site_profile").select("seo_level").eq("user_id", userId).maybeSingle(),
+          sb.from("user_alerts").select("title,detail,created_at").eq("user_id", userId)
+            .eq("site_url", cleanDomain(site.site_url)).eq("read", false)
+            .order("created_at", { ascending: false }).limit(5),
+        ]);
+        seoLevel = prof?.seo_level ?? undefined;
+        if (alerts?.length) {
+          alertsBlock = "## Alertes de surveillance non lues pour ce site\n" +
+            alerts.map(a => `- ${a.title} (${new Date(a.created_at).toLocaleDateString("fr-FR")})${a.detail ? `\n  ${a.detail.replace(/\n/g, " ; ")}` : ""}`).join("\n") +
+            "\n\nSi la question porte sur la santé du site, ses positions, ses backlinks ou sa visibilité IA, mentionne ces alertes et propose d'en analyser la cause.";
+        }
+      }
     } catch { /* non bloquant */ }
   }
+
+  const effectiveMode: "simple" | "expert" = mode ?? (seoLevel === "débutant" ? "simple" : "expert");
+  const modeBlock = effectiveMode === "simple"
+    ? `## Mode de réponse : simple
+L'utilisateur est un dirigeant ou un non-spécialiste. Il veut comprendre sa situation et savoir quoi décider, pas apprendre le SEO.
+- Commence par le verdict en une ou deux phrases (bon, moyen, à risque) puis au maximum trois priorités, chacune avec son impact attendu en langage business (visibilité, trafic, demandes de contact, ventes).
+- Pas de jargon non expliqué. Si un terme technique est indispensable, explique-le en quelques mots entre parenthèses la première fois.
+- Ne cite pas le nom des outils ou des fournisseurs de données (DataForSEO, Semrush, KPU…) : dis "d'après les données de recherche Google" ou "d'après votre Search Console".
+- Réponses courtes. Les tableaux restent possibles s'ils se limitent à quelques lignes.`
+    : `## Mode de réponse : expert
+L'utilisateur est un professionnel du SEO (souvent un consultant qui travaille pour un client). Il veut des données exploitables et vérifiables.
+- Cite la source et la fraîcheur de chaque chiffre important.
+- Privilégie les tableaux pour les listes de mots-clés, pages, concurrents ou backlinks : il les exporte en CSV.
+- Donne le raisonnement et les seuils utilisés, sans vulgarisation inutile.`;
 
   const encoder = new TextEncoder();
 
@@ -2761,7 +2895,9 @@ export async function POST(req: NextRequest) {
         const newsBlock = await getCachedNewsBlock();
         const systemWithNews = [
           SYSTEM_PROMPT,
+          `\n\n---\n\n${modeBlock}`,
           userSiteProfileBlock ? `\n\n---\n\n${userSiteProfileBlock}` : "",
+          alertsBlock ? `\n\n${alertsBlock}` : "",
           auditContextBlock ? `\n\n${auditContextBlock}\n\nRéfère-toi systématiquement à ces données d'audit dans tes réponses, sauf si l'utilisateur pose une question sans rapport avec ce site.` : "",
           newsBlock ? `\n\n${newsBlock}\n\nUtilise ces actualités quand elles sont pertinentes pour la question posée, en citant la source.` : "",
           wcProfileBlock ? `\n\n---\n\n${wcProfileBlock}\n\nQuand tu mets à jour ce site via update_woocommerce_product, utilise directement les field keys et la structure de répéteur listées ci-dessus — pas besoin d'appeler get_woocommerce_product si les champs cibles sont déjà connus. Appelle get_woocommerce_product uniquement pour les champs qui ne figurent pas dans ce profil.` : "",
