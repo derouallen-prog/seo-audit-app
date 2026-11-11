@@ -169,7 +169,7 @@ interface Tool { label: string; icon: React.ReactNode; desc: string; prompt: str
 const TOOLS: Tool[] = [
   // ── Top 3 : outils de création/publication ────────────────────────────────
   {
-    label: "Génération article",
+    label: "Création de contenu",
     icon: <IconPenLine />,
     desc: "Article SEO & GEO complet",
     prompt: "Génère un article de blog complet et optimisé SEO pour mon site. Demande-moi le sujet, le mot-clé principal et le public cible si tu ne les connais pas encore.",
@@ -1115,7 +1115,7 @@ function AssistantPageInner() {
   }
 
   function handleToolClick(tool: Tool) {
-    if (tool.label === "Génération article") { setShowWritingSetup(true); return; }
+    if (tool.label === "Création de contenu") { setShowWritingSetup(true); return; }
     if (tool.label === "Popularité mots-clés et marque sur Reddit") { setShowRedditSetup(true); return; }
     if (tool.label === "Fiche produit") { setShowProductSetup(true); return; }
     if (tool.label === "Rédiger un plan de contenu") { setShowContentPlanSetup(true); return; }

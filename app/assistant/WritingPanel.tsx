@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -8,11 +8,13 @@ export interface WritingConfig {
   subject: string;
   keyword: string;
   audience: string;
-  contentType: "blog" | "product" | "landing";
-  contentFocus: "concept" | "howto" | "comparison" | "list" | "opinion";
+  format: "guide_informationnel" | "comparatif" | "page_conseil_transactionnelle" | "actualite";
+  searchIntent: "informationnelle" | "commerciale" | "transactionnelle" | "navigationnelle";
+  readerLevel: "débutant" | "intermédiaire" | "expert";
   length: "short" | "standard" | "long";
-  brandVoice: string;
+  tone: string;
   language: string;
+  clientSite: string;
 }
 
 interface ContentAnalysis {
@@ -67,35 +69,34 @@ function analyzeContent(text: string, keyword: string, targetWords: number, targ
 }
 
 // ── Prompt builder ────────────────────────────────────────────────────────────
+// Émet le format exact "=== BRIEF DE RÉDACTION ===" attendu par l'assistant (Voie 1 du Socle
+// commun SEO/GEO) : les champs sont transmis tels quels à generate_article, sans ré-interprétation.
+
+const FORMAT_LABELS: Record<WritingConfig["format"], string> = {
+  guide_informationnel: "Guide informationnel",
+  comparatif: "Comparatif",
+  page_conseil_transactionnelle: "Page conseil transactionnelle",
+  actualite: "Actualité ou réaction à une mise à jour",
+};
+const LENGTH_WORDS: Record<WritingConfig["length"], string> = {
+  short: "500 à 1 000 mots",
+  standard: "1 000 à 2 200 mots",
+  long: "2 200 à 4 000 mots",
+};
 
 export function buildArticlePrompt(c: WritingConfig): string {
-  const lengthDesc =
-    c.length === "short" ? "court (500-1000 mots)" :
-    c.length === "standard" ? "standard (1000-2200 mots)" :
-    "long (2200-4000 mots)";
-  const focusDesc =
-    c.contentFocus === "concept" ? "expliquer un concept" :
-    c.contentFocus === "howto" ? "guide pratique (how-to)" :
-    c.contentFocus === "comparison" ? "comparatif" :
-    c.contentFocus === "list" ? "article liste" :
-    "article d'opinion / point de vue";
-  const typeDesc =
-    c.contentType === "blog" ? "article de blog" :
-    c.contentType === "product" ? "fiche produit" :
-    "landing page";
-  const sections = TARGET_SECTIONS[c.length];
-
-  let p = `Génère un ${typeDesc} SEO complet et optimisé sur le sujet suivant :\n\n`;
-  p += `**Sujet :** ${c.subject}\n`;
-  if (c.keyword) p += `**Mot-clé principal :** ${c.keyword}\n`;
-  if (c.audience) p += `**Public cible :** ${c.audience}\n`;
-  p += `**Format :** ${focusDesc}, longueur ${lengthDesc}\n`;
-  if (c.brandVoice) p += `**Voix de marque :** ${c.brandVoice}\n`;
-  if (c.language) p += `**Langue :** ${c.language}\n`;
-  p += `\nStructure attendue : 1 H1, ${sections} H2 minimum, sous-sections H3 si pertinent, introduction et conclusion. `;
-  p += `Inclure au moins 2 liens internes suggérés (en texte d'ancre entre crochets). `;
-  p += `Terminer avec : balise title optimisée (30-65 car.) et meta description (120-155 car.).`;
-  return p;
+  const lines = ["=== BRIEF DE RÉDACTION ===", ""];
+  lines.push(`Sujet : ${c.subject}`);
+  lines.push(`Mot-clé principal : ${c.keyword || "à déduire du sujet"}`);
+  lines.push(`Format : ${FORMAT_LABELS[c.format]}`);
+  lines.push(`Intention de recherche dominante : ${c.searchIntent}`);
+  lines.push(`Niveau du lecteur : ${c.readerLevel}`);
+  lines.push(`Ton : ${c.tone || "expert et direct"}`);
+  lines.push(`Longueur visée : ${LENGTH_WORDS[c.length]}`);
+  lines.push(`Client / site concerné : ${c.clientSite || "générique"}`);
+  if (c.audience) lines.push(`Précision sur l'audience : ${c.audience}`);
+  lines.push(`Langue : ${c.language}`);
+  return lines.join("\n");
 }
 
 // ── KeywordField ──────────────────────────────────────────────────────────────
@@ -207,14 +208,26 @@ export function WritingSetupModal({
     subject: "",
     keyword: "",
     audience: "",
-    contentType: "blog",
-    contentFocus: "concept",
+    format: "guide_informationnel",
+    searchIntent: "informationnelle",
+    readerLevel: "intermédiaire",
     length: "standard",
-    brandVoice: "",
+    tone: "",
     language: "fr-FR",
+    clientSite: "",
   });
 
   const set = (patch: Partial<WritingConfig>) => setConfig(c => ({ ...c, ...patch }));
+
+  // Pré-remplit le site concerné depuis le sélecteur de site actif, sans écraser une saisie déjà faite.
+  useEffect(() => {
+    fetch("/api/sites")
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { active?: { label?: string } | null } | null) => {
+        if (d?.active?.label) set({ clientSite: d.active.label });
+      })
+      .catch(() => {});
+  }, []);
 
   // Keyword suggestion state
   const [generatingKw, setGeneratingKw] = useState(false);
@@ -245,17 +258,22 @@ export function WritingSetupModal({
     }
   }
 
-  const contentTypes: { id: WritingConfig["contentType"]; label: string }[] = [
-    { id: "blog", label: "Article de blog" },
-    { id: "product", label: "Fiche produit" },
-    { id: "landing", label: "Landing page" },
+  const formats: { id: WritingConfig["format"]; label: string; desc: string }[] = [
+    { id: "guide_informationnel", label: "Guide informationnel", desc: "Expliquer un sujet à quelqu'un qui le découvre" },
+    { id: "comparatif", label: "Comparatif", desc: "Opposer des options et aider à trancher" },
+    { id: "page_conseil_transactionnelle", label: "Page conseil", desc: "Réponse pratique pour quelqu'un proche de l'achat" },
+    { id: "actualite", label: "Actualité", desc: "Événement daté et son implication" },
   ];
-  const contentFocuses: { id: WritingConfig["contentFocus"]; label: string }[] = [
-    { id: "concept", label: "Expliquer un concept" },
-    { id: "howto", label: "Guide pratique (how-to)" },
-    { id: "comparison", label: "Comparatif" },
-    { id: "list", label: "Article liste" },
-    { id: "opinion", label: "Point de vue / opinion" },
+  const searchIntents: { id: WritingConfig["searchIntent"]; label: string }[] = [
+    { id: "informationnelle", label: "Informationnelle" },
+    { id: "commerciale", label: "Commerciale" },
+    { id: "transactionnelle", label: "Transactionnelle" },
+    { id: "navigationnelle", label: "Navigationnelle" },
+  ];
+  const readerLevels: { id: WritingConfig["readerLevel"]; label: string }[] = [
+    { id: "débutant", label: "Débutant" },
+    { id: "intermédiaire", label: "Intermédiaire" },
+    { id: "expert", label: "Expert" },
   ];
   const lengths: { id: WritingConfig["length"]; label: string; detail: string }[] = [
     { id: "short", label: "Court", detail: "500–1 000 mots" },
@@ -272,7 +290,7 @@ export function WritingSetupModal({
 
   const RadioList = <T extends string>({
     name, options, value, onChange,
-  }: { name: string; options: { id: T; label: string }[]; value: T; onChange: (v: T) => void }) => (
+  }: { name: string; options: { id: T; label: string; desc?: string }[]; value: T; onChange: (v: T) => void }) => (
     <div className="space-y-1.5">
       {options.map(opt => (
         <label
@@ -282,7 +300,10 @@ export function WritingSetupModal({
           <div className={`h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0 transition ${value === opt.id ? "border-brand" : "border-hairline"}`}>
             {value === opt.id && <div className="h-2 w-2 rounded-full bg-brand" />}
           </div>
-          <span className={`text-sm ${value === opt.id ? "font-medium text-brand" : "text-ink"}`}>{opt.label}</span>
+          <span className="min-w-0">
+            <span className={`block text-sm ${value === opt.id ? "font-medium text-brand" : "text-ink"}`}>{opt.label}</span>
+            {opt.desc && <span className="block text-xs text-ink-soft">{opt.desc}</span>}
+          </span>
           <input type="radio" name={name} value={opt.id} checked={value === opt.id} onChange={() => onChange(opt.id)} className="hidden" />
         </label>
       ))}
@@ -296,7 +317,7 @@ export function WritingSetupModal({
         <div className="flex items-center justify-between px-6 py-4 border-b border-hairline bg-brand-soft/40">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-brand">Rédaction IA</p>
-            <h2 className="text-base font-bold text-ink mt-0.5">Configurer l&apos;article</h2>
+            <h2 className="text-base font-bold text-ink mt-0.5">Configurer le contenu</h2>
           </div>
           <button onClick={onClose} className="text-ink-soft hover:text-ink transition rounded-lg p-1.5 hover:bg-accent">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
@@ -307,7 +328,7 @@ export function WritingSetupModal({
           {/* ── Étape 1 : choix ── */}
           {step === "choice" && (
             <div className="space-y-4">
-              <p className="text-sm text-ink-soft">Comment souhaitez-vous configurer votre article ?</p>
+              <p className="text-sm text-ink-soft">Comment souhaitez-vous configurer votre contenu ?</p>
               <div className="grid gap-3">
                 {[
                   {
@@ -320,7 +341,7 @@ export function WritingSetupModal({
                     target: "suggested" as const,
                     emoji: "⚡",
                     title: "Setup guidé",
-                    desc: "Type, focus éditorial, longueur, langue, voix de marque",
+                    desc: "Format, intention de recherche, niveau du lecteur, longueur, ton",
                   },
                 ].map(({ target, emoji, title, desc }) => (
                   <button
@@ -387,7 +408,7 @@ export function WritingSetupModal({
                 <button onClick={() => setStep("choice")} className="flex-1 rounded-xl border border-hairline px-4 py-2.5 text-sm font-medium text-ink-soft hover:bg-accent transition">Retour</button>
                 <button onClick={() => onSubmit(config)} disabled={!config.subject.trim()}
                   className="flex-1 rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed transition">
-                  Générer l&apos;article →
+                  Générer le contenu →
                 </button>
               </div>
             </div>
@@ -413,15 +434,19 @@ export function WritingSetupModal({
                 disabled={!config.subject.trim()}
               />
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wide text-ink-soft mb-2">Type de contenu</label>
-                <RadioList name="contentType" options={contentTypes} value={config.contentType} onChange={v => set({ contentType: v })} />
+                <label className="block text-xs font-semibold uppercase tracking-wide text-ink-soft mb-2">Format</label>
+                <RadioList name="format" options={formats} value={config.format} onChange={v => set({ format: v })} />
               </div>
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wide text-ink-soft mb-2">Focus éditorial</label>
-                <RadioList name="contentFocus" options={contentFocuses} value={config.contentFocus} onChange={v => set({ contentFocus: v })} />
+                <label className="block text-xs font-semibold uppercase tracking-wide text-ink-soft mb-2">Intention de recherche</label>
+                <RadioList name="searchIntent" options={searchIntents} value={config.searchIntent} onChange={v => set({ searchIntent: v })} />
               </div>
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wide text-ink-soft mb-2">Longueur de l&apos;article</label>
+                <label className="block text-xs font-semibold uppercase tracking-wide text-ink-soft mb-2">Niveau du lecteur</label>
+                <RadioList name="readerLevel" options={readerLevels} value={config.readerLevel} onChange={v => set({ readerLevel: v })} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wide text-ink-soft mb-2">Longueur cible</label>
                 <div className="grid grid-cols-3 gap-2">
                   {lengths.map(({ id, label, detail }) => (
                     <button key={id} type="button" onClick={() => set({ length: id })}
@@ -431,11 +456,18 @@ export function WritingSetupModal({
                     </button>
                   ))}
                 </div>
+                <p className="mt-1.5 text-[11px] text-ink-soft">Cette longueur prime sur la fourchette par défaut du format choisi.</p>
               </div>
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wide text-ink-soft mb-1.5">Voix de marque</label>
-                <input value={config.brandVoice} onChange={e => set({ brandVoice: e.target.value })}
+                <label className="block text-xs font-semibold uppercase tracking-wide text-ink-soft mb-1.5">Ton</label>
+                <input value={config.tone} onChange={e => set({ tone: e.target.value })}
                   placeholder="ex. : Expert, bienveillant, sans jargon"
+                  className="w-full rounded-xl border border-hairline bg-white px-4 py-2.5 text-sm text-ink placeholder:text-ink-soft/60 focus:outline-none focus:border-brand/40" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wide text-ink-soft mb-1.5">Client / site concerné</label>
+                <input value={config.clientSite} onChange={e => set({ clientSite: e.target.value })}
+                  placeholder="ex. : monsite.fr, ou générique si non précisé"
                   className="w-full rounded-xl border border-hairline bg-white px-4 py-2.5 text-sm text-ink placeholder:text-ink-soft/60 focus:outline-none focus:border-brand/40" />
               </div>
               <div>
@@ -449,7 +481,7 @@ export function WritingSetupModal({
                 <button onClick={() => setStep("choice")} className="flex-1 rounded-xl border border-hairline px-4 py-2.5 text-sm font-medium text-ink-soft hover:bg-accent transition">Retour</button>
                 <button onClick={() => onSubmit(config)} disabled={!config.subject.trim()}
                   className="flex-1 rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed transition">
-                  Générer l&apos;article →
+                  Générer le contenu →
                 </button>
               </div>
             </div>

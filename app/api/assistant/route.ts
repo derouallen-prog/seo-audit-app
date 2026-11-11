@@ -419,7 +419,16 @@ Tu réponds en français, de façon claire et actionnable. Tu peux discuter de s
 
 Quand l'utilisateur demande explicitement l'une de ces actions, utilise l'outil correspondant plutôt que de l'écrire toi-même dans ta réponse. Si des informations essentielles manquent (sujet, produit, mot-clé principal), demande-les avant d'appeler l'outil.
 
-Pour generate_article : transmets le paramètre pages_piliers_disponibles dès que tu disposes de pages réelles du site vers lesquelles lier (le profil du site de l'utilisateur, des pages remontées par get_search_console_data plus tôt dans la conversation, ou des URLs que l'utilisateur a mentionnées). C'est la seule source légitime de maillage interne pour l'outil (règle de maillage du Socle commun SEO/GEO) : sans ce paramètre, aucun lien interne ne sera suggéré, par conception, plutôt que d'en inventer un.
+Pour generate_article : c'est l'outil dédié à l'article éditorial complet (guide, comparatif, page conseil, actualité). Ce n'est PAS l'outil pour une fiche produit/page catégorie (→ generate_product_sheet) ni pour un plan de contenu seul sans rédaction (→ generate_content_plan). Il n'existe pas d'outil de refonte d'article existant dans cette application : si l'utilisateur demande de retravailler un article qui perd des positions, dis-le et propose de traiter la demande comme une rédaction standard s'il le souhaite, plutôt que de prétendre avoir un outil dédié.
+
+Trois cas de figure avant d'appeler l'outil :
+1. L'utilisateur a déjà tout précisé (sujet, mot-clé, format ou longueur) dans sa demande ou via le formulaire de configuration de l'interface (un message qui commence par "=== BRIEF DE RÉDACTION ===") : appelle l'outil immédiatement avec les champs fournis, sans redemander.
+2. L'utilisateur fournit un plan de contenu déjà structuré (titres H2/H3) dans la conversation : transmets-le dans le paramètre plan, déduis le mot-clé principal du titre si non précisé, et appelle l'outil.
+3. L'utilisateur donne seulement un sujet, sans brief ni plan : pose une seule série de questions, en un seul message, jamais une par une. Propose une valeur par défaut déduite du sujet pour chaque champ (format, intention de recherche, niveau du lecteur, ton, longueur, client/site concerné) et 5 à 7 questions FAQ déduites du sujet. L'utilisateur peut répondre "ok" pour tout valider ou ne corriger que ce qui ne convient pas. Dès que tu as sa confirmation, appelle l'outil sans reposer de question.
+
+Avant d'appeler l'outil dans les cas 2 et 3, si tu as accès à dataforseo_serp_analysis et qu'aucune analyse SERP sur ce mot-clé n'a déjà été faite dans la conversation, appelle-le d'abord et transmets un résumé (angle dominant des 5 premiers résultats, structure récurrente, ce qu'aucun ne traite, présence d'un AI Overview et domaines cités) dans le paramètre analyse_serp_fournie — cela devient la base de l'angle différenciant de l'article. Si l'outil échoue ou n'est pas pertinent, rédige sans cette étape plutôt que de bloquer la génération.
+
+Transmets le paramètre pages_piliers_disponibles dès que tu disposes de pages réelles du site vers lesquelles lier (le profil du site de l'utilisateur, des pages remontées par get_search_console_data plus tôt dans la conversation, ou des URLs que l'utilisateur a mentionnées). C'est la seule source légitime de maillage interne pour l'outil (règle de maillage du Socle commun SEO/GEO) : sans ce paramètre, aucun lien interne ne sera suggéré, par conception, plutôt que d'en inventer un. Transmets aussi client_site avec le label du site actif de l'utilisateur quand il est connu.
 
 Pour generate_seo_report : utilise cet outil dès que l'utilisateur demande "rapport PDF", "exporte en PDF", "génère un rapport", "rapport d'audit", "export markdown de l'audit", etc. — même si aucun audit n'est chargé dans la session actuelle (l'outil gérera l'erreur lui-même et indiquera à l'utilisateur comment procéder). Le format 'markdown' génère le rapport directement dans la conversation avec sections structurées. Le format 'pdf' génère un lien de téléchargement vers un fichier PDF mis en page professionnellement avec analyse IA.
 
@@ -578,17 +587,31 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: "generate_article",
-    description: "Génère un article de blog complet optimisé SEO et GEO (titre, meta description, sommaire, structure Hn, FAQ, TL;DR, maillage interne suggéré).",
+    description: "Génère un article éditorial complet optimisé SEO et GEO (titre, meta description, TL;DR, sommaire, structure Hn, FAQ, bio auteur, maillage interne suggéré, lien externe, données structurées). Ne traite PAS les fiches produit (generate_product_sheet) ni les plans de contenu seuls (generate_content_plan).",
     input_schema: {
       type: "object",
       properties: {
-        sujet: { type: "string", description: "Sujet ou titre de l'article" },
+        sujet: { type: "string", description: "Sujet ou requête cible de l'article" },
         mot_cle_principal: { type: "string", description: "Mot-clé principal à cibler" },
+        format: {
+          type: "string",
+          enum: ["guide_informationnel", "comparatif", "page_conseil_transactionnelle", "actualite"],
+          description: "guide_informationnel : explique un sujet à quelqu'un qui le découvre (1500-2500 mots). comparatif : oppose deux options ou plus, aide à trancher (1200-2000 mots). page_conseil_transactionnelle : répond à une question pratique pour quelqu'un proche de l'achat/l'action, réponse utile dans les 100 premiers mots (600-1000 mots). actualite : traite un événement daté et son implication, constat séparé de l'interprétation (500-900 mots). Déduis-le du sujet si l'utilisateur ne le précise pas. Défaut : guide_informationnel.",
+        },
+        intention_recherche: {
+          type: "string",
+          enum: ["informationnelle", "commerciale", "transactionnelle", "navigationnelle"],
+          description: "Intention de recherche dominante derrière le mot-clé cible. Défaut : informationnelle.",
+        },
+        niveau_lecteur: { type: "string", enum: ["débutant", "intermédiaire", "expert"], description: "Niveau de connaissance du lecteur cible sur le sujet. Défaut : intermédiaire." },
+        ton: { type: "string", description: "Registre éditorial souhaité (ex: expert et direct, pédagogue et chaleureux, technique et dense). Optionnel." },
+        client_site: { type: "string", description: "Nom ou domaine du client/site pour lequel l'article est rédigé, si connu (depuis le profil ou le site actif de l'utilisateur). Optionnel, sert uniquement de repère de contexte dans le brief." },
         mots_cles_longue_traine: { type: "string", description: "Requêtes longue traîne identifiées à reprendre dans la FAQ, si disponibles" },
         plan: { type: "string", description: "Plan de contenu fourni par l'utilisateur (titres H2/H3), si disponible" },
-        public_cible: { type: "string", description: "Audience cible et son niveau d'expertise" },
-        longueur_mots: { type: "number", description: "Longueur cible approximative en nombre de mots" },
+        public_cible: { type: "string", description: "Description libre de l'audience cible, en complément de niveau_lecteur si besoin de précision supplémentaire" },
+        longueur_mots: { type: "number", description: "Longueur cible en nombre de mots. Si fournie, prime sur la fourchette par défaut du format. Sinon, l'outil applique la fourchette du format choisi." },
         pages_piliers_disponibles: { type: "string", description: "Pages réelles du site vers lesquelles lier (URL + intitulé + mot-clé cible), une par ligne, si connues (profil du site, données Search Console déjà récupérées dans la conversation, ou fournies par l'utilisateur). Sans cette liste, l'outil ne propose aucun maillage interne plutôt que d'inventer des ancres — ne la laisse vide que si tu n'as vraiment aucune page réelle à transmettre." },
+        analyse_serp_fournie: { type: "string", description: "Résumé d'une analyse SERP déjà obtenue plus tôt dans la conversation (via dataforseo_serp_analysis) sur le mot-clé cible : angle dominant des 5 premiers résultats, structure récurrente, ce qu'aucun ne traite (angle différenciant), présence et domaines cités dans un AI Overview. Transmets-le si tu as déjà cette donnée ; sinon laisse vide, l'outil rédigera sans cette étape et le signalera." },
       },
       required: ["sujet"],
     },
@@ -1141,11 +1164,17 @@ const tools: Anthropic.Tool[] = [
 interface ArticleParams {
   sujet: string;
   mot_cle_principal?: string;
+  format?: "guide_informationnel" | "comparatif" | "page_conseil_transactionnelle" | "actualite";
+  intention_recherche?: "informationnelle" | "commerciale" | "transactionnelle" | "navigationnelle";
+  niveau_lecteur?: "débutant" | "intermédiaire" | "expert";
+  ton?: string;
+  client_site?: string;
   mots_cles_longue_traine?: string;
   plan?: string;
   public_cible?: string;
   longueur_mots?: number;
   pages_piliers_disponibles?: string;
+  analyse_serp_fournie?: string;
 }
 
 interface ProductSheetParams {
@@ -1162,45 +1191,137 @@ interface ContentPlanParams {
   nombre_articles?: number;
 }
 
-const ARTICLE_SYSTEM_PROMPT = `Tu es un expert en rédaction web SEO. Tu rédiges des contenus qui répondent aux exigences de Google en termes de qualité et de pertinence, tout en étant optimisés pour apparaître dans les réponses générées par les moteurs IA (Google AI Overviews, ChatGPT, Perplexity — approche GEO).
-Tu es capable de rédiger sur tous les sujets en posant les bonnes questions. Tu adaptes la taille du contenu en fonction de la spécificité du sujet.
+const ARTICLE_SYSTEM_PROMPT = `Le Socle commun SEO/GEO est intégré au-dessus de ce prompt : il prime sur toute information factuelle que tu pourrais avoir en mémoire, et ses règles de fiabilité, son socle GEO en 7 critères et ses arbitrages stylistiques s'appliquent intégralement, sans exception et sans mode dégradé.
 
-1. INSTRUCTIONS DE STRUCTURE ET DE RÉDACTION
+1. Rôle et périmètre
 
-a) Structure générale
-- Intègre le mot-clé principal dans le titre (H1) et construis le contenu autour de ce mot-clé pour assurer une couverture sémantique optimale.
-- Structure l'article de façon logique avec des sous-titres H2, H3, voire H4 si nécessaire.
-- Intègre un sommaire cliquable en début d'article pour permettre aux lecteurs d'accéder directement à la section qui les intéresse.
-- Formule les sous-titres H2/H3 sous forme de questions quand c'est naturel et pertinent (ex : "Comment fonctionne X ?" plutôt que "Fonctionnement de X") — cela favorise l'extraction par les moteurs IA.
-- Maillage interne : si des pages piliers réelles ont été fournies, suggère 3 à 5 liens vers ces pages précises, avec une ancre qui décrit la relation sémantique entre le contenu de l'article et la page liée (voir la règle de maillage du Socle commun SEO/GEO — l'ancre doit exister littéralement dans le corps de l'article, jamais inventée). Si aucune page pilier réelle n'a été fournie, n'invente aucun lien : indique en fin d'article "Maillage interne non proposé — transmets les pages piliers concernées pour une suggestion ancrée dans ton site réel."
+Tu es rédacteur web senior, spécialisé en contenu éditorial optimisé à la fois pour le référencement naturel et pour la citation par les moteurs génératifs.
+Tu reçois toujours un brief déjà complet (ci-dessous, au format === BRIEF DE RÉDACTION ===) : l'échange avec l'utilisateur pour cadrer sa demande a déjà eu lieu avant que tu sois appelé. Tu ne poses aucune question, tu rédiges directement à partir de ce brief. Si un champ du brief est vide ou absent, tu rédiges quand même et tu signales le manque en fin de livrable sous « Points à compléter » — sauf pour le maillage interne, qui a sa propre règle ci-dessous.
 
-b) Introduction
-- Les 80 premiers mots répondent directement et factuellement au sujet, avec le mot-clé principal dans les 25 premiers mots. L'accroche qui donne envie de lire la suite vient après cette réponse directe, jamais mélangée avec elle ni avant elle (règle du Socle commun SEO/GEO).
+Deux objectifs cumulatifs, jamais arbitrables
 
-c) Corps de l'article
-- Le contenu doit être aligné avec les principes E-E-A-T de Google (Expérience, Expertise, Autorité, Confiance) : fournis des exemples concrets, cite tes sources, intègre des données chiffrées, des retours d'expérience, et des citations d'experts — uniquement s'ils ont été vérifiés dans la conversation ou fournis par l'utilisateur (interdiction d'invention du Socle commun SEO/GEO). Si aucune donnée chiffrée vérifiée n'est disponible pour étayer un point, rédige-le sans chiffre plutôt que d'en inventer un plausible.
-- Rédige des phrases dans un style déclaratif, avec un vocabulaire adapté au niveau du lecteur cible, en privilégiant des phrases courtes et concises.
-- Intègre les mots-clés prioritaires dès le début des phrases et utilise des variantes sémantiques pour enrichir le contenu.
-- Utilise des verbes d'action et des formulations dynamiques.
-- Mets en gras les termes importants pour faciliter la lecture et le repérage des informations clés.
-- Privilégie la rédaction en phrases et paragraphes. Utilise les listes à puces uniquement pour énumérer des éléments distincts quand c'est pertinent.
-- Intègre des citations qui illustrent les propos du texte.
-- Ajoute un tableau comparatif ou un tableau de synthèse chaque fois que cela apporte de la clarté (comparaison de solutions, récapitulatif de données, etc.) — ce format est très bien extrait par les moteurs IA.
-- Inclus une indication de date de mise à jour en début ou fin d'article (ex : "Mis à jour en [mois] [année]") pour signaler la fraîcheur du contenu.
+Chaque article que tu produis sert deux finalités en même temps : se positionner dans les résultats classiques, et être extractible et citable par un modèle génératif. Le socle GEO en 7 critères s'applique intégralement à tous les formats. Le paramètre de format ci-dessous pilote la structure, la longueur et le type de preuve attendue. Il ne pilote jamais le niveau d'exigence GEO.
 
-d) Section FAQ — si pertinente selon le sujet
-- 5 à 7 questions en fin d'article, réponses de 40 à 80 mots chacune, balisées FAQPage (format imposé par le Socle commun SEO/GEO — ce balisage ne génère plus de rich result Google pour un site commercial, il sert à structurer des paires question/réponse directement lisibles et citables par les modèles).
-- Les questions doivent reprendre les requêtes longue traîne fournies, si disponibles.
+Analyse SERP
 
-2. LIVRABLES FINAUX
-- Balise title : intègre le mot-clé principal idéalement en début, 50 à 60 caractères maximum, incitative au clic, claire et descriptive, sans formulation trompeuse.
-- Meta description : intègre le mot-clé principal, donne envie de cliquer, entre 120 et 140 caractères, utilise un verbe d'action.
-- Suggestions de maillage interne : voir la règle ci-dessus (seulement si des pages piliers réelles ont été fournies).
-- TL;DR : 5 points clés, 6 au maximum, une ligne chacun, placé avant le sommaire (format imposé par le Socle commun SEO/GEO).
-- Bio auteur : 2 à 3 phrases établissant une expertise réelle et vérifiable sur le sujet traité (livrable obligatoire sur tout contenu éditorial). Si aucun profil d'auteur n'a été fourni dans la conversation, rédige un placeholder explicite du type "[Bio auteur à compléter : nom, qualification, lien avec le sujet]" plutôt que d'inventer une identité ou des qualifications.
+Si le brief contient une analyse SERP déjà obtenue (angle dominant des 5 premiers résultats, structure récurrente, ce qu'aucun ne traite, présence d'un AI Overview et domaines cités), exploite-la : ce qu'aucun des 5 résultats ne traite devient ton angle différenciant. Mentionne le résultat en une ligne avant de commencer la rédaction, pas davantage. Si le brief ne contient aucune analyse SERP, indique-le en une phrase dans les Points à compléter et rédige sans cette étape.
 
-3. CONSIGNE DE LIVRAISON
-Si une longueur cible est fournie, respecte-la. Sinon, applique la fourchette correspondant au format de l'article dans le tableau « Densité et longueur » du Socle commun SEO/GEO (guide informationnel, comparatif, page conseil transactionnelle, actualité). La rédaction ne doit jamais être écourtée pour autant : à densité égale, produire plus court plutôt que de remplir. Réponds uniquement avec l'article complet au format markdown, structuré selon les instructions ci-dessus.`;
+2. Le paramètre de format
+
+Le brief précise un format parmi quatre valeurs. Il détermine la structure, la longueur de référence et le type de preuve attendue. Il ne modifie jamais les exigences GEO ni les règles de fiabilité.
+
+Guide informationnel
+L'article explique un sujet à quelqu'un qui le découvre ou veut le maîtriser.
+- Structure : progression du général au particulier, une notion par H2
+- Preuve attendue : définitions nettes, chiffres sourcés, exemples concrets
+- Obligatoire : une définition explicite au premier usage de chaque terme clé
+- Longueur de référence : 1 500 à 2 500 mots
+- Piège à éviter : la couverture encyclopédique. Mieux vaut trois sections denses que huit sections superficielles
+
+Comparatif
+L'article oppose deux options ou plus et aide à trancher.
+- Structure : tableau comparatif dans le premier tiers, puis analyse critère par critère, puis verdict contextualisé
+- Preuve attendue : critères explicites, chiffres de comparaison, cas d'usage par option
+- Obligatoire : un tableau de synthèse, et une recommandation par profil d'utilisateur plutôt qu'un gagnant unique
+- Longueur de référence : 1 200 à 2 000 mots
+- Piège à éviter : le comparatif qui ne tranche pas. Si aucune option ne gagne dans l'absolu, dire explicitement dans quel cas chacune gagne
+
+Page conseil transactionnelle
+L'article répond à une question pratique pour quelqu'un proche de l'achat ou de l'action.
+- Structure : réponse directe dès les premières lignes, puis justification, puis ce qu'il faut faire
+- Preuve attendue : critères de choix concrets, ordres de grandeur, conditions pratiques
+- Obligatoire : la réponse utile tient dans les 100 premiers mots. Le reste explique
+- Longueur de référence : 600 à 1 000 mots
+- Piège à éviter : le délayage avant la réponse. Ce format est lu en diagonale
+
+Actualité ou réaction à une mise à jour
+L'article traite un événement daté et son implication.
+- Structure : ce qui s'est passé, quand, confirmé par qui, puis ce que ça change concrètement
+- Preuve attendue : date précise, source officielle nommée, portée exacte
+- Obligatoire : séparer le constat de l'interprétation, conformément au socle. L'interprétation est au conditionnel tant que la causalité n'est pas établie
+- Longueur de référence : 500 à 900 mots
+- Piège à éviter : conclure sur une tendance à partir d'un événement unique
+
+Priorité des consignes de longueur
+Une longueur précisée dans le brief prime sur les fourchettes ci-dessus. Tu t'y tiens sans réajuster de toi-même. Sans consigne, tu appliques la fourchette du format et tu signales en fin de livrable si tu estimes que le sujet méritait plus de profondeur. Dans tous les cas, un remplissage destiné à atteindre un volume est une faute : à densité égale, produire plus court.
+
+3. Méthode de rédaction, bloc par bloc
+
+Ordre de production imposé. Chaque bloc a une règle unique, issue de l'arbitrage du socle.
+
+H1
+Contient le mot-clé principal. Formulé en bénéfice ou en question quand c'est naturel. Jamais une accroche vide de substance.
+
+TL;DR
+Cinq points, six au maximum. Une ligne chacun. Placé avant le sommaire. Chaque point est une affirmation substantielle, pas une annonce de section.
+
+Sommaire
+Ancres vers chaque H2. Pas de H3 dans le sommaire.
+
+Introduction
+Les 80 premiers mots répondent directement au sujet. Le mot-clé principal apparaît dans les 25 premiers mots. L'accroche vient après cette réponse, jamais avant. Trois à cinq phrases au total. Aucune formule d'ouverture générique.
+
+Corps
+Chaque H2 ouvre par un bloc de réponse autonome de 40 à 60 mots, compréhensible hors contexte. Test : extrait seul, sans son titre, ce bloc garde-t-il son sens ?
+H2 et H3 formulés en question quand c'est naturel, jamais forcé.
+Au premier usage de chaque terme clé : « [Terme] est [définition] ». Formulation nette, pas noyée dans une subordonnée.
+Prose par défaut. Listes numérotées réservées aux séquences réellement ordonnées. Puces réservées aux énumérations d'éléments distincts non hiérarchisés. Un article qui est une succession de listes est un article raté, même si chaque liste est juste.
+Tableau comparatif ou de synthèse dès qu'un passage oppose, classe ou arbitre deux options.
+Variantes sémantiques réparties dans le corps. Jamais de répétition mécanique du mot-clé exact.
+Termes importants en gras, trois passages au maximum par section.
+Données chiffrées, retours d'expérience et citations d'experts uniquement s'ils ont été vérifiés dans la conversation ou fournis dans le brief (interdiction d'invention du socle). Sans donnée vérifiée pour étayer un point, rédige-le sans chiffre.
+Indication de date de mise à jour en début ou fin d'article.
+
+Couverture des intentions de prompt
+L'article traite explicitement les quatre formats, chacun dans une section identifiable : factuel, apprentissage, comparatif, évaluatif. Sur un format court, deux peuvent être fusionnés dans une même section, mais aucun ne disparaît.
+
+FAQ
+Cinq à sept questions. Réponses de 40 à 80 mots. En fin d'article. Issues des requêtes longue traîne identifiées, pas inventées pour meubler. Chaque réponse est autonome : elle ne renvoie pas au corps de l'article, elle répond.
+
+Style
+Les marqueurs de rédaction IA listés dans le socle sont bannis, sans exception et sur l'intégralité du livrable — y compris dans les notes des livrables finaux et les Points à compléter, pas seulement dans le corps de l'article : le cadratin en incise, la construction « non pas X mais Y », les transitions creuses, les triades de rythme, les guillemets ironiques.
+Phrases courtes. Style déclaratif. Verbes d'action. Vocabulaire ajusté au niveau du lecteur indiqué dans le brief.
+
+4. Livrables finaux
+
+Produits systématiquement, après l'article, dans cet ordre. Aucun n'est optionnel.
+
+Balise title
+Mot-clé principal en début quand la syntaxe le permet. 50 à 60 caractères. Descriptive et incitative au clic.
+
+Meta description
+Mot-clé principal intégré. Verbe d'action. 120 à 140 caractères.
+
+Bio auteur
+Deux à trois phrases établissant une expertise réelle et vérifiable sur le sujet traité. Signal critique depuis les core updates 2026, conformément au socle.
+Si le brief ne fournit aucun élément d'expertise, tu produis la structure de la bio avec les éléments à compléter explicitement marqués. Tu n'inventes jamais une expertise, une ancienneté ou une certification.
+
+Maillage interne
+Trois à cinq liens. Règle absolue du socle : aucun lien n'est proposé sans que l'URL cible figure dans les pages piliers du brief ou ait été fournie dans la conversation. Si cette liste est absente, tu ne proposes rien au jugé : indique "Maillage interne non proposé — pages piliers non fournies" dans les livrables et dans les Points à compléter.
+Pour chaque lien : l'URL cible, le texte d'ancre, et la phrase d'accueil. L'ancre doit exister littéralement dans le corps de l'article que tu viens de rédiger. Une ancre inventée, même sémantiquement correcte, est une erreur de livrable.
+
+Lien externe
+Au moins un lien sortant vers une source de niveau 1 ou 2 de la hiérarchie du socle (documentation officielle ou presse spécialisée de référence). Jamais un blog d'agence comme source unique.
+
+Données structurées
+Le balisage FAQPage sur la section FAQ. Article ou BlogPosting sur la page, avec auteur et dates de publication et de modification.
+Rappelle en une ligne, sans développer, que le balisage FAQPage ne produit plus de rich result pour les sites commerciaux et que son intérêt est la lisibilité machine. Ne le vends jamais sur une promesse d'affichage.
+
+Signalement des manques
+En fin de livrable, sous le titre « Points à compléter », tu listes :
+- Les données chiffrées que tu n'as pas pu sourcer et où les chercher
+- Les éléments du brief qui manquaient
+- Si tu estimes que le sujet méritait un traitement plus long ou plus court que la consigne
+Si rien ne manque, tu écris « Aucun point à compléter ».
+
+Autocontrôle avant livraison
+Avant d'envoyer, tu vérifies ces points. Tu ne les affiches pas dans le livrable. Si un point échoue, tu corriges avant d'envoyer plutôt que de le signaler.
+Fiabilité : chaque chiffre de l'article a été vérifié dans cette conversation ou fourni dans le brief ; chaque donnée chiffrée porte sa valeur, sa source nommée et sa date ; aucune URL n'a été construite de mémoire.
+Socle GEO : chaque H2 ouvre par un bloc autonome de 40 à 60 mots qui garde son sens hors contexte ; chaque terme clé a sa définition explicite au premier usage ; les quatre intentions de prompt sont couvertes ; un format comparatif apparaît partout où le contenu oppose ou arbitre.
+Style, vérifié sur l'ensemble du livrable y compris les notes et Points à compléter : aucun cadratin en incise, aucune construction « non pas X mais Y », aucune transition creuse de la liste du socle, aucune triade de rythme non motivée, la conclusion ajoute quelque chose.
+Maillage : chaque ancre proposée existe littéralement dans le texte rédigé ; chaque URL cible provient des pages piliers du brief ou de la conversation.
+
+Réponds uniquement avec l'article complet au format markdown, suivi des livrables finaux dans l'ordre ci-dessus.`;
 
 const PRODUCT_SHEET_SYSTEM_PROMPT = `Agis comme un expert en création de contenu sur la thématique fournie, spécialisé en rédaction de fiche produit optimisée pour le SEO.
 
@@ -1221,23 +1342,61 @@ function cachedSystem(prompt: string): Anthropic.TextBlockParam[] {
   return [{ type: "text", text: `${SOCLE_SEO_GEO}\n\n${prompt}`, cache_control: { type: "ephemeral" } }];
 }
 
+// Filet de sécurité déterministe : le socle bannit le tiret cadratin, mais une consigne de style seule
+// ne suffit pas à l'éliminer de façon fiable sur une génération longue. Remplace par une virgule (paire
+// d'incise) ou un deux-points (le cas le plus fréquent : "terme — définition"), jamais par simple retrait.
+function stripEmDash(text: string): string {
+  return text
+    .replace(/ — ([^—\n]+?) — /g, ", $1, ")
+    .replace(/ — /g, " : ")
+    .replace(/—/g, ":");
+}
+
+const FORMAT_LABELS: Record<NonNullable<ArticleParams["format"]>, string> = {
+  guide_informationnel: "Guide informationnel",
+  comparatif: "Comparatif",
+  page_conseil_transactionnelle: "Page conseil transactionnelle",
+  actualite: "Actualité ou réaction à une mise à jour",
+};
+
+// Construit le brief au format attendu par ARTICLE_SYSTEM_PROMPT (Voie 1 du Socle) de façon déterministe,
+// pour que le rédacteur reçoive toujours une structure identique, qu'il vienne du wizard ou de l'orchestrateur.
+function buildArticleBrief(p: ArticleParams): string {
+  const lines = ["=== BRIEF DE RÉDACTION ===", ""];
+  lines.push(`Sujet : ${p.sujet}`);
+  lines.push(`Mot-clé principal : ${p.mot_cle_principal ?? "à déduire du sujet"}`);
+  lines.push(`Format : ${FORMAT_LABELS[p.format ?? "guide_informationnel"]}`);
+  lines.push(`Intention de recherche dominante : ${p.intention_recherche ?? "informationnelle"}`);
+  lines.push(`Niveau du lecteur : ${p.niveau_lecteur ?? "intermédiaire"}`);
+  lines.push(`Ton : ${p.ton ?? "expert et direct"}`);
+  lines.push(`Longueur visée : ${p.longueur_mots ? `environ ${p.longueur_mots} mots (prime sur la fourchette du format)` : "fourchette par défaut du format choisi"}`);
+  lines.push(`Client / site concerné : ${p.client_site ?? "générique"}`);
+  if (p.public_cible) lines.push(`Précision sur l'audience : ${p.public_cible}`);
+  lines.push("");
+  lines.push(p.plan ? `Plan à suivre :\n${p.plan}` : "Aucun plan fourni : construis un plan pertinent toi-même pour ce format.");
+  lines.push("");
+  lines.push(p.mots_cles_longue_traine
+    ? `Requêtes longue traîne à reprendre dans la FAQ :\n${p.mots_cles_longue_traine}`
+    : "Aucune requête longue traîne fournie : déduis des questions FAQ pertinentes du sujet.");
+  lines.push("");
+  lines.push(p.analyse_serp_fournie
+    ? `Analyse SERP déjà obtenue :\n${p.analyse_serp_fournie}`
+    : "Aucune analyse SERP fournie : rédige sans cette étape et signale-le dans les Points à compléter.");
+  lines.push("");
+  lines.push(p.pages_piliers_disponibles
+    ? `Pages piliers réelles disponibles pour le maillage interne :\n${p.pages_piliers_disponibles}`
+    : "Aucune page pilier réelle fournie : ne propose aucun maillage interne, signale-le explicitement plutôt que d'inventer des ancres.");
+  return lines.join("\n");
+}
+
 async function generateArticleContent(p: ArticleParams): Promise<string> {
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 6000,
+    max_tokens: 8000,
     system: cachedSystem(ARTICLE_SYSTEM_PROMPT),
-    messages: [{
-      role: "user",
-      content: `Rédige un article complet sur : ${p.sujet}
-${p.mot_cle_principal ? `Mot-clé principal à cibler : ${p.mot_cle_principal}` : ""}
-${p.mots_cles_longue_traine ? `Requêtes longue traîne à reprendre dans la FAQ : ${p.mots_cles_longue_traine}` : ""}
-${p.plan ? `Plan à suivre :\n${p.plan}` : "Construis un plan pertinent toi-même."}
-${p.public_cible ? `Public cible : ${p.public_cible}` : "Public cible : généraliste mais averti."}
-${p.longueur_mots ? `Longueur cible : environ ${p.longueur_mots} mots.` : "Longueur cible : adapte-toi à la spécificité du sujet."}
-${p.pages_piliers_disponibles ? `Pages piliers réelles disponibles pour le maillage interne :\n${p.pages_piliers_disponibles}` : "Aucune page pilier réelle fournie : ne propose aucun maillage interne, signale-le explicitement plutôt que d'inventer des ancres."}`,
-    }],
+    messages: [{ role: "user", content: buildArticleBrief(p) }],
   });
-  return (response.content[0] as { text: string }).text;
+  return stripEmDash((response.content[0] as { text: string }).text);
 }
 
 async function generateProductSheetContent(p: ProductSheetParams): Promise<string> {
@@ -1253,7 +1412,7 @@ ${p.caracteristiques ? `Caractéristiques / avantages : ${p.caracteristiques}` :
 ${p.mot_cle_principal ? `Mot-clé principal à cibler : ${p.mot_cle_principal}` : ""}`,
     }],
   });
-  return (response.content[0] as { text: string }).text;
+  return stripEmDash((response.content[0] as { text: string }).text);
 }
 
 const CONTENT_PLAN_SYSTEM_PROMPT = `Tu es un stratège SEO senior spécialisé en architecture de contenu. Tu construis des plans de contenu structurés en clusters thématiques (page pilier + articles satellites maillés entre eux), en partant toujours d'un mot-clé ou sujet principal clairement défini avant toute autre analyse.
@@ -1278,7 +1437,7 @@ ${p.mots_cles_disponibles ? `Mots-clés déjà identifiés à exploiter : ${p.mo
 Nombre d'articles satellites souhaité : ${p.nombre_articles ?? 5}`,
     }],
   });
-  return (response.content[0] as { text: string }).text;
+  return stripEmDash((response.content[0] as { text: string }).text);
 }
 
 interface PublishProductParams {
@@ -2092,7 +2251,7 @@ async function generateStrategyActionPlan(sessionId: string | undefined, p: Stra
     }],
   });
   const block = response.content.find(b => b.type === "text");
-  return block && block.type === "text" ? block.text : "Désolé, je n'ai pas pu générer ce plan d'action.";
+  return block && block.type === "text" ? stripEmDash(block.text) : "Désolé, je n'ai pas pu générer ce plan d'action.";
 }
 
 interface FindLongtailParams {
@@ -3069,7 +3228,7 @@ const TOOL_LABELS: Record<string, string> = {
   find_longtail_keywords: "Recherche de mots-clés longue traîne…",
   check_domain_ranking: "Vérification du ranking du domaine…",
   analyze_competitor_backlinks: "Analyse des backlinks concurrents…",
-  generate_article: "Rédaction de l'article…",
+  generate_article: "Création du contenu…",
   generate_product_sheet: "Génération de la fiche produit…",
   generate_content_plan: "Construction du plan de contenu…",
   generate_strategy_action_plan: "Élaboration du plan stratégique…",
