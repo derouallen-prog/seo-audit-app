@@ -521,7 +521,7 @@ Pour search_woocommerce : utilise cet outil dès que l'utilisateur mentionne un 
 
 Si l'utilisateur a connecté sa Google Search Console et demande des données réelles sur un domaine (mots-clés positionnés, requêtes longue traîne, performances de recherche, clics, impressions, position), utilise immédiatement l'outil get_search_console_data avec le domaine mentionné, sans poser de questions de clarification au préalable — l'outil te dira lui-même si le domaine n'est pas accessible. N'utilise PAS cet outil si l'utilisateur n'a pas mentionné de domaine précis ou ne demande pas de données chiffrées issues de la Search Console.
 
-Pour get_bing_webmaster_data : utilise-le dès que l'utilisateur demande explicitement des données Bing (trafic, requêtes, positions sur Bing), ou quand une analyse de visibilité multi-moteurs est demandée en complément de get_search_console_data. Ne l'appelle pas par défaut pour une simple question sur "mon site" sans mention de Bing — Google Search Console reste la source par défaut. Si tu ne connais pas l'URL exacte telle que vérifiée dans Bing Webmaster Tools, appelle d'abord en mode sites pour la récupérer avant trafic ou requetes. Les positions et volumes Bing sont structurellement différents de ceux de Google (moteur distinct, part de trafic plus faible en France) : ne les fusionne jamais avec les chiffres Search Console dans un même total, présente-les côte à côte avec le moteur clairement indiqué.
+Pour get_bing_webmaster_data : utilise-le dès que l'utilisateur demande explicitement des données Bing (trafic, requêtes, positions sur Bing), ou quand une analyse de visibilité multi-moteurs est demandée en complément de get_search_console_data. Ne l'appelle pas par défaut pour une simple question sur "mon site" sans mention de Bing — Google Search Console reste la source par défaut. Si tu ne connais pas l'URL exacte telle que vérifiée dans Bing Webmaster Tools, appelle d'abord en mode sites pour la récupérer avant trafic ou requetes. Les positions et volumes Bing sont structurellement différents de ceux de Google (moteur distinct, part de trafic plus faible en France) : ne les fusionne jamais avec les chiffres Search Console dans un même total, présente-les côte à côte avec le moteur clairement indiqué. N'avance JAMAIS de chiffre de part de marché de Bing (ex. "3 à 5 % des recherches en France") pour contextualiser des totaux faibles : c'est exactement le genre de statistique plausible mais non vérifiée que le Socle commun SEO/GEO interdit. Si le volume Bing paraît faible, dis-le en termes relatifs à l'historique propre du site (comparé aux semaines précédentes) ou qualitativement ("trafic modeste"), jamais avec un pourcentage de marché inventé.
 
 Si l'utilisateur demande les mots-clés ou les pages positionnées sur une thématique précise (ex: "trouve-moi les mots-clés sur le curry", "quelles pages rankent sur le moringa"), transmets impérativement cette thématique dans le paramètre thematique de l'outil. Sans ce paramètre, l'outil ne renvoie que le top clics global du site, ce qui peut faire disparaître des thématiques de niche qui ont pourtant plusieurs pages positionnées dans la Search Console réelle — avec le paramètre thematique, l'outil interroge directement toutes les requêtes contenant ce terme, quel que soit leur volume. Une fois les résultats reçus, recense bien CHAQUE page distincte présente dans les données, pas seulement la première — il y en a très souvent plusieurs sur un même thème (page principale + variantes : pluriel, recette, ingrédient associé...).
 
@@ -1371,6 +1371,13 @@ function stripEmDash(text: string): string {
     .replace(/ — ([^—\n]+?) — /g, ", $1, ")
     .replace(/ — /g, " : ")
     .replace(/—/g, ":");
+}
+
+// Variante pour le flux streamé du chat principal : chaque fragment arrive isolément (pas de
+// contexte du reste de la phrase), donc pas de détection de paire d'incise possible ici — seule
+// la substitution par deux-points, toujours correcte grammaticalement en français.
+function stripEmDashChunk(text: string): string {
+  return text.replace(/\s—\s/g, " : ").replace(/—/g, ":");
 }
 
 const FORMAT_LABELS: Record<NonNullable<ArticleParams["format"]>, string> = {
@@ -3479,7 +3486,7 @@ L'utilisateur est un professionnel du SEO (souvent un consultant qui travaille p
               event.delta.type === "text_delta" &&
               event.delta.text
             ) {
-              send("token", JSON.stringify(event.delta.text));
+              send("token", JSON.stringify(stripEmDashChunk(event.delta.text)));
               tokensStreamed++;
             }
           }

@@ -8,8 +8,8 @@
 const BASE_URL = "https://ssl.bing.com/webmaster/api.svc/json";
 
 function getApiKey(): string {
-  const key = process.env.BING_API_KEY;
-  if (!key) throw new Error("BING_API_KEY non configurée dans .env.local");
+  const key = process.env.BING_WEBMASTER_API_KEY;
+  if (!key) throw new Error("BING_WEBMASTER_API_KEY non configurée dans .env.local");
   return key;
 }
 
