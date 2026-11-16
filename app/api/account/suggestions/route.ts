@@ -60,7 +60,7 @@ Génère exactement 4 variantes pour chacune des 3 catégories suivantes, adapt�
 Les valeurs doivent être courtes (2-5 mots), spécifiques au marché "${market}", en français.`;
 
     const msg = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: "claude-haiku-5-5",
       max_tokens: 400,
       messages: [{ role: "user", content: prompt }],
     });

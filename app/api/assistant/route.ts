@@ -34,7 +34,7 @@ import { runPageSpeed } from "@/lib/pagespeed";
 import { checkStructuredData } from "@/lib/structuredData";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const MODEL = "claude-sonnet-4-6";
+const MODEL = "claude-sonnet-5";
 
 // Cache du digest d'actualités SEO — évite un aller-retour Supabase à chaque requête
 const NEWS_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes

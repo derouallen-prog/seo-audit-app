@@ -27,7 +27,7 @@ export class ClaudeConnector implements PlatformConnector {
     type BetaCreate = { create: (opts: Record<string, unknown>) => Promise<BetaResponse> };
 
     const response = await (client.beta.messages as unknown as BetaCreate).create({
-      model: "claude-haiku-4-5-20251001",
+      model: "claude-haiku-5-5",
       max_tokens: 1024,
       tools: [{ type: "web_search_20250305", name: "web_search" }],
       messages: [{ role: "user", content: promptText }],

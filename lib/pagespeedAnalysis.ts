@@ -76,7 +76,7 @@ export async function generatePageSpeedAnalysis(ctx: PageContext): Promise<PageS
 
   try {
     const response = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: "claude-haiku-5-5",
       max_tokens: 900,
       system: `Tu es un expert SEO et performance web senior (10+ ans). Tu analyses des métriques Lighthouse et GT Metrix (quand disponibles) ainsi que la structure d'une page pour produire un diagnostic concis et des recommandations actionnables. Quand les deux sources sont présentes, croise-les pour renforcer ou nuancer le diagnostic (ex: LCP cohérent entre les deux outils = signal fort). Tes recommandations sont toujours spécifiques aux données fournies — jamais génériques. Tu priorises les points bloquants (métriques dans le rouge, erreurs structurelles) avant les optimisations secondaires. Réponds uniquement en JSON valide, sans balise markdown, sans commentaire.`,
       messages: [{

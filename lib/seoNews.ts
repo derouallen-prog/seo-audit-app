@@ -52,7 +52,7 @@ async function fetchSourceItems(source: { name: string; url: string }): Promise<
 async function summarizeItem(item: SeoNewsItem): Promise<string> {
   try {
     const response = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: "claude-haiku-5-5",
       max_tokens: 150,
       system: "Tu résumes une actualité SEO en une seule phrase factuelle et concise en français, orientée sur l'implication pratique pour un consultant SEO. Pas de tirets cadratins.",
       messages: [{

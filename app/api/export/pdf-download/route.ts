@@ -31,7 +31,7 @@ Top recommandations : ${data.recommendations.slice(0, 6).join(" / ")}
   try {
     const ai = new Anthropic({ apiKey });
     const msg = await ai.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: "claude-haiku-5-5",
       max_tokens: 700,
       system: EXPERT_SYSTEM_PROMPT,
       messages: [{

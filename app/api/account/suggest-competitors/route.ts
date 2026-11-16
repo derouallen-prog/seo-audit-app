@@ -10,7 +10,7 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 async function describeMarket(siteUrl: string): Promise<string | null> {
   try {
     const msg = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: "claude-haiku-5-5",
       max_tokens: 60,
       messages: [{ role: "user", content: `Le site est "${siteUrl}". Identifie son marché/secteur en quelques mots en français, sans ponctuation finale. Réponds uniquement avec cette courte description, rien d'autre.` }],
     });

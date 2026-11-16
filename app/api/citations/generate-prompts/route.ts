@@ -46,7 +46,7 @@ Retourne ce JSON exact :
 
     try {
       const msg = await client.messages.create({
-        model: "claude-haiku-4-5-20251001",
+        model: "claude-haiku-5-5",
         max_tokens: 1500,
         system: systemPrompt,
         messages: [{ role: "user", content: userPrompt }],
@@ -81,7 +81,7 @@ Mots-clés : ${keywords.map(k => `"${k}"`).join(", ")}`;
 
   try {
     const msg = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: "claude-haiku-5-5",
       max_tokens: 1500,
       system: systemPrompt,
       messages: [{ role: "user", content: userPrompt }],

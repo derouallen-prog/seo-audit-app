@@ -54,7 +54,7 @@ Contenu de la page :
 ${pageContent?.slice(0, 2000) || "Non disponible"}`;
 
     const response = await client.messages.create({
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
       max_tokens: 800,
       system: systemPrompt,
       messages: [{ role: "user", content: userPrompt }],
