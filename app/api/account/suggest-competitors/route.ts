@@ -1,8 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getAuthUser } from "@/lib/supabaseServer";
+import { getDataForSeoCompetitors } from "@/lib/dataforseo";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+// Décrit le marché en quelques mots — suggestion de repli éditable par l'utilisateur,
+// jamais présentée comme une donnée vérifiée (contrairement à la liste de concurrents ci-dessous).
+async function describeMarket(siteUrl: string): Promise<string | null> {
+  try {
+    const msg = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 60,
+      messages: [{ role: "user", content: `Le site est "${siteUrl}". Identifie son marché/secteur en quelques mots en français, sans ponctuation finale. Réponds uniquement avec cette courte description, rien d'autre.` }],
+    });
+    return msg.content[0]?.type === "text" ? msg.content[0].text.trim() : null;
+  } catch {
+    return null;
+  }
+}
 
 export async function POST(req: NextRequest) {
   const user = await getAuthUser();
@@ -12,24 +28,20 @@ export async function POST(req: NextRequest) {
   const { site_url, market } = body;
   if (!site_url) return NextResponse.json({ error: "site_url requis" }, { status: 400 });
 
-  const prompt = market
-    ? `Le site est "${site_url}" et son marché est : "${market}". Propose exactement 3 domaines concurrents directs, réels et existants, dans ce marché. Réponds UNIQUEMENT avec du JSON valide, sans markdown ni texte autour : {"market":"${market}","competitors":[{"domain":"example.fr","name":"Nom"},{"domain":"example2.com","name":"Nom 2"},{"domain":"example3.fr","name":"Nom 3"}]}`
-    : `Le site est "${site_url}". Identifie son marché/secteur en quelques mots en français, puis propose exactement 3 domaines concurrents directs, réels et existants dans ce secteur en France. Réponds UNIQUEMENT avec du JSON valide, sans markdown ni texte autour : {"market":"courte description du marché","competitors":[{"domain":"example.fr","name":"Nom"},{"domain":"example2.com","name":"Nom 2"},{"domain":"example3.fr","name":"Nom 3"}]}`;
+  const domain = site_url.replace(/^https?:\/\//i, "").replace(/^www\./i, "").split(/[/?#]/)[0] ?? site_url;
 
-  try {
-    const msg = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 300,
-      messages: [{ role: "user", content: prompt }],
-    });
+  const [marketDesc, competitorsResult] = await Promise.all([
+    market ? Promise.resolve(market) : describeMarket(site_url),
+    process.env.DATAFORSEO_LOGIN
+      ? getDataForSeoCompetitors(domain, "fr", [], 8).catch(e => {
+          console.error("[suggest-competitors] DataForSEO error:", e);
+          return [];
+        })
+      : Promise.resolve([]),
+  ]);
 
-    const text = msg.content[0]?.type === "text" ? msg.content[0].text.trim() : "";
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return NextResponse.json({ error: "Réponse invalide", raw: text }, { status: 500 });
+  // Domaine sans historique organique dans DataForSEO Labs = aucune suggestion, jamais une liste inventée.
+  const competitors = competitorsResult.map(c => ({ domain: c.domain, name: c.domain }));
 
-    const data = JSON.parse(jsonMatch[0]) as { market: string; competitors: { domain: string; name: string }[] };
-    return NextResponse.json(data);
-  } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
-  }
+  return NextResponse.json({ market: marketDesc, competitors });
 }

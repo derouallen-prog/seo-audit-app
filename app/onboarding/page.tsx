@@ -337,9 +337,7 @@ export default function OnboardingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           domain,
-          metaTitle: data.pageData?.title,
-          metaDesc: data.pageData?.metaDesc,
-          h1: data.pageData?.h1,
+          country: data.crawlSignals?.detectedMarket?.code,
         }),
       })
         .then(r => r.json())
