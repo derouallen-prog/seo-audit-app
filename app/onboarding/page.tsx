@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, forwardRef, KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import type { DetectedTech } from "@/lib/techDetect";
+import type { OnboardingKeywordInsight } from "@/app/api/onboarding/keywords/route";
 
 // ── Domain autocomplete ────────────────────────────────────────────────────────
 
@@ -269,6 +270,8 @@ export default function OnboardingPage() {
   const [suggestedCompetitors, setSuggestedCompetitors] = useState<string[]>([]);
   const [loadingCompetitors, setLoadingCompetitors] = useState(false);
   const [competitorsFetched, setCompetitorsFetched] = useState(false);
+  const [keywordInsight, setKeywordInsight] = useState<OnboardingKeywordInsight | null>(null);
+  const [loadingKeywords, setLoadingKeywords] = useState(false);
   const competitorInputRef = useRef<HTMLInputElement>(null);
 
   // Progressive reveal after detection
@@ -325,6 +328,19 @@ export default function OnboardingPage() {
         .then((d: { competitors: string[] }) => setSuggestedCompetitors(d.competitors ?? []))
         .catch(() => {})
         .finally(() => { setLoadingCompetitors(false); setCompetitorsFetched(true); });
+
+      // Mots-clés réels (DataForSEO) en arrière-plan, pour l'étape positionnement — jamais une estimation.
+      setKeywordInsight(null);
+      setLoadingKeywords(true);
+      fetch("/api/onboarding/keywords", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ domain }),
+      })
+        .then(r => r.json())
+        .then((d: OnboardingKeywordInsight) => setKeywordInsight(d))
+        .catch(() => {})
+        .finally(() => setLoadingKeywords(false));
     } catch {
       setDetectError("Impossible d'analyser ce site. Vérifie l'URL et réessaie.");
     } finally {
@@ -661,6 +677,54 @@ export default function OnboardingPage() {
                   Tu pourras modifier ce positionnement dans Gérer mes sites.
                 </div>
               </div>
+
+              {/* Puces factuelles — données déjà récupérées à l'étape 1, aucun nouvel appel */}
+              {detectResult && (detectResult.techStack.length > 0 || detectResult.sitemapCount > 0) && (
+                <div className="flex flex-wrap gap-1.5">
+                  {detectResult.sitemapCount > 0 && (
+                    <span className="inline-flex items-center rounded-full border border-hairline bg-background px-3 py-1 text-xs text-ink-soft">
+                      <span className="font-semibold text-ink tabular-nums mr-1">{detectResult.sitemapCount.toLocaleString("fr-FR")}</span> pages
+                    </span>
+                  )}
+                  {detectResult.techStack.slice(0, 4).map(t => <TechBadge key={t.name} tech={t} />)}
+                </div>
+              )}
+
+              {/* Mots-clés réels (DataForSEO) — jamais une estimation */}
+              {(loadingKeywords || keywordInsight) && (
+                <div className="rounded-xl border border-hairline bg-background shadow-sm px-4 py-3 space-y-2.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-ink-soft/60 flex items-center gap-1.5">
+                    Positionnement réel détecté
+                    {loadingKeywords && <Spinner />}
+                  </p>
+                  {loadingKeywords && !keywordInsight && (
+                    <p className="text-xs text-ink-soft/50">Recherche de données de positionnement réelles…</p>
+                  )}
+                  {keywordInsight && !keywordInsight.hasHistory && (
+                    <p className="text-xs text-ink-soft/60">Aucun historique de positionnement trouvé pour ce domaine — normal pour un site récent ou peu indexé. Rien n&apos;est estimé à la place.</p>
+                  )}
+                  {keywordInsight && keywordInsight.hasHistory && (
+                    <>
+                      {keywordInsight.topKeywords.length > 0 && (
+                        <div className="space-y-1.5">
+                          {keywordInsight.topKeywords.map(k => (
+                            <div key={k.keyword} className="flex items-center justify-between gap-2 text-xs">
+                              <span className="text-ink font-medium truncate">{k.keyword}</span>
+                              <span className="text-ink-soft shrink-0">pos. {k.position} · {k.volume.toLocaleString("fr-FR")}/mois</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {keywordInsight.suggestedTopic && (
+                        <div className="border-t border-hairline pt-2.5 text-xs text-ink-soft">
+                          <span className="font-semibold text-ink">Thématique à travailler : </span>
+                          développer la sémantique autour de « {keywordInsight.suggestedTopic.keyword} » (position {keywordInsight.suggestedTopic.position}, {keywordInsight.suggestedTopic.volume.toLocaleString("fr-FR")} recherches/mois) — un bon potentiel de gain visible à court terme.
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
 
               {competitors.length > 0 && (
                 <div className="rounded-xl border border-hairline bg-muted/30 px-4 py-3 text-xs text-ink-soft">
