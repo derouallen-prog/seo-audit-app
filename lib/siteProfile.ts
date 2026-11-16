@@ -15,6 +15,8 @@ export interface SiteProfile {
   tech_stack: DetectedTech[];
   positioning: string | null;
   writing_style: string | null;
+  market: string | null;
+  preferred_lang: string | null;
   onboarding_completed: boolean;
   created_at: string;
   updated_at: string;

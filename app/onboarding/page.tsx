@@ -245,12 +245,26 @@ function TechBadge({ tech }: { tech: DetectedTech }) {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+interface CrawlSignals {
+  htmlLang: string | null;
+  hreflangs: string[];
+  hasCanonical: boolean;
+  isHttps: boolean;
+  wwwRedirect: boolean;
+  robotsDisallowAll: boolean;
+  robotsDisallowCount: number;
+  detectedMarket: { code: string; label: string } | null;
+}
+
 interface DetectResult {
   techStack: DetectedTech[];
   positioning: string | null;
   sitemapCount: number;
   pageData: { title: string; h1: string; metaDesc: string } | null;
+  crawlSignals: CrawlSignals | null;
 }
+
+const LANG_LABELS: Record<string, string> = { fr: "Français", en: "Anglais", de: "Allemand", es: "Espagnol", it: "Italien", nl: "Néerlandais", pt: "Portugais" };
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
@@ -272,6 +286,8 @@ export default function OnboardingPage() {
   const [competitorsFetched, setCompetitorsFetched] = useState(false);
   const [keywordInsight, setKeywordInsight] = useState<OnboardingKeywordInsight | null>(null);
   const [loadingKeywords, setLoadingKeywords] = useState(false);
+  const [marketCode, setMarketCode] = useState<string>("");
+  const [writingLang, setWritingLang] = useState<string>("");
   const competitorInputRef = useRef<HTMLInputElement>(null);
 
   // Progressive reveal after detection
@@ -308,6 +324,8 @@ export default function OnboardingPage() {
       setSiteUrl(url);
       setDetectResult(data);
       if (data.positioning) setPositioning(data.positioning);
+      setMarketCode(data.crawlSignals?.detectedMarket?.code ?? "");
+      setWritingLang(data.crawlSignals?.htmlLang ?? "fr");
 
       // Fetch competitor suggestions in background immediately
       setSuggestedCompetitors([]);
@@ -384,6 +402,8 @@ export default function OnboardingPage() {
             competitors,
             tech_stack: detectResult?.techStack ?? [],
             positioning,
+            market: marketCode || null,
+            preferred_lang: writingLang || "fr",
             onboarding_completed: true,
           }),
         }),
@@ -535,6 +555,64 @@ export default function OnboardingPage() {
                           )}
                         </div>
                       )}
+
+                      {/* Signaux de crawlabilité — depuis le même fetch, zéro appel supplémentaire */}
+                      {detectResult.crawlSignals && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {[
+                            { ok: detectResult.crawlSignals.isHttps, label: "HTTPS" },
+                            { ok: detectResult.crawlSignals.hasCanonical, label: "Balise canonical" },
+                            { ok: !detectResult.crawlSignals.robotsDisallowAll, label: detectResult.crawlSignals.robotsDisallowAll ? "robots.txt bloque tout" : "robots.txt OK" },
+                          ].map(({ ok, label }) => (
+                            <span key={label} className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium ${ok ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
+                              <svg viewBox="0 0 16 16" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                                {ok ? <polyline points="3 8 6.5 11.5 13 4.5" /> : <path d="M8 4v5M8 11.5v.1" />}
+                              </svg>
+                              {label}
+                            </span>
+                          ))}
+                          {detectResult.crawlSignals.hreflangs.length > 1 && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-hairline bg-background px-2.5 py-1 text-[11px] font-medium text-ink-soft">
+                              {detectResult.crawlSignals.hreflangs.length} versions linguistiques (hreflang)
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Marché cible + langue — détectés, modifiables */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="mb-1 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-widest text-ink-soft/60">
+                            Marché cible
+                            {detectResult.crawlSignals?.detectedMarket && <span className="normal-case font-normal text-ink-soft/50">· détecté</span>}
+                          </label>
+                          <select
+                            value={marketCode}
+                            onChange={e => setMarketCode(e.target.value)}
+                            className="w-full rounded-lg border border-hairline bg-background px-3 py-2 text-sm text-ink outline-none focus:border-brand"
+                          >
+                            <option value="">Non précisé</option>
+                            {Object.entries({ fr: "France", be: "Belgique", ch: "Suisse", ca: "Canada", uk: "Royaume-Uni", de: "Allemagne", es: "Espagne", it: "Italie", us: "États-Unis" }).map(([code, label]) => (
+                              <option key={code} value={code}>{label}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="mb-1 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-widest text-ink-soft/60">
+                            Langue
+                            {detectResult.crawlSignals?.htmlLang && <span className="normal-case font-normal text-ink-soft/50">· détectée</span>}
+                          </label>
+                          <select
+                            value={writingLang}
+                            onChange={e => setWritingLang(e.target.value)}
+                            className="w-full rounded-lg border border-hairline bg-background px-3 py-2 text-sm text-ink outline-none focus:border-brand"
+                          >
+                            {Object.entries(LANG_LABELS).map(([code, label]) => (
+                              <option key={code} value={code}>{label}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
 
                       <button
                         onClick={() => setStep(1)}

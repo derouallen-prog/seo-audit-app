@@ -12,6 +12,56 @@ const gunzipAsync = promisify(gunzip);
 export const runtime = "nodejs";
 export const maxDuration = 45;
 
+// ccTLD → code pays DataForSEO (mêmes clés que lib/dataforseo.ts) + libellé affiché.
+// Signal de repli uniquement : .com/.net/etc. ne donnent aucune indication fiable, on ne devine pas.
+const TLD_MARKET: Record<string, { code: string; label: string }> = {
+  fr: { code: "fr", label: "France" },
+  be: { code: "be", label: "Belgique" },
+  ch: { code: "ch", label: "Suisse" },
+  ca: { code: "ca", label: "Canada" },
+  de: { code: "de", label: "Allemagne" },
+  es: { code: "es", label: "Espagne" },
+  it: { code: "it", label: "Italie" },
+  uk: { code: "uk", label: "Royaume-Uni" },
+  co: { code: "uk", label: "Royaume-Uni" }, // .co.uk
+};
+
+export interface CrawlSignals {
+  htmlLang: string | null;
+  hreflangs: string[];
+  hasCanonical: boolean;
+  isHttps: boolean;
+  wwwRedirect: boolean; // true si www./non-www redirige proprement vers une seule version canonique
+  robotsDisallowAll: boolean;
+  robotsDisallowCount: number;
+  detectedMarket: { code: string; label: string } | null;
+}
+
+async function checkRobotsTxt(base: string): Promise<{ disallowAll: boolean; disallowCount: number }> {
+  try {
+    const res = await fetch(`${base}/robots.txt`, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; SearchMind/1.0)" },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return { disallowAll: false, disallowCount: 0 };
+    const text = await res.text();
+    const disallowLines = text.match(/^Disallow:\s*(.*)$/gim) ?? [];
+    const disallowAll = disallowLines.some(l => l.replace(/^Disallow:\s*/i, "").trim() === "/");
+    return { disallowAll, disallowCount: disallowLines.filter(l => l.replace(/^Disallow:\s*/i, "").trim() !== "").length };
+  } catch {
+    return { disallowAll: false, disallowCount: 0 };
+  }
+}
+
+function detectMarketFromTld(hostname: string): { code: string; label: string } | null {
+  const parts = hostname.toLowerCase().split(".");
+  const last = parts[parts.length - 1] ?? "";
+  const secondToLast = parts[parts.length - 2] ?? "";
+  // .co.uk — vérifie la combinaison avant le simple dernier segment
+  if (secondToLast === "co" && last === "uk") return TLD_MARKET.co ?? null;
+  return TLD_MARKET[last] ?? null;
+}
+
 async function extractHomepageData(url: string) {
   try {
     const res = await fetch(url, {
@@ -29,7 +79,20 @@ async function extractHomepageData(url: string) {
     const ogDesc = $('meta[property="og:description"]').attr("content")?.trim() ?? "";
     const firstP = $("p").first().text().trim().slice(0, 300);
 
-    return { title, h1, metaDesc: metaDesc || ogDesc, firstP };
+    const htmlLang = $("html").attr("lang")?.trim().toLowerCase().slice(0, 2) || null;
+    const hreflangs = [...new Set(
+      $('link[rel="alternate"][hreflang]')
+        .map((_, el) => $(el).attr("hreflang")?.trim().toLowerCase())
+        .get()
+        .filter((h): h is string => !!h && h !== "x-default")
+    )];
+    const hasCanonical = $('link[rel="canonical"]').length > 0;
+    const isHttps = res.url.startsWith("https://");
+    // redirected=true ET l'URL finale ne correspond plus exactement à ce qui a été demandé
+    // (http→https, ajout/retrait de www) = une seule version canonique existe bien, c'est le signal positif.
+    const wwwRedirect = res.redirected && res.url !== url;
+
+    return { title, h1, metaDesc: metaDesc || ogDesc, firstP, htmlLang, hreflangs, hasCanonical, isHttps, wwwRedirect };
   } catch {
     return null;
   }
@@ -235,21 +298,36 @@ export async function POST(req: NextRequest) {
   if (!url) return NextResponse.json({ error: "URL requise" }, { status: 400 });
 
   const normalizedUrl = url.startsWith("http") ? url : `https://${url}`;
+  const base = normalizedUrl.replace(/\/$/, "");
 
-  const [techStack, pageData, sitemapCount] = await Promise.all([
+  const [techStack, pageData, sitemapCount, robots] = await Promise.all([
     detectTechStack(normalizedUrl),
     extractHomepageData(normalizedUrl),
     countSitemapUrls(normalizedUrl),
+    checkRobotsTxt(base),
   ]);
 
   const positioning = pageData
     ? await generatePositioning({ ...pageData, url: normalizedUrl })
     : null;
 
+  const hostname = (() => { try { return new URL(normalizedUrl).hostname; } catch { return ""; } })();
+  const crawlSignals: CrawlSignals = {
+    htmlLang: pageData?.htmlLang ?? null,
+    hreflangs: pageData?.hreflangs ?? [],
+    hasCanonical: pageData?.hasCanonical ?? false,
+    isHttps: pageData?.isHttps ?? normalizedUrl.startsWith("https://"),
+    wwwRedirect: pageData?.wwwRedirect ?? false,
+    robotsDisallowAll: robots.disallowAll,
+    robotsDisallowCount: robots.disallowCount,
+    detectedMarket: detectMarketFromTld(hostname),
+  };
+
   return NextResponse.json({
     techStack,
     positioning,
     sitemapCount,
     pageData: pageData ? { title: pageData.title, h1: pageData.h1, metaDesc: pageData.metaDesc } : null,
+    crawlSignals,
   });
 }
