@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getSeoNewsDigest, formatDigestForPrompt } from "@/lib/seoNews";
 import { getValidAccessToken, listGscSites, getGscQueriesWithPages, getGscQueriesByTopics, getGscQueriesByPatterns, getGscSiteMetrics, GSC_INTENT_PATTERNS } from "@/lib/gscOAuth";
+import { getUserSites as getBingSites, getRankAndTrafficStats as getBingTraffic, getQueryStats as getBingQueryStats } from "@/lib/bingWebmaster";
 import { createDraftProduct, createProductCategory, searchProducts, searchCategories, getProduct, updateProduct } from "@/lib/woocommerce";
 import { enqueueScript } from "@/lib/wpBridge";
 import { checkGeoVisibility } from "@/lib/geoVisibilityCheck";
@@ -412,6 +413,7 @@ Tu réponds en français, de façon claire et actionnable. Tu peux discuter de s
 - générer un plan d'action stratégique sur un axe précis : SEO local, GEO, netlinking, ou maillage interne
 - analyser les données Semrush d'un domaine (mots-clés positionnés, backlinks, top pages) ou explorer les mots-clés d'une thématique (idées connexes, questions)
 - analyser les données Google Business Profile (mots-clés locaux, métriques de performance, audit de la fiche)
+- analyser les données Bing Webmaster Tools (sites vérifiés, trafic, requêtes et positions sur Bing)
 - analyser les discussions Reddit sur une thématique : recherche sémantique (vocabulaire réel, pain points, intentions), ninja linking / mentions de marque, ou découverte de sujets à fort engagement
 - analyser la SERP Google pour un mot-clé (top 10, formats dominants, featured snippets), trouver des mots-clés longue traîne, vérifier le ranking d'un domaine, analyser les backlinks d'un concurrent
 - extraire les questions "People Also Ask" Google réelles pour un mot-clé (via Keywords People Use), et obtenir des suggestions Google Autocomplete + mots-clés sémantiques + questions Reddit/Quora
@@ -479,7 +481,7 @@ Pour llm_mentions_metrics et llm_mentions_search : ce sont des mesures issues d'
 ## Source de référence par métrique
 
 Plusieurs outils renvoient des métriques proches avec des valeurs différentes. Ne présente jamais deux chiffres contradictoires sans arbitrer. Source de référence par métrique :
-- Clics, impressions, CTR, position réelle du site de l'utilisateur : Search Console, toujours prioritaire sur toute estimation.
+- Clics, impressions, CTR, position réelle du site de l'utilisateur sur Google : Search Console, toujours prioritaire sur toute estimation. Sur Bing : Bing Webmaster Tools, jamais fusionné avec les chiffres Google.
 - Volume de recherche et CPC : Google Ads (google_ads_historical_metrics). DataForSEO et Semrush ne servent que si Google Ads est indisponible.
 - Difficulté SEO et intention de recherche : DataForSEO (dataforseo_keyword_overview).
 - Mots-clés positionnés, trafic estimé et concurrents d'un domaine tiers : DataForSEO Labs.
@@ -518,6 +520,8 @@ Pour inject_wp_script : n'utilise cet outil qu'en DERNIER RECOURS, quand l'API R
 Pour search_woocommerce : utilise cet outil dès que l'utilisateur mentionne un produit ou une catégorie existante ("le produit Gingembre jeune", "la catégorie Épices", "retrouve ce produit dans ma boutique"). Tu peux l'appeler avant de publier pour vérifier si un produit existe déjà et éviter les doublons. Retourne toujours l'ID et l'URL d'édition WP Admin pour que l'utilisateur puisse accéder directement au produit.
 
 Si l'utilisateur a connecté sa Google Search Console et demande des données réelles sur un domaine (mots-clés positionnés, requêtes longue traîne, performances de recherche, clics, impressions, position), utilise immédiatement l'outil get_search_console_data avec le domaine mentionné, sans poser de questions de clarification au préalable — l'outil te dira lui-même si le domaine n'est pas accessible. N'utilise PAS cet outil si l'utilisateur n'a pas mentionné de domaine précis ou ne demande pas de données chiffrées issues de la Search Console.
+
+Pour get_bing_webmaster_data : utilise-le dès que l'utilisateur demande explicitement des données Bing (trafic, requêtes, positions sur Bing), ou quand une analyse de visibilité multi-moteurs est demandée en complément de get_search_console_data. Ne l'appelle pas par défaut pour une simple question sur "mon site" sans mention de Bing — Google Search Console reste la source par défaut. Si tu ne connais pas l'URL exacte telle que vérifiée dans Bing Webmaster Tools, appelle d'abord en mode sites pour la récupérer avant trafic ou requetes. Les positions et volumes Bing sont structurellement différents de ceux de Google (moteur distinct, part de trafic plus faible en France) : ne les fusionne jamais avec les chiffres Search Console dans un même total, présente-les côte à côte avec le moteur clairement indiqué.
 
 Si l'utilisateur demande les mots-clés ou les pages positionnées sur une thématique précise (ex: "trouve-moi les mots-clés sur le curry", "quelles pages rankent sur le moringa"), transmets impérativement cette thématique dans le paramètre thematique de l'outil. Sans ce paramètre, l'outil ne renvoie que le top clics global du site, ce qui peut faire disparaître des thématiques de niche qui ont pourtant plusieurs pages positionnées dans la Search Console réelle — avec le paramètre thematique, l'outil interroge directement toutes les requêtes contenant ce terme, quel que soit leur volume. Une fois les résultats reçus, recense bien CHAQUE page distincte présente dans les données, pas seulement la première — il y en a très souvent plusieurs sur un même thème (page principale + variantes : pluriel, recette, ingrédient associé...).
 
@@ -670,6 +674,23 @@ const tools: Anthropic.Tool[] = [
         jours: { type: "number", description: "Période en jours à analyser (par défaut 28). Ignoré si mois est fourni." },
       },
       required: ["domaine"],
+    },
+  },
+  {
+    name: "get_bing_webmaster_data",
+    description: "Récupère les vraies données Bing Webmaster Tools (sites vérifiés, trafic quotidien clics/impressions, top requêtes avec position moyenne) pour un domaine du compte Bing Webmaster connecté. Complémentaire à get_search_console_data : Bing a sa propre part de trafic en France (quelques %), ses propres requêtes et positions, distinctes de Google.",
+    input_schema: {
+      type: "object",
+      properties: {
+        mode: {
+          type: "string",
+          enum: ["sites", "trafic", "requetes"],
+          description: "sites : liste les domaines vérifiés sur le compte Bing Webmaster (pas besoin de site_url). trafic : série quotidienne clics/impressions pour un site. requetes : top requêtes agrégées avec position moyenne pour un site.",
+        },
+        site_url: { type: "string", description: "URL complète du site tel que vérifié dans Bing Webmaster Tools (ex: https://exemple.fr/). Requis pour trafic et requetes, ignoré pour sites. Si tu ne connais pas l'URL exacte, appelle d'abord en mode sites." },
+        jours: { type: "number", description: "Période en jours à agréger/afficher (défaut 28)." },
+      },
+      required: ["mode"],
     },
   },
   {
@@ -2553,6 +2574,48 @@ async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: stri
     }
     case "get_search_console_data":
       return { terminal: false, result: await getSearchConsoleDataForChat(sessionId, toolUse.input as GscDataParams) };
+    case "get_bing_webmaster_data": {
+      const p = toolUse.input as { mode: "sites" | "trafic" | "requetes"; site_url?: string; jours?: number };
+      const jours = p.jours ?? 28;
+      try {
+        if (p.mode === "sites") {
+          const sites = await getBingSites();
+          if (!sites.length) return { terminal: false, result: "Aucun site vérifié trouvé sur le compte Bing Webmaster Tools connecté." };
+          return { terminal: false, result: [
+            "## Bing Webmaster Tools — sites vérifiés",
+            ...sites.map(s => `- ${s.url}${s.isVerified ? "" : " (non vérifié)"}`),
+          ].join("\n") };
+        }
+        if (!p.site_url) return { terminal: false, result: "Le paramètre site_url est requis pour ce mode. Appelle d'abord en mode sites pour obtenir l'URL exacte telle que vérifiée dans Bing Webmaster Tools." };
+
+        if (p.mode === "trafic") {
+          const rows = await getBingTraffic(p.site_url, jours);
+          if (!rows.length) return { terminal: false, result: `Aucune donnée de trafic Bing pour ${p.site_url} sur les ${jours} derniers jours.` };
+          const totalClicks = rows.reduce((s, r) => s + r.clicks, 0);
+          const totalImpr = rows.reduce((s, r) => s + r.impressions, 0);
+          return { terminal: false, result: [
+            `## Bing Webmaster Tools — trafic de ${p.site_url} (${jours} derniers jours)`,
+            `Total : **${totalClicks.toLocaleString("fr-FR")} clics**, **${totalImpr.toLocaleString("fr-FR")} impressions**.`,
+            "",
+            "| Date | Clics | Impressions |",
+            "|---|---|---|",
+            ...rows.map(r => `| ${r.date} | ${r.clicks} | ${r.impressions} |`),
+          ].join("\n") };
+        }
+
+        const queries = await getBingQueryStats(p.site_url, jours, 50);
+        if (!queries.length) return { terminal: false, result: `Aucune requête Bing enregistrée pour ${p.site_url} sur les ${jours} derniers jours.` };
+        return { terminal: false, result: [
+          `## Bing Webmaster Tools — top requêtes de ${p.site_url} (${jours} derniers jours)`,
+          "",
+          "| Requête | Clics | Impressions | Position moy. (clics) | Position moy. (impr.) |",
+          "|---|---|---|---|---|",
+          ...queries.map(q => `| ${q.query} | ${q.clicks} | ${q.impressions} | ${q.avgClickPosition ?? "-"} | ${q.avgImpressionPosition ?? "-"} |`),
+        ].join("\n") };
+      } catch (e) {
+        return { terminal: false, result: `❌ Erreur Bing Webmaster Tools : ${e instanceof Error ? e.message : "erreur inconnue"}` };
+      }
+    }
     case "get_semrush_data":
       return { terminal: false, result: await getSemrushDataForAssistant(toolUse.input as SemrushParams) };
     case "get_gbp_insights":
@@ -3220,6 +3283,7 @@ export const maxDuration = 150;
 
 const TOOL_LABELS: Record<string, string> = {
   get_search_console_data: "Récupération données Search Console…",
+  get_bing_webmaster_data: "Récupération données Bing Webmaster Tools…",
   get_semrush_data: "Récupération données Semrush…",
   get_gbp_insights: "Récupération données Google Business Profile…",
   get_keyword_trends: "Analyse des tendances de mots-clés…",
