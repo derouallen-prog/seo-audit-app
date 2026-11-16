@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, KeyboardEvent } from "react";
+import { useState, useRef, useEffect, forwardRef, KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import type { DetectedTech } from "@/lib/techDetect";
@@ -103,6 +103,84 @@ function DomainInput({
     </div>
   );
 }
+
+// ── Competitor input (favicon + autosuggest + ajout direct) ─────────────────────
+
+const CompetitorInput = forwardRef<HTMLInputElement, {
+  value: string;
+  onChange: (v: string) => void;
+  onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => void;
+  onBlur: () => void;
+  onSelect: (domain: string) => void;
+  disabled?: boolean;
+  placeholder: string;
+}>(function CompetitorInput({ value, onChange, onKeyDown, onBlur, onSelect, disabled, placeholder }, ref) {
+  const [suggestions, setSuggestions] = useState<ClearbitSuggestion[]>([]);
+  const [open, setOpen] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cleanDomain = value.replace(/^https?:\/\//i, "").replace(/^www\./i, "").split(/[/?#]/)[0] ?? "";
+  const faviconUrl = hasTLD(value) && cleanDomain
+    ? `https://www.google.com/s2/favicons?domain=${cleanDomain}&sz=64`
+    : null;
+
+  useEffect(() => {
+    if (timer.current) clearTimeout(timer.current);
+    const q = value.trim();
+    if (q.length < 2 || hasTLD(q)) { setSuggestions([]); return; }
+    timer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`https://autocomplete.clearbit.com/v1/companies/suggest?query=${encodeURIComponent(q)}`);
+        if (res.ok) setSuggestions((await res.json()) as ClearbitSuggestion[]);
+      } catch { /* réseau */ }
+    }, 300);
+    return () => { if (timer.current) clearTimeout(timer.current); };
+  }, [value]);
+
+  return (
+    <div className="relative">
+      <div className="flex overflow-hidden rounded-xl border border-hairline bg-background shadow-sm focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20 transition-all">
+        <span className="flex items-center pl-3 text-ink-soft/50">
+          {faviconUrl
+            ? <Image src={faviconUrl} alt="" width={16} height={16} unoptimized className="h-4 w-4 rounded object-contain" />
+            : <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 3v10M3 8h10" /></svg>
+          }
+        </span>
+        <input
+          ref={ref}
+          type="text"
+          value={value}
+          onChange={e => { onChange(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => { setTimeout(() => setOpen(false), 150); onBlur(); }}
+          onKeyDown={onKeyDown}
+          placeholder={placeholder}
+          disabled={disabled}
+          className="flex-1 bg-transparent py-3.5 pl-2 pr-3 text-sm text-ink outline-none placeholder:text-ink-soft/50 disabled:opacity-40"
+          autoFocus
+        />
+      </div>
+
+      {open && suggestions.length > 0 && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 rounded-xl border border-hairline bg-background shadow-lg overflow-hidden">
+          {suggestions.map(s => (
+            <button key={s.domain} type="button" onMouseDown={() => { onSelect(s.domain); setSuggestions([]); setOpen(false); }}
+              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-accent/40 transition-colors text-left">
+              {s.logo
+                ? <Image src={s.logo} alt="" width={24} height={24} unoptimized className="w-6 h-6 rounded shrink-0 object-contain" />
+                : <div className="w-6 h-6 rounded bg-accent shrink-0 flex items-center justify-center text-xs font-bold text-ink-soft">{s.name[0]}</div>
+              }
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-ink">{s.name}</p>
+                <p className="text-xs text-ink-soft">{s.domain}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+});
 
 // ── Icons ──────────────────────────────────────────────────────────────────────
 
@@ -256,12 +334,16 @@ export default function OnboardingPage() {
 
   // ── Step 1: Competitors ──────────────────────────────────────────────────────
 
-  function addCompetitor() {
-    const raw = competitorInput.trim().replace(/^https?:\/\//, "");
+  function addCompetitorValue(value: string) {
+    const raw = value.trim().replace(/^https?:\/\//, "");
     if (!raw || competitors.includes(raw) || competitors.length >= 5) return;
     setCompetitors(prev => [...prev, raw]);
     setCompetitorInput("");
     competitorInputRef.current?.focus();
+  }
+
+  function addCompetitor() {
+    addCompetitorValue(competitorInput);
   }
 
   function removeCompetitor(c: string) {
@@ -467,87 +549,85 @@ export default function OnboardingPage() {
                 </div>
               )}
 
-              {/* Suggestions IA */}
-              {(loadingCompetitors || competitorsFetched) && (
+              {/* Liste unifiée : suggestions IA + concurrents ajoutés manuellement, mêmes pastilles */}
+              {(loadingCompetitors || competitorsFetched || competitors.length > 0) && (
                 <div className="space-y-2">
                   <p className="text-[11px] font-semibold uppercase tracking-widest text-ink-soft/60 flex items-center gap-1.5">
-                    Suggestions
+                    Concurrents
                     {loadingCompetitors && <Spinner />}
                   </p>
-                  {loadingCompetitors && (
+                  {loadingCompetitors && suggestedCompetitors.length === 0 && (
                     <p className="text-xs text-ink-soft/50">Analyse du marché en cours…</p>
                   )}
-                  {competitorsFetched && suggestedCompetitors.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {suggestedCompetitors.map(c => {
-                        const added = competitors.includes(c);
-                        const full = !added && competitors.length >= 5;
-                        return (
-                          <button
-                            key={c}
-                            disabled={full}
-                            onClick={() => {
-                              if (added) { removeCompetitor(c); }
-                              else if (!full) { setCompetitors(prev => [...prev, c]); }
-                            }}
-                            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
-                              added
-                                ? "border-brand bg-brand/8 text-brand"
-                                : full
-                                ? "border-hairline bg-background text-ink-soft/40 cursor-not-allowed"
-                                : "border-hairline bg-background text-ink-soft hover:border-brand/40 hover:text-ink"
-                            }`}
-                          >
-                            {added && (
-                              <svg viewBox="0 0 16 16" className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                <polyline points="3 8 6.5 11.5 13 4.5" />
-                              </svg>
-                            )}
-                            {c}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {competitorsFetched && suggestedCompetitors.length === 0 && (
+                  {(() => {
+                    const manual = competitors.filter(c => !suggestedCompetitors.includes(c));
+                    const allChips = [...suggestedCompetitors, ...manual];
+                    if (allChips.length === 0) return null;
+                    return (
+                      <div className="flex flex-wrap gap-2">
+                        {allChips.map(c => {
+                          const added = competitors.includes(c);
+                          const isManual = manual.includes(c);
+                          const full = !added && competitors.length >= 5;
+                          return (
+                            <button
+                              key={c}
+                              disabled={full}
+                              onClick={() => {
+                                if (added) { removeCompetitor(c); }
+                                else if (!full) { setCompetitors(prev => [...prev, c]); }
+                              }}
+                              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
+                                added
+                                  ? "border-brand bg-brand/8 text-brand"
+                                  : full
+                                  ? "border-hairline bg-background text-ink-soft/40 cursor-not-allowed"
+                                  : "border-hairline bg-background text-ink-soft hover:border-brand/40 hover:text-ink"
+                              }`}
+                            >
+                              <Image src={`https://www.google.com/s2/favicons?domain=${c}&sz=32`} alt="" width={14} height={14} unoptimized className="h-3.5 w-3.5 shrink-0 rounded-sm" />
+                              {added && (
+                                <svg viewBox="0 0 16 16" className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="3 8 6.5 11.5 13 4.5" />
+                                </svg>
+                              )}
+                              {c}
+                              {added && isManual && (
+                                <span
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={e => { e.stopPropagation(); removeCompetitor(c); }}
+                                  onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); removeCompetitor(c); } }}
+                                  className="text-brand/60 hover:text-brand transition-colors"
+                                  aria-label="Supprimer"
+                                >
+                                  <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                                    <path d="M4 4l8 8M12 4l-8 8" />
+                                  </svg>
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                  {competitorsFetched && !loadingCompetitors && suggestedCompetitors.length === 0 && competitors.length === 0 && (
                     <p className="text-xs text-ink-soft/50">Aucune suggestion disponible pour ce marché.</p>
                   )}
                 </div>
               )}
 
-              {/* Competitor chips — manually added ones not in suggestions */}
-              {competitors.filter(c => !suggestedCompetitors.includes(c)).length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {competitors.filter(c => !suggestedCompetitors.includes(c)).map(c => (
-                    <span key={c} className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-background px-3 py-1.5 text-xs font-medium text-ink">
-                      {c}
-                      <button onClick={() => removeCompetitor(c)} className="text-ink-soft hover:text-ink transition-colors" aria-label="Supprimer">
-                        <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                          <path d="M4 4l8 8M12 4l-8 8" />
-                        </svg>
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              <div className="flex overflow-hidden rounded-xl border border-hairline bg-background shadow-sm focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20 transition-all">
-                <span className="flex items-center pl-3 text-ink-soft/50">
-                  <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 3v10M3 8h10" /></svg>
-                </span>
-                <input
-                  ref={competitorInputRef}
-                  type="text"
-                  value={competitorInput}
-                  onChange={e => setCompetitorInput(e.target.value)}
-                  onKeyDown={handleCompetitorKey}
-                  onBlur={addCompetitor}
-                  placeholder={`Ajouter un concurrent + Entrée${competitors.length >= 5 ? " (max 5)" : ""}`}
-                  disabled={competitors.length >= 5}
-                  className="flex-1 bg-transparent px-3 py-3.5 text-sm text-ink outline-none placeholder:text-ink-soft/50 disabled:opacity-40"
-                  autoFocus
-                />
-              </div>
+              <CompetitorInput
+                ref={competitorInputRef}
+                value={competitorInput}
+                onChange={setCompetitorInput}
+                onKeyDown={handleCompetitorKey}
+                onBlur={addCompetitor}
+                onSelect={addCompetitorValue}
+                disabled={competitors.length >= 5}
+                placeholder={`Ajouter un concurrent + Entrée${competitors.length >= 5 ? " (max 5)" : ""}`}
+              />
               <p className="text-[11px] text-ink-soft/60">Exemples : duck-shop.fr, parisduckstore.fr</p>
 
               <div className="flex items-center justify-between pt-2">
