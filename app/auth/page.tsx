@@ -62,7 +62,7 @@ function AuthForm() {
       <div className="rounded-2xl border border-hairline bg-white p-8 shadow-sm">
         <h1 className="font-display text-2xl text-ink mb-1">Connexion</h1>
         <p className="text-sm text-ink-soft mb-6">
-          Recevez un lien de connexion par email. Gratuit, sans mot de passe à retenir.
+          Accède à ton espace Search Mind : audits sauvegardés, assistant IA et suivi de positionnement. Recevez un lien de connexion par email, sans mot de passe à retenir.
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -93,6 +93,10 @@ function AuthForm() {
             {loading ? "Envoi…" : "Recevoir le lien de connexion"}
           </button>
         </form>
+
+        <p className="mt-4 text-center text-xs text-ink-soft">
+          Pas encore de compte ? <Link href="/commencer" className="font-medium text-brand hover:underline">Lance ta première analyse gratuite</Link>
+        </p>
       </div>
 
       <p className="mt-4 text-center text-xs text-ink-soft">

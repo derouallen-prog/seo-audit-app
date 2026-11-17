@@ -55,7 +55,7 @@ export default function MarqueBlanchePage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-xl font-semibold text-ink">Marque blanche</h1>
+        <h1 className="font-display text-2xl text-ink">Marque blanche</h1>
         <p className="mt-0.5 text-sm text-ink-soft">
           Les rapports exportés depuis l&apos;assistant portent votre identité, pas celle de Search Mind.
         </p>

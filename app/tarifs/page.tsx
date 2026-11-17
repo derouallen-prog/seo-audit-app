@@ -7,7 +7,7 @@ const PLANS = [
     period: "",
     description: "Pour découvrir Search Mind sans engagement.",
     cta: "Commencer gratuitement",
-    ctaHref: "/auth",
+    ctaHref: "/commencer",
     featured: false,
     features: [
       "5 audits SEO / mois",
@@ -23,7 +23,7 @@ const PLANS = [
     period: "/ mois",
     description: "Pour les consultants et équipes SEO en croissance.",
     cta: "Démarrer l'essai gratuit",
-    ctaHref: "/auth",
+    ctaHref: "/commencer",
     featured: true,
     features: [
       "Audits illimités",

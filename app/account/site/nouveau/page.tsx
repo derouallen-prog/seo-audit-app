@@ -75,7 +75,7 @@ export default function NouveauSitePage() {
 
   return (
     <div className="mx-auto max-w-xl py-10">
-      <h1 className="text-xl font-semibold text-ink mb-1">Changer de site</h1>
+      <h1 className="font-display text-2xl text-ink mb-1">Changer de site</h1>
       <p className="text-sm text-ink-soft mb-8">
         Analyse rapide d&apos;un nouveau domaine. Ton site actuel reste disponible dans le sélecteur de sites en haut à droite.
       </p>

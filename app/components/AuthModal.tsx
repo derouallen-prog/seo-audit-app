@@ -103,6 +103,11 @@ export default function AuthModal({ redirectTo = "/dashboard", onClose }: Props)
                 {loading ? "Envoi…" : "Recevoir le lien de connexion"}
               </button>
             </form>
+
+            <p className="mt-4 text-center text-xs text-ink-soft">
+              Pas encore de compte ?{" "}
+              <a href="/commencer" className="font-medium text-brand hover:underline">Lance ta première analyse gratuite</a>
+            </p>
           </>
         )}
       </div>

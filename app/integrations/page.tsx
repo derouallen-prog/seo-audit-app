@@ -33,6 +33,72 @@ const COMING_SOON = [
   { name: "Wix", color: "#FAAD00", icon: "Wix", desc: "Sites Wix" },
 ];
 
+function NotifyMeCard({ name, color, icon, desc }: { name: string; color: string; icon: string; desc: string }) {
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState("");
+  const [status, setStatus] = useState<"idle" | "sending" | "done" | "error">("idle");
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setStatus("sending");
+    try {
+      const res = await fetch("/api/lead", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, note: `Intéressé par l'intégration ${name}` }),
+      });
+      setStatus(res.ok ? "done" : "error");
+    } catch {
+      setStatus("error");
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl border border-hairline bg-background p-5">
+      <div className="flex items-center gap-4">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white" style={{ backgroundColor: color }}>
+          {icon}
+        </div>
+        <div className="min-w-0">
+          <div className="font-semibold text-ink">{name}</div>
+          <div className="mt-0.5 text-xs text-ink-soft">{desc}</div>
+        </div>
+        <span className="ml-auto shrink-0 rounded-full bg-accent px-2 py-0.5 text-xs text-ink-soft">Bientôt</span>
+      </div>
+
+      {status === "done" ? (
+        <p className="text-xs font-medium text-good">Merci, on te prévient dès que c&apos;est prêt.</p>
+      ) : open ? (
+        <form onSubmit={submit} className="flex gap-2">
+          <input
+            type="email"
+            required
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            placeholder="ton@email.com"
+            className="min-w-0 flex-1 rounded-lg border border-hairline bg-background px-2.5 py-1.5 text-xs text-ink placeholder:text-ink-soft/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 transition"
+          />
+          <button
+            type="submit"
+            disabled={status === "sending"}
+            className="shrink-0 rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-brand/90 disabled:opacity-60"
+          >
+            {status === "sending" ? "…" : "Valider"}
+          </button>
+        </form>
+      ) : (
+        <button
+          onClick={() => setOpen(true)}
+          className="self-start text-xs font-medium text-brand transition-colors hover:underline"
+        >
+          Me prévenir au lancement
+        </button>
+      )}
+      {status === "error" && <p className="text-xs text-warning">Erreur, réessaie dans un instant.</p>}
+    </div>
+  );
+}
+
 interface WebflowSite {
   id: string;
   displayName: string;
@@ -678,6 +744,15 @@ function IntegrationsContent() {
               <span className="mt-0.5">ℹ️</span>
               <span>Mind Bridge ne fonctionne que sur les pages où vous l&apos;avez activé. Il s&apos;exécute dans votre navigateur, en utilisant votre session WP Admin — aucun accès supplémentaire n&apos;est accordé.</span>
             </div>
+
+            <details className="mt-3 group">
+              <summary className="cursor-pointer text-xs font-medium text-ink-soft transition-colors hover:text-ink">
+                Pourquoi un bookmarklet plutôt qu&apos;une extension ou un plugin ?
+              </summary>
+              <p className="mt-2 text-xs text-ink-soft">
+                Un plugin WordPress ou une extension de navigateur nécessite une installation séparée et des mises à jour. Le bookmarklet, lui, ne demande rien côté serveur : il s&apos;exécute à la demande, uniquement quand vous cliquez dessus, et ne reste jamais actif en arrière-plan. C&apos;est le moyen le plus léger de donner à l&apos;assistant un accès ponctuel à votre page WP Admin pour les actions que l&apos;API REST de WordPress ne permet pas (ex : certains champs ACF).
+              </p>
+            </details>
           </div>
         </section>
       )}
@@ -789,16 +864,7 @@ function IntegrationsContent() {
         <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-ink-soft">Bientôt disponibles</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           {COMING_SOON.map((p) => (
-            <div key={p.name} className="flex items-center gap-4 rounded-2xl border border-hairline bg-background p-5 opacity-60">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white" style={{ backgroundColor: p.color }}>
-                {p.icon}
-              </div>
-              <div>
-                <div className="font-semibold text-ink">{p.name}</div>
-                <div className="mt-0.5 text-xs text-ink-soft">{p.desc}</div>
-              </div>
-              <span className="ml-auto shrink-0 rounded-full bg-accent px-2 py-0.5 text-xs text-ink-soft">Bientôt</span>
-            </div>
+            <NotifyMeCard key={p.name} name={p.name} color={p.color} icon={p.icon} desc={p.desc} />
           ))}
         </div>
       </section>

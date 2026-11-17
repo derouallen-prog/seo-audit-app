@@ -49,7 +49,7 @@ export default function AbonnementPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-xl font-semibold text-ink">Abonnement</h1>
+        <h1 className="font-display text-2xl text-ink">Abonnement</h1>
         <p className="text-sm text-ink-soft mt-0.5">Gère ton plan et ta facturation</p>
       </div>
 

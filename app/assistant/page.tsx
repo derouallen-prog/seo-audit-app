@@ -1183,6 +1183,7 @@ function AssistantPageInner() {
 
   return (
     <>
+    <h1 className="sr-only">Assistant SEO/GEO</h1>
     <div className="flex w-full" style={{ height: "calc(100dvh - 4rem)", overflow: "hidden" }}>
 
       {/* ── Sidebar (hidden in writing mode or toggled off) ── */}

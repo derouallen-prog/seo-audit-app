@@ -20,7 +20,7 @@ export default function CguPage() {
 
         <section>
           <h2 className="text-base font-semibold text-ink mb-3">Accès au service</h2>
-          <p>Le Service est accessible après création d&apos;un compte utilisateur. L&apos;utilisateur s&apos;engage à fournir des informations exactes et à maintenir la confidentialité de ses identifiants.</p>
+          <p>Une première analyse du Service est accessible librement, sans création de compte. L&apos;utilisation complète du Service (sauvegarde, suivi dans le temps) nécessite la création d&apos;un compte utilisateur. L&apos;utilisateur s&apos;engage à fournir des informations exactes et à maintenir la confidentialité de ses identifiants.</p>
           <p className="mt-2">Durant la phase bêta, l&apos;accès est gratuit et les fonctionnalités peuvent évoluer sans préavis.</p>
         </section>
 

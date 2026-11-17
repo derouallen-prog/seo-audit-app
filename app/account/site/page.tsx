@@ -362,7 +362,7 @@ export default function SitePage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-ink">Mon site</h1>
+          <h1 className="font-display text-2xl text-ink">Mon site</h1>
           {hostname && <p className="text-sm text-ink-soft mt-0.5">{hostname}</p>}
         </div>
         {/* Save button: visible only when dirty in current tab */}

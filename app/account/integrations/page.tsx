@@ -135,7 +135,7 @@ export default function IntegrationsPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-xl font-semibold text-ink">Intégrations</h1>
+        <h1 className="font-display text-2xl text-ink">Intégrations</h1>
         <p className="text-sm text-ink-soft mt-0.5">Connecte tes outils pour enrichir l&apos;analyse SEO</p>
       </div>
 
