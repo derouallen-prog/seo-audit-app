@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
 import * as cheerio from "cheerio";
 import Anthropic from "@anthropic-ai/sdk";
 import { detectTechStack } from "@/lib/techDetect";
@@ -289,21 +287,7 @@ async function countSitemapUrls(siteUrl: string): Promise<number> {
 }
 
 export async function POST(req: NextRequest) {
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll(); },
-        setAll(c) { try { c.forEach(({ name, value, options }) => cookieStore.set(name, value, options)); } catch {} },
-      },
-    }
-  );
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
-
+  // Accessible sans compte : l'onboarding tourne en anonyme, la persistance n'arrive qu'à la validation finale.
   const { url } = await req.json() as { url?: string };
   if (!url) return NextResponse.json({ error: "URL requise" }, { status: 400 });
 

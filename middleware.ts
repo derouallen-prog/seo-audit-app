@@ -36,7 +36,7 @@ export async function middleware(req: NextRequest) {
 
   // Redirect authenticated users to onboarding if not yet completed
   const path = req.nextUrl.pathname;
-  const isOnboarding = path === "/onboarding";
+  const isOnboarding = path === "/onboarding" || path === "/onboarding/complete";
   const isApi = path.startsWith("/api/");
   const isAuth = path.startsWith("/auth");
   const isStatic = path.startsWith("/_next") || path.startsWith("/legal");

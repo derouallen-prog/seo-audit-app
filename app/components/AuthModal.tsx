@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { createClient } from "@/lib/supabaseClient";
 
 interface Props {
   defaultMode?: "login" | "signup";
@@ -8,12 +9,10 @@ interface Props {
   onClose: () => void;
 }
 
-export default function AuthModal({ defaultMode = "login", redirectTo = "/dashboard", onClose }: Props) {
-  const [mode, setMode] = useState<"login" | "signup">(defaultMode);
+export default function AuthModal({ redirectTo = "/dashboard", onClose }: Props) {
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [signupDone, setSignupDone] = useState(false);
+  const [linkSent, setLinkSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
 
@@ -31,20 +30,12 @@ export default function AuthModal({ defaultMode = "login", redirectTo = "/dashbo
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const endpoint = mode === "login" ? "/api/auth/login" : "/api/auth/signup";
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
+    const { error } = await createClient().auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: `${window.location.origin}/api/auth/callback?next=${encodeURIComponent(redirectTo)}` },
     });
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.error ?? "Une erreur est survenue.");
-    } else if (mode === "login") {
-      window.location.href = redirectTo;
-    } else {
-      setSignupDone(true);
-    }
+    if (error) setError(error.message || "Une erreur est survenue.");
+    else setLinkSent(true);
     setLoading(false);
   }
 
@@ -66,7 +57,7 @@ export default function AuthModal({ defaultMode = "login", redirectTo = "/dashbo
           </svg>
         </button>
 
-        {signupDone ? (
+        {linkSent ? (
           <div className="text-center">
             <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-green-50">
               <svg className="h-6 w-6 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -74,19 +65,15 @@ export default function AuthModal({ defaultMode = "login", redirectTo = "/dashbo
               </svg>
             </div>
             <h2 className="font-display text-xl text-ink mb-2">Vérifiez votre email</h2>
-            <p className="text-sm text-ink-soft mb-6">Un lien de confirmation a été envoyé à <strong>{email}</strong>.</p>
+            <p className="text-sm text-ink-soft mb-6">Un lien de connexion a été envoyé à <strong>{email}</strong>. Cliquez dessus pour accéder à votre espace.</p>
             <button onClick={onClose} className="text-sm text-brand hover:underline">Fermer</button>
           </div>
         ) : (
           <>
             <div className="mb-6">
-              <h2 className="font-display text-xl text-ink mb-1">
-                {mode === "login" ? "Connexion" : "Créer un compte"}
-              </h2>
+              <h2 className="font-display text-xl text-ink mb-1">Connexion</h2>
               <p className="text-xs text-ink-soft">
-                {mode === "login"
-                  ? "Accédez à vos audits et à votre historique."
-                  : "Sauvegardez vos analyses et votre historique."}
+                Recevez un lien de connexion par email, sans mot de passe à retenir.
               </p>
             </div>
 
@@ -103,17 +90,6 @@ export default function AuthModal({ defaultMode = "login", redirectTo = "/dashbo
                   className="w-full rounded-lg border border-hairline bg-accent px-3 py-2 text-sm text-ink placeholder:text-ink-soft/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 transition"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-ink mb-1">Mot de passe</label>
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full rounded-lg border border-hairline bg-accent px-3 py-2 text-sm text-ink placeholder:text-ink-soft/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 transition"
-                />
-              </div>
 
               {error && (
                 <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>
@@ -124,19 +100,9 @@ export default function AuthModal({ defaultMode = "login", redirectTo = "/dashbo
                 disabled={loading}
                 className="w-full rounded-xl bg-brand py-2.5 text-sm font-semibold text-white transition hover:bg-brand/90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? "Chargement…" : mode === "login" ? "Se connecter" : "Créer mon compte"}
+                {loading ? "Envoi…" : "Recevoir le lien de connexion"}
               </button>
             </form>
-
-            <p className="mt-4 text-center text-xs text-ink-soft">
-              {mode === "login" ? "Pas encore de compte ?" : "Déjà un compte ?"}{" "}
-              <button
-                onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(null); }}
-                className="font-medium text-brand hover:underline"
-              >
-                {mode === "login" ? "S'inscrire" : "Se connecter"}
-              </button>
-            </p>
           </>
         )}
       </div>

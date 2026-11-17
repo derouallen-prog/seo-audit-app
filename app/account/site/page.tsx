@@ -366,7 +366,15 @@ export default function SitePage() {
           {hostname && <p className="text-sm text-ink-soft mt-0.5">{hostname}</p>}
         </div>
         {/* Save button: visible only when dirty in current tab */}
-        <div className="h-10 shrink-0">
+        <div className="flex h-10 shrink-0 items-center gap-2">
+          {!isDirty && (
+            <a
+              href="/account/site/nouveau"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-hairline px-3.5 py-2.5 text-xs font-medium text-ink-soft transition-colors hover:border-ink/20 hover:text-ink"
+            >
+              Changer de site
+            </a>
+          )}
           {isDirty && (
             <button
               onClick={save}

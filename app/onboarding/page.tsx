@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import type { DetectedTech } from "@/lib/techDetect";
 import type { OnboardingKeywordInsight } from "@/app/api/onboarding/keywords/route";
+import { createClient } from "@/lib/supabaseClient";
+import { ONBOARDING_DRAFT_KEY } from "@/lib/onboardingDraft";
 
 // ── Domain autocomplete ────────────────────────────────────────────────────────
 
@@ -287,6 +289,11 @@ export default function OnboardingPage() {
   const [marketCode, setMarketCode] = useState<string>("");
   const [writingLang, setWritingLang] = useState<string>("");
   const [topicAccepted, setTopicAccepted] = useState(false);
+  const [needsAuth, setNeedsAuth] = useState(false);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authLinkSent, setAuthLinkSent] = useState(false);
+  const [authSending, setAuthSending] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
   const competitorInputRef = useRef<HTMLInputElement>(null);
 
   // Progressive reveal after detection
@@ -298,10 +305,21 @@ export default function OnboardingPage() {
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [detectResult]);
 
+  // Arrivée depuis la page d'accueil scindée (/commencer) avec un domaine déjà saisi : on le prérempli
+  // et on lance directement la détection, pour ne pas faire retaper l'URL.
+  useEffect(() => {
+    const prefill = new URLSearchParams(window.location.search).get("url");
+    if (prefill) {
+      setUrlInput(prefill.replace(/^https?:\/\//i, ""));
+      void handleDetect(prefill);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Step 0: URL ──────────────────────────────────────────────────────────────
 
-  async function handleDetect() {
-    const raw = urlInput.trim();
+  async function handleDetect(prefillUrl?: string) {
+    const raw = (prefillUrl ?? urlInput).trim();
     if (!raw) return;
     const url = raw.startsWith("http") ? raw : `https://${raw}`;
 
@@ -388,31 +406,56 @@ export default function OnboardingPage() {
 
   // ── Step 2: Confirm & save ───────────────────────────────────────────────────
 
+  function buildProfilePayload() {
+    return {
+      site_url: siteUrl,
+      competitors,
+      tech_stack: detectResult?.techStack ?? [],
+      positioning,
+      market: marketCode || null,
+      preferred_lang: writingLang || "fr",
+      active_topic_focus: topicAccepted ? (keywordInsight?.suggestedTopic?.keyword ?? null) : null,
+      onboarding_completed: true,
+    };
+  }
+
   async function handleFinish() {
     setSaving(true);
     try {
-      await Promise.race([
+      const res = await Promise.race([
         fetch("/api/onboarding/profile", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            site_url: siteUrl,
-            competitors,
-            tech_stack: detectResult?.techStack ?? [],
-            positioning,
-            market: marketCode || null,
-            preferred_lang: writingLang || "fr",
-            active_topic_focus: topicAccepted ? (keywordInsight?.suggestedTopic?.keyword ?? null) : null,
-            onboarding_completed: true,
-          }),
+          body: JSON.stringify(buildProfilePayload()),
         }),
         new Promise<Response>((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000)),
       ]);
+      if (res.status === 401) {
+        // Parcours anonyme : rien à persister tant qu'il n'y a pas de compte — on garde le
+        // résultat de côté et on demande l'email pour envoyer le lien de connexion.
+        try { localStorage.setItem(ONBOARDING_DRAFT_KEY, JSON.stringify(buildProfilePayload())); } catch { /* stockage indisponible */ }
+        setSaving(false);
+        setNeedsAuth(true);
+        return;
+      }
     } catch {
-      // Proceed anyway — profile may have saved partially
+      // Timeout réseau — on considère que le profil a pu être enregistré partiellement, on continue.
     }
     // Full reload so middleware re-reads the new session cookie (onboarding_completed: true)
     window.location.href = "/?welcome=1";
+  }
+
+  async function handleSendAuthLink(e: React.FormEvent) {
+    e.preventDefault();
+    setAuthSending(true);
+    setAuthError(null);
+    const { error } = await createClient().auth.signInWithOtp({
+      email: authEmail,
+      options: { emailRedirectTo: `${window.location.origin}/api/auth/callback?next=${encodeURIComponent("/onboarding/complete")}` },
+    });
+    if (error) setAuthError(error.message || "Une erreur est survenue.");
+    else setAuthLinkSent(true);
+    setAuthSending(false);
   }
 
   async function handleSkip() {
@@ -480,12 +523,12 @@ export default function OnboardingPage() {
                   <DomainInput
                     value={urlInput}
                     onChange={setUrlInput}
-                    onSubmit={handleDetect}
+                    onSubmit={() => handleDetect()}
                     disabled={detecting}
                   />
                   {detectError && <p className="text-xs text-warning">{detectError}</p>}
                   <button
-                    onClick={handleDetect}
+                    onClick={() => handleDetect()}
                     disabled={detecting || !urlInput.trim()}
                     className="w-full flex items-center justify-center gap-2 rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-brand/90 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -826,16 +869,53 @@ export default function OnboardingPage() {
                 </div>
               )}
 
-              <div className="flex items-center justify-between pt-2">
-                <button onClick={() => setStep(1)} className="text-xs text-ink-soft hover:text-ink transition-colors">← Retour</button>
-                <button
-                  onClick={handleFinish}
-                  disabled={saving}
-                  className="flex items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-brand/90 disabled:opacity-60"
-                >
-                  {saving ? <><Spinner /> Enregistrement…</> : <>Accéder à Search Mind →</>}
-                </button>
-              </div>
+              {needsAuth ? (
+                authLinkSent ? (
+                  <div className="rounded-xl border border-hairline bg-background px-4 py-3.5 text-center">
+                    <p className="text-sm font-medium text-ink">Vérifiez votre email</p>
+                    <p className="mt-1 text-xs text-ink-soft">
+                      Un lien de connexion a été envoyé à <strong>{authEmail}</strong>. Cliquez dessus dans ce même navigateur pour récupérer votre analyse et créer votre espace.
+                    </p>
+                  </div>
+                ) : (
+                  <form onSubmit={handleSendAuthLink} className="rounded-xl border border-hairline bg-background px-4 py-3.5 space-y-2.5">
+                    <p className="text-sm font-medium text-ink">Plus qu&apos;une étape : récupère ton analyse</p>
+                    <p className="text-xs text-ink-soft">
+                      Indique ton email pour recevoir un lien de connexion, sans mot de passe à créer. Ton analyse est conservée sur cet appareil et sera reliée à ton compte dès que tu cliques sur le lien.
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="email"
+                        required
+                        autoFocus
+                        value={authEmail}
+                        onChange={e => setAuthEmail(e.target.value)}
+                        placeholder="vous@exemple.com"
+                        className="flex-1 rounded-lg border border-hairline bg-accent px-3 py-2 text-sm text-ink placeholder:text-ink-soft/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 transition"
+                      />
+                      <button
+                        type="submit"
+                        disabled={authSending}
+                        className="shrink-0 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand/90 disabled:opacity-60"
+                      >
+                        {authSending ? "Envoi…" : "Recevoir le lien"}
+                      </button>
+                    </div>
+                    {authError && <p className="text-xs text-red-600">{authError}</p>}
+                  </form>
+                )
+              ) : (
+                <div className="flex items-center justify-between pt-2">
+                  <button onClick={() => setStep(1)} className="text-xs text-ink-soft hover:text-ink transition-colors">← Retour</button>
+                  <button
+                    onClick={handleFinish}
+                    disabled={saving}
+                    className="flex items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-brand/90 disabled:opacity-60"
+                  >
+                    {saving ? <><Spinner /> Enregistrement…</> : <>Accéder à Search Mind →</>}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

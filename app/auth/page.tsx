@@ -2,16 +2,15 @@
 import { useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { createClient } from "@/lib/supabaseClient";
 
 function AuthForm() {
   const searchParams = useSearchParams();
   const redirect = searchParams.get("redirect") ?? "/dashboard";
 
-  const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [signupDone, setSignupDone] = useState(false);
+  const [linkSent, setLinkSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -19,25 +18,17 @@ function AuthForm() {
     setLoading(true);
     setError(null);
 
-    const endpoint = mode === "login" ? "/api/auth/login" : "/api/auth/signup";
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
+    const { error } = await createClient().auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: `${window.location.origin}/api/auth/callback?next=${encodeURIComponent(redirect)}` },
     });
-    const data = await res.json();
 
-    if (!res.ok) {
-      setError(data.error ?? "Une erreur est survenue.");
-    } else if (mode === "login") {
-      window.location.href = redirect;
-    } else {
-      setSignupDone(true);
-    }
+    if (error) setError(error.message || "Une erreur est survenue.");
+    else setLinkSent(true);
     setLoading(false);
   }
 
-  if (signupDone) {
+  if (linkSent) {
     return (
       <div className="w-full max-w-sm">
         <div className="rounded-2xl border border-hairline bg-white p-8 shadow-sm text-center">
@@ -48,7 +39,7 @@ function AuthForm() {
           </div>
           <h1 className="font-display text-xl text-ink mb-2">Vérifiez votre email</h1>
           <p className="text-sm text-ink-soft mb-6">
-            Un lien de confirmation a été envoyé à <strong>{email}</strong>. Cliquez dessus pour activer votre compte.
+            Un lien de connexion a été envoyé à <strong>{email}</strong>. Cliquez dessus pour accéder à votre espace.
           </p>
           <Link
             href="/"
@@ -57,9 +48,8 @@ function AuthForm() {
             Retour à l&apos;accueil
           </Link>
           <p className="mt-4 text-xs text-ink-soft">
-            Déjà confirmé ?{" "}
-            <button onClick={() => { setSignupDone(false); setMode("login"); }} className="text-brand hover:underline">
-              Se connecter
+            <button onClick={() => setLinkSent(false)} className="text-brand hover:underline">
+              Utiliser une autre adresse
             </button>
           </p>
         </div>
@@ -69,15 +59,10 @@ function AuthForm() {
 
   return (
     <div className="w-full max-w-sm">
-      {/* Card */}
       <div className="rounded-2xl border border-hairline bg-white p-8 shadow-sm">
-        <h1 className="font-display text-2xl text-ink mb-1">
-          {mode === "login" ? "Connexion" : "Créer un compte"}
-        </h1>
+        <h1 className="font-display text-2xl text-ink mb-1">Connexion</h1>
         <p className="text-sm text-ink-soft mb-6">
-          {mode === "login"
-            ? "Accédez à vos audits et à l'historique de vos analyses."
-            : "Gratuit, sans carte bancaire."}
+          Recevez un lien de connexion par email. Gratuit, sans mot de passe à retenir.
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -86,21 +71,10 @@ function AuthForm() {
             <input
               type="email"
               required
+              autoFocus
               value={email}
               onChange={e => setEmail(e.target.value)}
               placeholder="vous@exemple.com"
-              className="w-full rounded-lg border border-hairline bg-background px-3 py-2 text-sm text-ink placeholder:text-ink-soft/60 focus:outline-none focus:ring-2 focus:ring-brand/40 transition"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-ink mb-1.5">Mot de passe</label>
-            <input
-              type="password"
-              required
-              minLength={8}
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="8 caractères minimum"
               className="w-full rounded-lg border border-hairline bg-background px-3 py-2 text-sm text-ink placeholder:text-ink-soft/60 focus:outline-none focus:ring-2 focus:ring-brand/40 transition"
             />
           </div>
@@ -116,27 +90,9 @@ function AuthForm() {
             disabled={loading}
             className="w-full rounded-xl bg-brand py-2.5 text-sm font-medium text-white transition hover:bg-brand-dark disabled:opacity-60"
           >
-            {loading ? "Chargement…" : mode === "login" ? "Se connecter" : "Créer mon compte"}
+            {loading ? "Envoi…" : "Recevoir le lien de connexion"}
           </button>
         </form>
-
-        <div className="mt-5 text-center text-sm text-ink-soft">
-          {mode === "login" ? (
-            <>
-              Pas encore de compte ?{" "}
-              <button onClick={() => { setMode("register"); setError(null); }} className="text-brand hover:underline font-medium">
-                S&apos;inscrire
-              </button>
-            </>
-          ) : (
-            <>
-              Déjà un compte ?{" "}
-              <button onClick={() => { setMode("login"); setError(null); }} className="text-brand hover:underline font-medium">
-                Se connecter
-              </button>
-            </>
-          )}
-        </div>
       </div>
 
       <p className="mt-4 text-center text-xs text-ink-soft">

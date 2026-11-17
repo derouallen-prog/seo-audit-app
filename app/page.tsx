@@ -891,6 +891,11 @@ export default function HomePage() {
                 </svg>
               </button>
             </div>
+
+            <p className="mt-4 text-center text-xs text-ink-soft">
+              Tu veux un suivi personnalisé de ton site ?{" "}
+              <Link href="/commencer" className="font-medium text-brand hover:underline">Crée ton espace Search Mind →</Link>
+            </p>
           </div>
 
           {/* Stats cards */}
