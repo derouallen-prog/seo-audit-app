@@ -8,6 +8,13 @@ const nextConfig = {
   outputFileTracingRoot: path.join(process.cwd()),
   poweredByHeader: false,
   async headers() {
+    // L'auth passwordless (signInWithOtp) appelle Supabase directement depuis le navigateur
+    // (lib/supabaseClient.ts) — son origine doit être autorisée par connect-src, sinon le
+    // navigateur bloque la requête silencieusement ("Failed to fetch").
+    const supabaseOrigin = (() => {
+      try { return new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').origin; } catch { return null; }
+    })();
+
     const securityHeaders = [
       { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
       { key: 'X-Content-Type-Options', value: 'nosniff' },
@@ -23,7 +30,7 @@ const nextConfig = {
           "style-src 'self' 'unsafe-inline'",
           "img-src 'self' data: https:",
           "font-src 'self' data:",
-          "connect-src 'self' https://autocomplete.clearbit.com",
+          `connect-src 'self' https://autocomplete.clearbit.com${supabaseOrigin ? ` ${supabaseOrigin}` : ''}`,
           "frame-ancestors 'self'",
           "base-uri 'self'",
           "form-action 'self'",
