@@ -23,7 +23,7 @@ import { getDataForSeoSerp, getDataForSeoKeywordOverview, getDataForSeoBacklinks
 import { getGoogleAdsKeywordIdeas, getGoogleAdsHistoricalMetrics } from "@/lib/googleads";
 import { searchLLMMentions, getLLMTargetMetrics } from "@/lib/dataforseo_llm_mentions";
 import { getKpuPeopleAlsoAsk, getKpuSuggestions, formatPaaForAssistant, formatSuggestionsForAssistant } from "@/lib/keywordspeopleuse";
-import { getLongTailKeywords, getDomainRanking, getBacklinks } from "@/lib/fetchserp";
+import { getLongTailKeywords, getDomainRanking, getLocalPack, getAiOverview } from "@/lib/serpapi";
 import { marked } from "marked";
 import { loadAudit } from "@/lib/auditStore";
 import { computeScore, formatAuditForAssistant } from "@/lib/score";
@@ -442,13 +442,13 @@ Pour get_gbp_insights : utilise cet outil dès que l'utilisateur demande une ana
 
 Pour reddit_research : utilise cet outil dès que l'utilisateur demande d'analyser des discussions Reddit, trouver des opportunités de ninja linking, identifier des mentions de marque sur Reddit, ou découvrir des sujets/mots-clés depuis les forums. Choisis le mode approprié — semantic_research pour enrichir la sémantique et les intentions de recherche, ninja_linking pour les opportunités de liens/mentions de marque, topic_discovery pour les idées de contenu depuis les discussions. IMPORTANT : traduis toujours le sujet en anglais avant de passer le paramètre sujet (Reddit est quasi exclusivement en anglais). Si l'utilisateur ne précise pas de subreddits, effectue une recherche globale — mais pour les thématiques de niche, suggère aussi des subreddits pertinents dans ta réponse finale.
 
-Pour find_longtail_keywords : utilise cet outil dès que l'utilisateur demande des mots-clés longue traîne, des variations autour d'un sujet, des idées de requêtes peu concurrentielles, ou des opportunités de contenu depuis les données SERP réelles. Passe le mot-clé seed court (1-3 mots). Complémentaire à get_semrush_data : FetchSERP génère des suggestions à partir des recherches réelles sur la SERP, Semrush donne les volumes et la difficulté — utilise les deux quand disponibles.
+Pour find_longtail_keywords : utilise cet outil dès que l'utilisateur demande des mots-clés longue traîne, des variations autour d'un sujet, des idées de requêtes peu concurrentielles, ou des opportunités de contenu depuis les données SERP réelles. Passe le mot-clé seed court (1-3 mots). Complémentaire à get_semrush_data : SerpAPI génère des suggestions à partir des recherches réelles sur la SERP, Semrush donne les volumes et la difficulté — utilise les deux quand disponibles.
 
 Pour check_domain_ranking : utilise cet outil dès que l'utilisateur demande à quelle position se trouve un domaine sur un mot-clé, s'il ranke sur une requête, ou veut monitorer son positionnement. Transmets le domaine sans www ni https. Le paramètre pages_number détermine combien de pages SERP sont scannées (défaut 5 = top 50 positions). Si le domaine n'est pas trouvé, c'est qu'il ne rankait pas dans les N×10 premières positions.
 
 Pour get_kpu_paa : utilise cet outil dès que l'utilisateur demande les questions "People Also Ask" (PAA) ou "Questions posées par les internautes" de Google pour un mot-clé. C'est la source la plus fiable pour alimenter une FAQ SEO ou un plan de contenu en questions réelles. Passe le mot-clé dans la langue du marché cible (country + language : 'fr' pour la France, 'us'/'en' pour les USA). Le résultat est une arborescence de questions Google en profondeur — utilise-la pour enrichir les articles, les FAQ structured data, et le GEO (citabilité par les IA).
 
-Pour get_kpu_suggestions : utilise cet outil dès que l'utilisateur demande des suggestions Google Autocomplete, des mots-clés sémantiques connexes, ou des questions Reddit/Quora sur un sujet. Complémentaire à find_longtail_keywords (FetchSERP) et get_semrush_data mode keyword : KPU donne des suggestions issues de la recherche réelle (Autocomplete) et des communautés (Reddit/Quora), Semrush donne les volumes et la difficulté, FetchSERP donne les variations SERP. Utilise KPU en priorité pour la découverte sémantique et les FAQ conversationnelles.
+Pour get_kpu_suggestions : utilise cet outil dès que l'utilisateur demande des suggestions Google Autocomplete, des mots-clés sémantiques connexes, ou des questions Reddit/Quora sur un sujet. Complémentaire à find_longtail_keywords (SerpAPI) et get_semrush_data mode keyword : KPU donne des suggestions issues de la recherche réelle (Autocomplete) et des communautés (Reddit/Quora), Semrush donne les volumes et la difficulté, SerpAPI donne les variations SERP. Utilise KPU en priorité pour la découverte sémantique et les FAQ conversationnelles.
 
 Pour get_pagespeed_vitals : utilise cet outil dès que l'utilisateur demande les performances d'une page, les Core Web Vitals (LCP, INP, CLS), le score Lighthouse, ou un audit performance. Passe l'URL complète avec https://. La stratégie 'mobile' est prioritaire (Google indexe en mobile-first) — utilise 'desktop' seulement si l'utilisateur le précise. Interprète les résultats en les comparant aux seuils Google : LCP < 2.5s (bon), 2.5-4s (à améliorer), > 4s (mauvais) ; INP < 200ms (bon), 200-500ms (à améliorer), > 500ms (mauvais) ; CLS < 0.1 (bon), 0.1-0.25 (à améliorer), > 0.25 (mauvais). Si la clé API PageSpeed n'est pas configurée, l'outil tente quand même l'appel sans clé (quota anonyme limité — signale à l'utilisateur si ça échoue d'ajouter PAGESPEED_API_KEY dans son environnement).
 
@@ -460,7 +460,7 @@ Pour dataforseo_page_analysis : quand l'utilisateur demande un audit technique s
 
 Pour check_geo_visibility : utilise cet outil dès que l'utilisateur demande si un site (le sien ou un concurrent) est cité ou mentionné sur ChatGPT, Gemini, Claude, les IA, ou les moteurs génératifs pour un mot-clé donné. L'outil interroge RÉELLEMENT ChatGPT, Gemini et Claude (recherche web activée) avec la requête, vérifie si le domaine cible apparaît dans leurs citations ou dans le texte de la réponse, et retourne la réponse brute + les sources citées + une synthèse de visibilité GEO. Exemples de déclencheurs : "est-ce que mon site est cité sur ChatGPT quand on cherche X ?", "est-ce que laboratoire-roles.fr apparaît sur ChatGPT ou Gemini pour cette requête ?", "analyse ma visibilité IA sur ce mot-clé". Toujours extraire le keyword exact et le site_url depuis la demande de l'utilisateur avant d'appeler.
 
-Pour analyze_competitor_backlinks : utilise cet outil dès que l'utilisateur veut analyser les backlinks d'un concurrent, identifier des sources de liens à dupliquer, ou auditer le profil de netlinking d'un domaine tiers. Transmets le domaine cible sans www. Complémentaire à get_semrush_data mode domain qui donne aussi un aperçu des backlinks — FetchSERP fournit une liste détaillée avec ancres.
+Pour analyze_competitor_backlinks : utilise cet outil dès que l'utilisateur veut analyser les backlinks d'un concurrent, identifier des sources de liens à dupliquer, ou auditer le profil de netlinking d'un domaine tiers. Transmets le domaine cible sans www. Complémentaire à get_semrush_data mode domain qui donne aussi un aperçu des backlinks — les deux s'appuient sur des synthèses de profil, pas une liste de liens individuels.
 
 Pour dataforseo_serp_analysis : c'est l'outil principal pour toute analyse SERP. Utilise-le dès que l'utilisateur demande d'analyser la SERP, le top 10, les concurrents sur un mot-clé, les features SERP (AI Overview, featured snippet, shopping, local pack, vidéos, PAA…). Il retourne les features SERP enrichies, les People Also Ask et les requêtes associées en un seul appel.
 
@@ -485,7 +485,7 @@ Plusieurs outils renvoient des métriques proches avec des valeurs différentes.
 - Volume de recherche et CPC : Google Ads (google_ads_historical_metrics). DataForSEO et Semrush ne servent que si Google Ads est indisponible.
 - Difficulté SEO et intention de recherche : DataForSEO (dataforseo_keyword_overview).
 - Mots-clés positionnés, trafic estimé et concurrents d'un domaine tiers : DataForSEO Labs.
-- Backlinks et domaines référents : DataForSEO Backlinks. Semrush et FetchSERP en complément uniquement.
+- Backlinks et domaines référents : DataForSEO Backlinks. Semrush en complément uniquement (SerpAPI ne couvre pas les backlinks).
 - Visibilité dans les IA : DataForSEO LLM Mentions pour la tendance, check_geo_visibility et Citations IA pour un prompt précis.
 Si une deuxième source diverge fortement de la source de référence, affiche la source de référence et mentionne l'écart en une phrase ("Semrush estime 30 % de moins"). Indique la fraîcheur des données quand elle compte : Search Console a 2 à 3 jours de décalage, DataForSEO Labs est mis à jour chaque semaine, les analyses SERP et check_geo_visibility sont en direct.
 
@@ -578,7 +578,7 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: "get_kpu_suggestions",
-    description: "Récupère des suggestions Google Autocomplete, des mots-clés sémantiques connexes, et des questions issues de Reddit/Quora pour un mot-clé donné via Keywords People Use. Outil de découverte sémantique complémentaire à Semrush et FetchSERP.",
+    description: "Récupère des suggestions Google Autocomplete, des mots-clés sémantiques connexes, et des questions issues de Reddit/Quora pour un mot-clé donné via Keywords People Use. Outil de découverte sémantique complémentaire à Semrush et SerpAPI.",
     input_schema: {
       type: "object",
       properties: {
@@ -897,6 +897,31 @@ const tools: Anthropic.Tool[] = [
         pages_number: { type: "number", description: "Profondeur d'analyse : pages de résultats à scanner. Défaut : 3" },
       },
       required: ["domain"],
+    },
+  },
+  {
+    name: "check_local_pack",
+    description: "Vérifie le classement d'un établissement dans le pack local Google (les 3 résultats Google Maps avec avis) pour une requête géolocalisée. Utilise cet outil quand l'utilisateur demande sa position dans le pack local, ou compare sa visibilité locale à celle de concurrents (ex: 'où je me situe dans le pack local pour plombier Lyon').",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Requête géolocalisée telle que tapée par un internaute (ex: 'plombier Lyon')" },
+        location: { type: "string", description: "Ville ou zone géographique précise pour ancrer la recherche (ex: 'Lyon, France')" },
+        country: { type: "string", description: "Code pays ISO (ex: fr, us). Défaut : fr" },
+      },
+      required: ["query", "location"],
+    },
+  },
+  {
+    name: "check_ai_overview",
+    description: "Récupère l'AI Overview (aperçu généré par l'IA de Google, ex-SGE) pour une requête, et les sources qu'il cite. Utilise cet outil quand l'utilisateur veut savoir si une requête déclenche un AI Overview sur Google, ce qu'il contient, ou si son site y est cité — distinct de check_geo_visibility qui interroge ChatGPT/Gemini/Claude directement.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Requête de recherche à tester" },
+        country: { type: "string", description: "Code pays ISO (ex: fr, us). Défaut : fr" },
+      },
+      required: ["query"],
     },
   },
   {
@@ -2302,11 +2327,61 @@ interface AnalyzeBacklinksParams {
   pages_number?: number;
 }
 
+interface CheckLocalPackParams {
+  query: string;
+  location: string;
+  country?: string;
+}
+
+interface CheckAiOverviewParams {
+  query: string;
+  country?: string;
+}
+
+async function checkLocalPackForAssistant(p: CheckLocalPackParams): Promise<string> {
+  if (!process.env.SERPAPI_API_KEY) return "❌ SERPAPI_API_KEY n'est pas configuré — le pack local Google n'est pas disponible.";
+
+  const data = await getLocalPack(p.query, p.location, p.country ?? "fr");
+  if (!data || data.results.length === 0) {
+    return `Aucun résultat dans le pack local Google pour "${p.query}" à "${p.location}".`;
+  }
+
+  const lines = [
+    `## Pack local Google — "${p.query}" à ${p.location}`,
+    "",
+    "| Pos. | Établissement | Note | Avis | Type | Adresse |",
+    "|------|---------------|------|------|------|---------|",
+  ];
+  for (const r of data.results) {
+    lines.push(`| ${r.position} | **${r.name}** | ${r.rating ?? "—"} | ${r.reviews ?? "—"} | ${r.type ?? "—"} | ${r.address ?? "—"} |`);
+  }
+  return lines.join("\n");
+}
+
+async function checkAiOverviewForAssistant(p: CheckAiOverviewParams): Promise<string> {
+  if (!process.env.SERPAPI_API_KEY) return "❌ SERPAPI_API_KEY n'est pas configuré — l'AI Overview Google n'est pas disponible.";
+
+  const data = await getAiOverview(p.query, p.country ?? "fr");
+  if (!data) return `Erreur lors de la récupération de l'AI Overview pour "${p.query}".`;
+  if (!data.present) return `Aucun AI Overview Google généré pour la requête "${p.query}" (${(p.country ?? "fr").toUpperCase()}).`;
+
+  const lines = [
+    `## AI Overview Google — "${p.query}" (${(p.country ?? "fr").toUpperCase()})`,
+    "",
+    ...data.textBlocks.map(b => b),
+  ];
+  if (data.references.length) {
+    lines.push("", "### Sources citées dans l'AI Overview");
+    data.references.forEach((r, i) => lines.push(`${i + 1}. [${r.title || r.link}](${r.link})`));
+  }
+  return lines.join("\n");
+}
+
 async function findLongtailForAssistant(p: FindLongtailParams): Promise<string> {
-  // Try FetchSERP first
-  if (process.env.FETCHSERP_API_TOKEN) {
+  // Try SerpAPI first
+  if (process.env.SERPAPI_API_KEY) {
     try {
-      const keywords = await getLongTailKeywords(p.keyword, p.count ?? 20, p.search_intent, p.country ?? "fr");
+      const keywords = await getLongTailKeywords(p.keyword, p.count ?? 20, p.country ?? "fr");
       if (keywords.length > 0) {
         const lines = [
           `## Mots-clés longue traîne — "${p.keyword}" (${(p.country ?? "fr").toUpperCase()})`,
@@ -2322,7 +2397,7 @@ async function findLongtailForAssistant(p: FindLongtailParams): Promise<string> 
 
   // Fallback : DataForSEO SERP — PAA + related searches as longtail suggestions
   const serpData = await getDataForSeoSerp(p.keyword, p.country ?? "fr");
-  if (!serpData) return `Aucun mot-clé longue traîne trouvé pour "${p.keyword}". FetchSERP et DataForSEO sont tous les deux indisponibles.`;
+  if (!serpData) return `Aucun mot-clé longue traîne trouvé pour "${p.keyword}". SerpAPI et DataForSEO sont tous les deux indisponibles.`;
 
   const suggestions: string[] = [
     ...serpData.peopleAlsoAsk,
@@ -2333,7 +2408,7 @@ async function findLongtailForAssistant(p: FindLongtailParams): Promise<string> 
 
   const lines = [
     `## Mots-clés longue traîne — "${p.keyword}" (${(p.country ?? "fr").toUpperCase()}) *(via DataForSEO)*`,
-    `> Note : FetchSERP indisponible. Suggestions extraites des People Also Ask et des requêtes associées SERP.`,
+    `> Note : SerpAPI indisponible. Suggestions extraites des People Also Ask et des requêtes associées SERP.`,
     "",
     `${suggestions.length} suggestions identifiées :`,
   ];
@@ -2352,14 +2427,13 @@ async function findLongtailForAssistant(p: FindLongtailParams): Promise<string> 
 }
 
 async function checkRankingForAssistant(p: CheckRankingParams): Promise<string> {
-  // Try FetchSERP first
-  if (process.env.FETCHSERP_API_TOKEN) {
+  // Try SerpAPI first
+  if (process.env.SERPAPI_API_KEY) {
     try {
       const result = await getDomainRanking(
         p.keyword,
         p.domain,
         p.country ?? "fr",
-        "google",
         p.pages_number ?? 5
       );
 
@@ -2381,7 +2455,7 @@ async function checkRankingForAssistant(p: CheckRankingParams): Promise<string> 
 
   // Fallback : DataForSEO SERP — check if domain appears in top 10
   const serpData = await getDataForSeoSerp(p.keyword, p.country ?? "fr");
-  if (!serpData) return `Erreur lors de la vérification du ranking pour "${p.domain}" sur "${p.keyword}". FetchSERP et DataForSEO sont tous les deux indisponibles.`;
+  if (!serpData) return `Erreur lors de la vérification du ranking pour "${p.domain}" sur "${p.keyword}". SerpAPI et DataForSEO sont tous les deux indisponibles.`;
 
   const cleanDomain = p.domain.replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/$/, "");
   const match = serpData.organic.find(r => r.domain.replace(/^www\./, "") === cleanDomain || r.domain.includes(cleanDomain));
@@ -2392,7 +2466,7 @@ async function checkRankingForAssistant(p: CheckRankingParams): Promise<string> 
   ];
 
   if (!match) {
-    lines.push(`- **Non détecté dans le top 10** (FetchSERP indisponible — seul le top 10 est couvert par ce fallback)`);
+    lines.push(`- **Non détecté dans le top 10** (SerpAPI indisponible — seul le top 10 est couvert par ce fallback)`);
     lines.push(`\nTop 3 actuels : ${serpData.organic.slice(0, 3).map(r => `**${r.domain}** (pos. ${r.position})`).join(", ")}`);
   } else {
     lines.push(`- **Position : #${match.position}**`);
@@ -2404,49 +2478,13 @@ async function checkRankingForAssistant(p: CheckRankingParams): Promise<string> 
 }
 
 async function analyzeBacklinksForAssistant(p: AnalyzeBacklinksParams): Promise<string> {
-  // Try FetchSERP first for detailed backlink list
-  if (process.env.FETCHSERP_API_TOKEN) {
-    try {
-      const result = await getBacklinks(p.domain, p.country ?? "fr", p.pages_number ?? 3);
-      if (result && result.backlinks.length > 0) {
-        const lines = [
-          `## Backlinks — ${p.domain}`,
-          `Total détecté : **${result.totalBacklinks.toLocaleString("fr")}**`,
-          "",
-          "### Liens entrants (top 30)",
-          "| Domaine référent | Ancre | DA | URL source |",
-          "|-----------------|-------|-----|-----------|",
-        ];
-
-        for (const b of result.backlinks) {
-          const anchor = b.anchor ?? "—";
-          const da = b.domainAuthority != null ? String(b.domainAuthority) : "—";
-          const url = b.url.slice(0, 60) + (b.url.length > 60 ? "…" : "");
-          lines.push(`| ${b.domain} | ${anchor} | ${da} | ${url} |`);
-        }
-
-        const domainCounts = result.backlinks.reduce<Record<string, number>>((acc, b) => {
-          acc[b.domain] = (acc[b.domain] ?? 0) + 1;
-          return acc;
-        }, {});
-        const topDomains = Object.entries(domainCounts).sort(([, a], [, b]) => b - a).slice(0, 5);
-        if (topDomains.length) {
-          lines.push("", "### Domaines référents les plus actifs");
-          lines.push(topDomains.map(([d, c]) => `- **${d}** — ${c} lien${c > 1 ? "s" : ""}`).join("\n"));
-        }
-        return lines.join("\n");
-      }
-    } catch { /* fallback to DataForSEO */ }
-  }
-
-  // Fallback : DataForSEO Backlinks Summary (profil global, pas liste individuelle)
+  // DataForSEO Backlinks Summary (profil global, pas liste individuelle — SerpAPI n'a pas d'API backlinks)
   const summary = await getDataForSeoBacklinks(p.domain);
-  if (!summary) return `Erreur lors de l'analyse des backlinks pour "${p.domain}". FetchSERP et DataForSEO sont tous les deux indisponibles.`;
+  if (!summary) return `Erreur lors de l'analyse des backlinks pour "${p.domain}". DataForSEO est indisponible.`;
 
   const tldEntries = Object.entries(summary.tldDistribution).sort(([, a], [, b]) => b - a).slice(0, 5);
   const lines = [
     `## Profil de backlinks — ${p.domain} *(via DataForSEO)*`,
-    `> Note : FetchSERP indisponible. Données de synthèse DataForSEO — pas de liste individuelle de liens.`,
     "",
     `| Métrique | Valeur |`,
     `|---------|--------|`,
@@ -2635,6 +2673,10 @@ async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: stri
       return { terminal: false, result: await checkRankingForAssistant(toolUse.input as CheckRankingParams) };
     case "analyze_competitor_backlinks":
       return { terminal: false, result: await analyzeBacklinksForAssistant(toolUse.input as AnalyzeBacklinksParams) };
+    case "check_local_pack":
+      return { terminal: false, result: await checkLocalPackForAssistant(toolUse.input as CheckLocalPackParams) };
+    case "check_ai_overview":
+      return { terminal: false, result: await checkAiOverviewForAssistant(toolUse.input as CheckAiOverviewParams) };
 
     case "get_pagespeed_vitals": {
       const p = toolUse.input as { url: string; strategy?: "mobile" | "desktop" };
@@ -2735,7 +2777,7 @@ async function runAssistantTool(toolUse: Anthropic.ToolUseBlock, sessionId: stri
       const truncated = p.keywords.length > 20;
       try {
         const results = await Promise.all(
-          keywords.map(kw => getDomainRanking(kw, p.domain, p.country ?? "fr", "google", p.pages_number ?? 5))
+          keywords.map(kw => getDomainRanking(kw, p.domain, p.country ?? "fr", p.pages_number ?? 5))
         );
 
         const lines = [
@@ -3299,6 +3341,8 @@ const TOOL_LABELS: Record<string, string> = {
   find_longtail_keywords: "Recherche de mots-clés longue traîne…",
   check_domain_ranking: "Vérification du ranking du domaine…",
   analyze_competitor_backlinks: "Analyse des backlinks concurrents…",
+  check_local_pack: "Vérification du pack local Google…",
+  check_ai_overview: "Récupération de l'AI Overview Google…",
   generate_article: "Création du contenu…",
   generate_product_sheet: "Génération de la fiche produit…",
   generate_content_plan: "Construction du plan de contenu…",
