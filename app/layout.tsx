@@ -20,6 +20,11 @@ export const metadata: Metadata = {
     description: "Analysez votre site en 30 secondes : technique, Core Web Vitals, mots-clés, backlinks et recommandations IA priorisées.",
     type: "website",
   },
+  twitter: {
+    card: "summary_large_image",
+    title: "Search Mind : Audit SEO all-in-one",
+    description: "Analysez votre site en 30 secondes : technique, Core Web Vitals, mots-clés, backlinks et recommandations IA priorisées.",
+  },
 };
 
 function Logo() {
@@ -40,10 +45,21 @@ function Logo() {
   );
 }
 
+const ORGANIZATION_JSON_LD = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "Search Mind",
+  applicationCategory: "BusinessApplication",
+  operatingSystem: "Web",
+  description: "Audit SEO technique, Core Web Vitals, mots-clés, backlinks et suivi de visibilité IA (GEO) dans une seule interface.",
+  offers: { "@type": "Offer", price: "0", priceCurrency: "EUR" },
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="fr" suppressHydrationWarning className={jakarta.variable}>
       <body>
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(ORGANIZATION_JSON_LD) }} />
         <div className="min-h-dvh bg-background text-ink">
 
           {/* Header */}
