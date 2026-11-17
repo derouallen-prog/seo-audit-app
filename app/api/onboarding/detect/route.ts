@@ -98,15 +98,23 @@ async function extractHomepageData(url: string) {
   }
 }
 
+// Repli déterministe (pas d'IA) si l'appel échoue — le champ ne doit jamais rester vide
+// silencieusement à cause d'une erreur réseau/API passagère : mieux vaut une phrase minimale
+// que l'utilisateur peut corriger plutôt qu'un champ qui a l'air cassé.
+function fallbackPositioning(pageData: { title: string; h1: string }): string | null {
+  const base = pageData.h1 || pageData.title;
+  return base ? base.slice(0, 120) : null;
+}
+
 async function generatePositioning(pageData: {
   title: string;
   h1: string;
   metaDesc: string;
   firstP: string;
   url: string;
-}): Promise<string | null> {
+}, market: { code: string; label: string } | null): Promise<string | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) return fallbackPositioning(pageData);
 
   try {
     const client = new Anthropic({ apiKey });
@@ -116,21 +124,23 @@ async function generatePositioning(pageData: {
       messages: [
         {
           role: "user",
-          content: `À partir de ces informations extraites d'un site web, génère UNE SEULE phrase (max 25 mots) décrivant le positionnement de ce site/entreprise. Réponds uniquement avec la phrase, sans ponctuation finale ni guillemets.
+          content: `À partir de ces informations extraites d'un site web, génère UNE SEULE phrase (max 25 mots) décrivant le positionnement de ce site/entreprise. Tiens compte du marché cible s'il est fourni, sans l'inventer s'il est absent. Réponds uniquement avec la phrase, sans ponctuation finale ni guillemets.
 
 URL: ${pageData.url}
 Titre: ${pageData.title}
 H1: ${pageData.h1}
 Meta description: ${pageData.metaDesc}
-Premier paragraphe: ${pageData.firstP}`,
+Premier paragraphe: ${pageData.firstP}
+Marché cible détecté: ${market ? market.label : "non détecté"}`,
         },
       ],
     });
 
     const text = msg.content[0]?.type === "text" ? msg.content[0].text.trim() : null;
-    return text;
-  } catch {
-    return null;
+    return text || fallbackPositioning(pageData);
+  } catch (e) {
+    console.error("[onboarding/detect] generatePositioning failed:", e);
+    return fallbackPositioning(pageData);
   }
 }
 
@@ -307,11 +317,13 @@ export async function POST(req: NextRequest) {
     checkRobotsTxt(base),
   ]);
 
+  const hostname = (() => { try { return new URL(normalizedUrl).hostname; } catch { return ""; } })();
+  const detectedMarket = detectMarketFromTld(hostname);
+
   const positioning = pageData
-    ? await generatePositioning({ ...pageData, url: normalizedUrl })
+    ? await generatePositioning({ ...pageData, url: normalizedUrl }, detectedMarket)
     : null;
 
-  const hostname = (() => { try { return new URL(normalizedUrl).hostname; } catch { return ""; } })();
   const crawlSignals: CrawlSignals = {
     htmlLang: pageData?.htmlLang ?? null,
     hreflangs: pageData?.hreflangs ?? [],
@@ -320,7 +332,7 @@ export async function POST(req: NextRequest) {
     wwwRedirect: pageData?.wwwRedirect ?? false,
     robotsDisallowAll: robots.disallowAll,
     robotsDisallowCount: robots.disallowCount,
-    detectedMarket: detectMarketFromTld(hostname),
+    detectedMarket,
   };
 
   return NextResponse.json({

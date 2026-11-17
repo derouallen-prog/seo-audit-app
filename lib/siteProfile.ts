@@ -17,6 +17,7 @@ export interface SiteProfile {
   writing_style: string | null;
   market: string | null;
   preferred_lang: string | null;
+  active_topic_focus: string | null;
   onboarding_completed: boolean;
   created_at: string;
   updated_at: string;

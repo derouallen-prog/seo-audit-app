@@ -233,10 +233,8 @@ function StepDots({ current, total }: { current: number; total: number }) {
 
 function TechBadge({ tech }: { tech: DetectedTech }) {
   return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-background px-3 py-1.5 text-xs font-medium text-ink"
-      style={{ borderLeftColor: tech.color, borderLeftWidth: 3 }}
-    >
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-background px-3 py-1.5 text-xs font-medium text-ink">
+      {tech.icon && <Image src={tech.icon} alt="" width={14} height={14} unoptimized className="h-3.5 w-3.5 shrink-0 rounded-sm object-contain" />}
       {tech.name}
       <span className="text-[10px] text-ink-soft">{tech.category}</span>
     </span>
@@ -288,6 +286,7 @@ export default function OnboardingPage() {
   const [loadingKeywords, setLoadingKeywords] = useState(false);
   const [marketCode, setMarketCode] = useState<string>("");
   const [writingLang, setWritingLang] = useState<string>("");
+  const [topicAccepted, setTopicAccepted] = useState(false);
   const competitorInputRef = useRef<HTMLInputElement>(null);
 
   // Progressive reveal after detection
@@ -347,6 +346,7 @@ export default function OnboardingPage() {
 
       // Mots-clés réels (DataForSEO) en arrière-plan, pour l'étape positionnement — jamais une estimation.
       setKeywordInsight(null);
+      setTopicAccepted(false);
       setLoadingKeywords(true);
       fetch("/api/onboarding/keywords", {
         method: "POST",
@@ -402,6 +402,7 @@ export default function OnboardingPage() {
             positioning,
             market: marketCode || null,
             preferred_lang: writingLang || "fr",
+            active_topic_focus: topicAccepted ? (keywordInsight?.suggestedTopic?.keyword ?? null) : null,
             onboarding_completed: true,
           }),
         }),
@@ -769,15 +770,23 @@ export default function OnboardingPage() {
               {/* Mots-clés réels (DataForSEO) — jamais une estimation */}
               {(loadingKeywords || keywordInsight) && (
                 <div className="rounded-xl border border-hairline bg-background shadow-sm px-4 py-3 space-y-2.5">
-                  <p className="text-[11px] font-semibold uppercase tracking-widest text-ink-soft/60 flex items-center gap-1.5">
-                    Positionnement réel détecté
-                    {loadingKeywords && <Spinner />}
-                  </p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-widest text-ink-soft/60 flex items-center gap-1.5">
+                      Positionnement réel détecté
+                      {loadingKeywords && <Spinner />}
+                    </p>
+                    {keywordInsight?.hasHistory && (
+                      <span className="inline-flex items-center gap-1 text-[10px] text-ink-soft/60">
+                        <Image src="https://www.google.com/s2/favicons?domain=dataforseo.com&sz=32" alt="" width={12} height={12} unoptimized className="h-3 w-3 rounded-sm" />
+                        Source : DataForSEO
+                      </span>
+                    )}
+                  </div>
                   {loadingKeywords && !keywordInsight && (
                     <p className="text-xs text-ink-soft/50">Recherche de données de positionnement réelles…</p>
                   )}
                   {keywordInsight && !keywordInsight.hasHistory && (
-                    <p className="text-xs text-ink-soft/60">Aucun historique de positionnement trouvé pour ce domaine — normal pour un site récent ou peu indexé. Rien n&apos;est estimé à la place.</p>
+                    <p className="text-xs text-ink-soft/60">Aucun historique de positionnement trouvé pour ce domaine. C&apos;est normal pour un site récent ou peu indexé : rien n&apos;est estimé à la place.</p>
                   )}
                   {keywordInsight && keywordInsight.hasHistory && (
                     <>
@@ -792,10 +801,18 @@ export default function OnboardingPage() {
                         </div>
                       )}
                       {keywordInsight.suggestedTopic && (
-                        <div className="border-t border-hairline pt-2.5 text-xs text-ink-soft">
-                          <span className="font-semibold text-ink">Thématique à travailler : </span>
-                          développer la sémantique autour de « {keywordInsight.suggestedTopic.keyword} » (position {keywordInsight.suggestedTopic.position}, {keywordInsight.suggestedTopic.volume.toLocaleString("fr-FR")} recherches/mois) — un bon potentiel de gain visible à court terme.
-                        </div>
+                        <label className="flex cursor-pointer items-start gap-2.5 border-t border-hairline pt-2.5 text-xs text-ink-soft">
+                          <input
+                            type="checkbox"
+                            checked={topicAccepted}
+                            onChange={e => setTopicAccepted(e.target.checked)}
+                            className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-hairline accent-brand"
+                          />
+                          <span>
+                            <span className="font-semibold text-ink">Suggestion de projet. </span>
+                            Le mot-clé « {keywordInsight.suggestedTopic.keyword} » attire {keywordInsight.suggestedTopic.volume.toLocaleString("fr-FR")} recherches par mois et ce site se positionne déjà en page 1 (position {keywordInsight.suggestedTopic.position}), sans encore être dans le top 3. Développer la sémantique autour de ce mot-clé représente un potentiel de gain de visibilité concret et atteignable à court terme.
+                          </span>
+                        </label>
                       )}
                     </>
                   )}

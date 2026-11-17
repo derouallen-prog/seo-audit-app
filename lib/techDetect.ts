@@ -11,6 +11,7 @@ interface TechPattern {
   name: string;
   category: DetectedTech["category"];
   color: string;
+  domain: string; // site officiel de la techno — sert à afficher son vrai favicon, pas une icône inventée
   headers?: RegExp[];
   scripts?: RegExp[];
   html?: RegExp[];
@@ -20,36 +21,36 @@ interface TechPattern {
 
 const PATTERNS: TechPattern[] = [
   // CMS
-  { name: "WordPress",   category: "CMS",          color: "#21759b", scripts: [/wp-content\/|wp-includes\//], html: [/__WORDPRESS/i] },
-  { name: "Shopify",     category: "E-commerce",   color: "#96bf48", scripts: [/cdn\.shopify\.com/], html: [/Shopify\.theme|shopify\.com/i] },
-  { name: "PrestaShop",  category: "E-commerce",   color: "#df0067", scripts: [/prestashop|\/modules\/ps_/i], html: [/prestashop/i] },
-  { name: "Magento",     category: "E-commerce",   color: "#ee672d", scripts: [/mage\/|varien\//i], html: [/Mage\.|magento/i] },
-  { name: "Wix",         category: "CMS",          color: "#faad00", scripts: [/static\.parastorage\.com|wix\.com/i], headers: [/wix/i] },
-  { name: "Squarespace", category: "CMS",          color: "#222",    scripts: [/squarespace\.com/i], html: [/squarespace/i] },
-  { name: "Webflow",     category: "CMS",          color: "#4353ff", scripts: [/webflow\.com/i], html: [/webflow-page-id/i] },
-  { name: "Drupal",      category: "CMS",          color: "#009cde", html: [/drupal/i], scripts: [/drupal\.js/i] },
-  { name: "Joomla",      category: "CMS",          color: "#f44321", html: [/joomla/i], scripts: [/\/components\/com_/i] },
+  { name: "WordPress",   category: "CMS",          color: "#21759b", domain: "wordpress.org",   scripts: [/wp-content\/|wp-includes\//], html: [/__WORDPRESS/i] },
+  { name: "Shopify",     category: "E-commerce",   color: "#96bf48", domain: "shopify.com",      scripts: [/cdn\.shopify\.com/], html: [/Shopify\.theme|shopify\.com/i] },
+  { name: "PrestaShop",  category: "E-commerce",   color: "#df0067", domain: "prestashop.com",   scripts: [/prestashop|\/modules\/ps_/i], html: [/prestashop/i] },
+  { name: "Magento",     category: "E-commerce",   color: "#ee672d", domain: "magento.com",      scripts: [/mage\/|varien\//i], html: [/Mage\.|magento/i] },
+  { name: "Wix",         category: "CMS",          color: "#faad00", domain: "wix.com",          scripts: [/static\.parastorage\.com|wix\.com/i], headers: [/wix/i] },
+  { name: "Squarespace", category: "CMS",          color: "#222",    domain: "squarespace.com",  scripts: [/squarespace\.com/i], html: [/squarespace/i] },
+  { name: "Webflow",     category: "CMS",          color: "#4353ff", domain: "webflow.com",      scripts: [/webflow\.com/i], html: [/webflow-page-id/i] },
+  { name: "Drupal",      category: "CMS",          color: "#009cde", domain: "drupal.org",       html: [/drupal/i], scripts: [/drupal\.js/i] },
+  { name: "Joomla",      category: "CMS",          color: "#f44321", domain: "joomla.org",       html: [/joomla/i], scripts: [/\/components\/com_/i] },
   // Page Builders
-  { name: "Elementor",   category: "Page Builder", color: "#e2231a", scripts: [/elementor/i], html: [/elementor-/i] },
-  { name: "Divi",        category: "Page Builder", color: "#6db4e4", scripts: [/divi/i], html: [/et_pb_|divi/i] },
+  { name: "Elementor",   category: "Page Builder", color: "#e2231a", domain: "elementor.com",    scripts: [/elementor/i], html: [/elementor-/i] },
+  { name: "Divi",        category: "Page Builder", color: "#6db4e4", domain: "elegantthemes.com", scripts: [/divi/i], html: [/et_pb_|divi/i] },
   // Ecommerce add-ons
-  { name: "WooCommerce", category: "E-commerce",   color: "#7f54b3", scripts: [/woocommerce/i], html: [/woocommerce/i] },
+  { name: "WooCommerce", category: "E-commerce",   color: "#7f54b3", domain: "woocommerce.com",  scripts: [/woocommerce/i], html: [/woocommerce/i] },
   // Frameworks
-  { name: "Next.js",     category: "Framework",    color: "#000",    scripts: [/_next\/static/], html: [/__NEXT_DATA__/] },
-  { name: "Nuxt.js",     category: "Framework",    color: "#00dc82", scripts: [/_nuxt\//i], html: [/__nuxt/i] },
-  { name: "React",       category: "Framework",    color: "#61dafb", scripts: [/react\.js|react\.min\.js|react-dom/i] },
-  { name: "Vue.js",      category: "Framework",    color: "#42b883", scripts: [/vue\.js|vue\.min\.js/i] },
-  { name: "Angular",     category: "Framework",    color: "#dd0031", scripts: [/angular\.js|angular\.min\.js/i], html: [/ng-version/i] },
+  { name: "Next.js",     category: "Framework",    color: "#000",    domain: "nextjs.org",       scripts: [/_next\/static/], html: [/__NEXT_DATA__/] },
+  { name: "Nuxt.js",     category: "Framework",    color: "#00dc82", domain: "nuxt.com",         scripts: [/_nuxt\//i], html: [/__nuxt/i] },
+  { name: "React",       category: "Framework",    color: "#61dafb", domain: "react.dev",        scripts: [/react\.js|react\.min\.js|react-dom/i] },
+  { name: "Vue.js",      category: "Framework",    color: "#42b883", domain: "vuejs.org",         scripts: [/vue\.js|vue\.min\.js/i] },
+  { name: "Angular",     category: "Framework",    color: "#dd0031", domain: "angular.io",        scripts: [/angular\.js|angular\.min\.js/i], html: [/ng-version/i] },
   // CDN / Hosting
-  { name: "Cloudflare",  category: "CDN/Hosting",  color: "#f48120", headers: [/cf-ray|cloudflare/i] },
-  { name: "Vercel",      category: "CDN/Hosting",  color: "#000",    headers: [/x-vercel-/i] },
-  { name: "Netlify",     category: "CDN/Hosting",  color: "#00c7b7", headers: [/x-nf-/i] },
+  { name: "Cloudflare",  category: "CDN/Hosting",  color: "#f48120", domain: "cloudflare.com",    headers: [/cf-ray|cloudflare/i] },
+  { name: "Vercel",      category: "CDN/Hosting",  color: "#000",    domain: "vercel.com",        headers: [/x-vercel-/i] },
+  { name: "Netlify",     category: "CDN/Hosting",  color: "#00c7b7", domain: "netlify.com",       headers: [/x-nf-/i] },
   // Analytics
-  { name: "Google Analytics",    category: "Analytics", color: "#e37400", scripts: [/google-analytics\.com|gtag\/js/i] },
-  { name: "Google Tag Manager",  category: "Analytics", color: "#4285f4", scripts: [/googletagmanager\.com/i] },
-  { name: "Hotjar",              category: "Analytics", color: "#ff3c00", scripts: [/hotjar\.com/i] },
+  { name: "Google Analytics",    category: "Analytics", color: "#e37400", domain: "analytics.google.com", scripts: [/google-analytics\.com|gtag\/js/i] },
+  { name: "Google Tag Manager",  category: "Analytics", color: "#4285f4", domain: "tagmanager.google.com", scripts: [/googletagmanager\.com/i] },
+  { name: "Hotjar",              category: "Analytics", color: "#ff3c00", domain: "hotjar.com",   scripts: [/hotjar\.com/i] },
   // Marketing
-  { name: "Facebook Pixel",      category: "Marketing", color: "#1877f2", scripts: [/connect\.facebook\.net/i] },
+  { name: "Facebook Pixel",      category: "Marketing", color: "#1877f2", domain: "facebook.com", scripts: [/connect\.facebook\.net/i] },
 ];
 
 export async function detectTechStack(url: string): Promise<DetectedTech[]> {
@@ -97,7 +98,12 @@ export async function detectTechStack(url: string): Promise<DetectedTech[]> {
 
     if (matches) {
       detected.add(pattern.name);
-      results.push({ name: pattern.name, category: pattern.category, color: pattern.color });
+      results.push({
+        name: pattern.name,
+        category: pattern.category,
+        color: pattern.color,
+        icon: `https://www.google.com/s2/favicons?domain=${pattern.domain}&sz=64`,
+      });
     }
   }
 
