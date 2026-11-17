@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import Button from "@/app/components/Button";
 
 function hasTLD(v: string): boolean {
   const clean = v.replace(/^https?:\/\//i, "").replace(/^www\./i, "").split(/[/?#]/)[0] ?? "";
@@ -132,14 +133,26 @@ export default function CommencerPage() {
   }
 
   return (
-    <div className="grid min-h-[100dvh] lg:grid-cols-2">
+    <div className="grid lg:min-h-[100dvh] lg:grid-cols-2">
       {/* ─── Gauche : entrée dans l'onboarding ─────────────────────────────── */}
-      <div className="flex items-center justify-center px-6 py-16 sm:px-10">
+      <div className="flex flex-col items-stretch justify-start px-6 py-10 sm:px-10 lg:items-center lg:justify-center lg:py-16">
         <div className="w-full max-w-sm">
           <h1 className="font-display text-2xl text-ink mb-1.5">Parlons de ton site</h1>
-          <p className="mb-8 text-sm text-ink-soft">
+          <p className="mb-6 text-sm text-ink-soft">
             Lance une première analyse gratuite — sans créer de compte. Tu pourras garder le résultat à la fin si tu le souhaites.
           </p>
+
+          {/* Pitch condensé — visible uniquement là où le panneau sombre de droite est masqué (mobile/tablette) */}
+          <ul className="mb-6 space-y-2.5 lg:hidden">
+            {POINTS.map(p => (
+              <li key={p.title} className="flex items-start gap-2 text-xs text-ink-soft">
+                <svg viewBox="0 0 24 24" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+                <span><span className="font-medium text-ink">{p.title}.</span> {p.body}</span>
+              </li>
+            ))}
+          </ul>
 
           <form onSubmit={handleSubmit} className="space-y-3">
             <DomainInput
@@ -148,12 +161,9 @@ export default function CommencerPage() {
               onSubmit={() => handleSubmit()}
             />
             {error && <p className="text-xs text-warning">{error}</p>}
-            <button
-              type="submit"
-              className="w-full rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-brand/90"
-            >
+            <Button type="submit" size="lg" className="w-full">
               Analyser mon site →
-            </button>
+            </Button>
           </form>
 
           <p className="mt-6 text-center text-xs text-ink-soft">

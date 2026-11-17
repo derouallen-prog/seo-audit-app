@@ -1,4 +1,24 @@
 import Link from "next/link";
+import Button from "@/app/components/Button";
+
+const FAQS = [
+  {
+    q: "Puis-je annuler à tout moment ?",
+    a: "Oui. Aucun engagement. Vous pouvez annuler depuis votre espace en un clic."
+  },
+  {
+    q: "Qu'est-ce que les Citations IA ?",
+    a: "Un module qui surveille si votre marque est citée ou mentionnée par Perplexity, Claude et Gemini sur des questions stratégiques.",
+  },
+  {
+    q: "Les données sont-elles en temps réel ?",
+    a: "L'audit SEO est en temps réel (~30s). Les Citations IA tournent en cron hebdomadaire ou à la demande.",
+  },
+  {
+    q: "Y a-t-il une version d'essai ?",
+    a: "Le plan Découverte est gratuit sans limite de durée. Le plan Pro est disponible en essai 14 jours sans CB.",
+  },
+];
 
 const PLANS = [
   {
@@ -56,8 +76,19 @@ const PLANS = [
 ];
 
 export default function TarifsPage() {
+  const faqJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: FAQS.map(({ q, a }) => ({
+      "@type": "Question",
+      name: q,
+      acceptedAnswer: { "@type": "Answer", text: a },
+    })),
+  };
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:px-8">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }} />
 
       {/* Header */}
       <div className="mx-auto max-w-2xl text-center mb-14">
@@ -107,16 +138,13 @@ export default function TarifsPage() {
               ))}
             </ul>
 
-            <Link href={plan.ctaHref}>
-              <button
-                className={`w-full rounded-xl py-2.5 text-sm font-medium transition ${
-                  plan.featured
-                    ? "bg-brand text-white hover:bg-brand-dark shadow glow-brand"
-                    : "border border-hairline text-ink hover:bg-accent"
-                }`}
+            <Link href={plan.ctaHref} className="block">
+              <Button
+                variant={plan.featured ? "primary" : "secondary"}
+                className={`w-full ${plan.featured ? "glow-brand" : ""}`}
               >
                 {plan.cta}
-              </button>
+              </Button>
             </Link>
           </div>
         ))}
@@ -126,24 +154,7 @@ export default function TarifsPage() {
       <div className="mt-16 mx-auto max-w-2xl">
         <h2 className="font-display text-2xl text-ink mb-6 text-center">Questions fréquentes</h2>
         <div className="space-y-4">
-          {[
-            {
-              q: "Puis-je annuler à tout moment ?",
-              a: "Oui. Aucun engagement. Vous pouvez annuler depuis votre espace en un clic."
-            },
-            {
-              q: "Qu'est-ce que les Citations IA ?",
-              a: "Un module qui surveille si votre marque est citée ou mentionnée par Perplexity, Claude et Gemini sur des questions stratégiques.",
-            },
-            {
-              q: "Les données sont-elles en temps réel ?",
-              a: "L'audit SEO est en temps réel (~30s). Les Citations IA tournent en cron hebdomadaire ou à la demande.",
-            },
-            {
-              q: "Y a-t-il une version d'essai ?",
-              a: "Le plan Découverte est gratuit sans limite de durée. Le plan Pro est disponible en essai 14 jours sans CB.",
-            },
-          ].map(({ q, a }) => (
+          {FAQS.map(({ q, a }) => (
             <div key={q} className="rounded-xl border border-hairline bg-white p-5">
               <p className="font-medium text-sm text-ink">{q}</p>
               <p className="mt-1.5 text-sm text-ink-soft">{a}</p>

@@ -709,7 +709,7 @@ export default function HomePage() {
               Nouveau — assistant SEO IA en accès libre
             </div>
 
-            <h1 className="mt-6 font-display text-5xl leading-[1.05] text-ink sm:text-6xl md:text-7xl">
+            <h1 className="mt-6 font-display text-4xl leading-[1.08] text-ink sm:text-5xl sm:leading-[1.05] md:text-6xl lg:text-7xl">
               L&apos;observatoire SEO qui traduit vos données en{" "}
               <span className="italic text-brand">actions.</span>
             </h1>

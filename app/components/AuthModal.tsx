@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabaseClient";
+import Button from "@/app/components/Button";
 
 interface Props {
   defaultMode?: "login" | "signup";
@@ -95,13 +96,9 @@ export default function AuthModal({ redirectTo = "/dashboard", onClose }: Props)
                 <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>
               )}
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full rounded-xl bg-brand py-2.5 text-sm font-semibold text-white transition hover:bg-brand/90 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
+              <Button type="submit" loading={loading} className="w-full">
                 {loading ? "Envoi…" : "Recevoir le lien de connexion"}
-              </button>
+              </Button>
             </form>
 
             <p className="mt-4 text-center text-xs text-ink-soft">

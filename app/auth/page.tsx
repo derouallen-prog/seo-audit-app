@@ -3,6 +3,7 @@ import { useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabaseClient";
+import Button from "@/app/components/Button";
 
 function AuthForm() {
   const searchParams = useSearchParams();
@@ -85,13 +86,9 @@ function AuthForm() {
             </div>
           )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-xl bg-brand py-2.5 text-sm font-medium text-white transition hover:bg-brand-dark disabled:opacity-60"
-          >
+          <Button type="submit" loading={loading} className="w-full">
             {loading ? "Envoi…" : "Recevoir le lien de connexion"}
-          </button>
+          </Button>
         </form>
 
         <p className="mt-4 text-center text-xs text-ink-soft">
@@ -108,7 +105,7 @@ function AuthForm() {
 
 export default function AuthPage() {
   return (
-    <div className="flex min-h-[calc(100dvh-4rem)] items-center justify-center px-4 py-16">
+    <div className="flex justify-center px-4 py-10 sm:min-h-[calc(100dvh-4rem)] sm:items-center sm:py-16">
       <Suspense fallback={null}>
         <AuthForm />
       </Suspense>
