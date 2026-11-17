@@ -1,12 +1,103 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 
 function hasTLD(v: string): boolean {
   const clean = v.replace(/^https?:\/\//i, "").replace(/^www\./i, "").split(/[/?#]/)[0] ?? "";
   return /[a-z0-9-]\.[a-z]{2,10}$/i.test(clean);
+}
+
+interface ClearbitSuggestion { name: string; domain: string; logo: string }
+
+function DomainInput({
+  value, onChange, onSubmit,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSubmit: () => void;
+}) {
+  const [suggestions, setSuggestions] = useState<ClearbitSuggestion[]>([]);
+  const [open, setOpen] = useState(false);
+  const [fetching, setFetching] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cleanDomain = value.replace(/^https?:\/\//i, "").replace(/^www\./i, "").split(/[/?#]/)[0] ?? "";
+  const faviconUrl = hasTLD(value) && cleanDomain
+    ? `https://www.google.com/s2/favicons?domain=${cleanDomain}&sz=64`
+    : null;
+
+  useEffect(() => {
+    if (timer.current) clearTimeout(timer.current);
+    const q = value.trim();
+    if (q.length < 2 || hasTLD(q)) { setSuggestions([]); return; }
+    timer.current = setTimeout(async () => {
+      setFetching(true);
+      try {
+        const res = await fetch(`https://autocomplete.clearbit.com/v1/companies/suggest?query=${encodeURIComponent(q)}`);
+        if (res.ok) setSuggestions((await res.json()) as ClearbitSuggestion[]);
+      } catch { /* réseau */ }
+      finally { setFetching(false); }
+    }, 300);
+    return () => { if (timer.current) clearTimeout(timer.current); };
+  }, [value]);
+
+  function select(domain: string) {
+    onChange(domain);
+    setSuggestions([]);
+    setOpen(false);
+  }
+
+  return (
+    <div className="relative">
+      <div className="flex overflow-hidden rounded-xl border border-hairline bg-background shadow-sm focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20 transition-all">
+        <span className="flex items-center border-r border-hairline bg-muted px-3 text-xs font-mono text-ink-soft select-none shrink-0">
+          https://
+        </span>
+        {faviconUrl && (
+          <div className="pointer-events-none flex items-center pl-3">
+            <Image src={faviconUrl} alt="" width={18} height={18} unoptimized className="h-[18px] w-[18px] rounded object-contain" />
+          </div>
+        )}
+        <input
+          type="text"
+          value={value}
+          onChange={e => {
+            const v = e.target.value.replace(/^https?:\/\//, "").replace(/^\/\//, "");
+            onChange(v);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onKeyDown={e => e.key === "Enter" && onSubmit()}
+          placeholder="www.monsite.fr"
+          className={`flex-1 bg-transparent py-3.5 text-sm text-ink outline-none placeholder:text-ink-soft/50 ${faviconUrl ? "pl-2 pr-3" : "px-3"}`}
+          autoFocus
+        />
+      </div>
+
+      {open && (fetching || suggestions.length > 0) && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 rounded-xl border border-hairline bg-background shadow-lg overflow-hidden">
+          {fetching && <p className="px-4 py-2.5 text-xs text-ink-soft">Recherche…</p>}
+          {suggestions.map(s => (
+            <button key={s.domain} type="button" onMouseDown={() => select(s.domain)}
+              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-accent/40 transition-colors text-left">
+              {s.logo
+                ? <Image src={s.logo} alt="" width={24} height={24} unoptimized className="w-6 h-6 rounded shrink-0 object-contain" />
+                : <div className="w-6 h-6 rounded bg-accent shrink-0 flex items-center justify-center text-xs font-bold text-ink-soft">{s.name[0]}</div>
+              }
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-ink">{s.name}</p>
+                <p className="text-xs text-ink-soft">{s.domain}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 const POINTS = [
@@ -29,8 +120,8 @@ export default function CommencerPage() {
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  function handleSubmit(e?: React.FormEvent) {
+    e?.preventDefault();
     const raw = url.trim();
     if (!raw || !hasTLD(raw)) {
       setError("Indique un domaine valide (ex : monsite.fr).");
@@ -51,19 +142,11 @@ export default function CommencerPage() {
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-3">
-            <div className="flex overflow-hidden rounded-xl border border-hairline bg-background shadow-sm focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20 transition-all">
-              <span className="flex items-center border-r border-hairline bg-muted px-3 text-xs font-mono text-ink-soft select-none shrink-0">
-                https://
-              </span>
-              <input
-                type="text"
-                value={url}
-                onChange={e => { setUrl(e.target.value.replace(/^https?:\/\//, "").replace(/^\/\//, "")); setError(""); }}
-                placeholder="www.monsite.fr"
-                autoFocus
-                className="flex-1 bg-transparent px-3 py-3.5 text-sm text-ink outline-none placeholder:text-ink-soft/50"
-              />
-            </div>
+            <DomainInput
+              value={url}
+              onChange={v => { setUrl(v); setError(""); }}
+              onSubmit={() => handleSubmit()}
+            />
             {error && <p className="text-xs text-warning">{error}</p>}
             <button
               type="submit"
