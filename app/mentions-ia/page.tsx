@@ -17,6 +17,25 @@ interface ActiveSite {
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
+const GEO_FAQS = [
+  {
+    q: "D'où viennent les données de mentions IA ?",
+    a: "De la base indexée DataForSEO, qui recense les questions pour lesquelles Google AI Overview ou ChatGPT citent un domaine en réponse. Ce n'est pas une estimation : chaque mention listée correspond à une question réellement posée et à une réponse réellement générée.",
+  },
+  {
+    q: "Pourquoi ChatGPT n'est-il disponible qu'aux États-Unis, en anglais ?",
+    a: "C'est une limite de la couverture actuelle de la base DataForSEO pour ce moteur, pas un choix de Search Mind. Google AI Overview, lui, est disponible sur davantage de marchés et de langues.",
+  },
+  {
+    q: "Le suivi de mentions IA remplace-t-il le suivi SEO classique ?",
+    a: "Non, il le complète. Un site peut bien se positionner sur Google sans jamais être cité par une IA générative, et inversement. Search Mind suit les deux dans la même interface.",
+  },
+  {
+    q: "À quelle fréquence les données sont-elles mises à jour ?",
+    a: "La recherche de mentions se fait à la demande, en interrogeant directement la base DataForSEO. Le suivi programmé (Citations IA, module séparé) tourne en cron hebdomadaire.",
+  },
+];
+
 const LANGUAGES = [
   { code: "fr", label: "🇫🇷 Français", location: 2250 },
   { code: "en", label: "🇬🇧 Anglais", location: 2840 },
@@ -208,8 +227,19 @@ export default function MentionsIAPage() {
   const totalVolume = result?.items.reduce((s, i) => s + (i.ai_search_volume ?? 0), 0) ?? 0;
   const avgVolume = result && result.items.length > 0 ? Math.round(totalVolume / result.items.length) : 0;
 
+  const faqJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: GEO_FAQS.map(({ q, a }) => ({
+      "@type": "Question",
+      name: q,
+      acceptedAnswer: { "@type": "Answer", text: a },
+    })),
+  };
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }} />
 
       {/* Header */}
       <div className="mb-8">
@@ -387,6 +417,24 @@ export default function MentionsIAPage() {
           )}
         </div>
       )}
+
+      {/* Contenu explicatif — GEO */}
+      <div className="mt-14 border-t border-hairline pt-10">
+        <h2 className="font-display text-xl text-ink mb-3">Qu&apos;est-ce que le GEO ?</h2>
+        <p className="text-sm text-ink-soft max-w-2xl">
+          Le GEO (Generative Engine Optimization) est l&apos;équivalent du SEO pour les moteurs de réponse génératifs — ChatGPT, Google AI Overview, Perplexity, Gemini. Au lieu d&apos;optimiser pour apparaître dans une liste de liens bleus, il s&apos;agit d&apos;optimiser pour être la source citée dans une réponse générée par une IA. Les deux approches se recoupent (contenu clair, structuré, factuel) mais la mesure diffère : en SEO classique on suit une position dans une SERP, en GEO on suit si et comment une IA mentionne votre marque en réponse à une question donnée.
+        </p>
+
+        <h3 className="mt-8 text-sm font-semibold uppercase tracking-wide text-ink-soft">Questions fréquentes</h3>
+        <div className="mt-4 space-y-4 max-w-2xl">
+          {GEO_FAQS.map(({ q, a }) => (
+            <div key={q} className="rounded-xl border border-hairline bg-white p-5">
+              <p className="font-medium text-sm text-ink">{q}</p>
+              <p className="mt-1.5 text-sm text-ink-soft">{a}</p>
+            </div>
+          ))}
+        </div>
+      </div>
 
     </div>
   );
